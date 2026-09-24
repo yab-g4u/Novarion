@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Navbar } from './components/Navbar';
+import { PillNav } from './components/PillNav';
 import { HeroDemo } from './components/HeroDemo';
-import { ProductProbing } from './components/ProductProbing';
+import { SearchWorkspace } from './components/SearchWorkspace';
 import { EvidenceGraph } from './components/EvidenceGraph';
 import { UserTesting } from './components/UserTesting';
 import { EvidenceTimeline } from './components/EvidenceTimeline';
@@ -10,6 +10,7 @@ import { Footer } from './components/Footer';
 import { EvidenceModal } from './components/EvidenceModal';
 import { TryModal } from './components/TryModal';
 import { EvidenceSource } from './types';
+import { ExternalLink } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
@@ -19,6 +20,7 @@ gsap.registerPlugin(ScrollTrigger);
 export const App: React.FC = () => {
   const [selectedSource, setSelectedSource] = useState<EvidenceSource | null>(null);
   const [isTryModalOpen, setIsTryModalOpen] = useState<boolean>(false);
+  const [activeNavHref, setActiveNavHref] = useState<string>('#');
   const mainRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -58,43 +60,61 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  const handleNavigateSection = (sectionId: string) => {
-    const el = document.getElementById(sectionId);
+  const handleSelectCustomPrompt = () => {
+    const el = document.getElementById('section-search');
     if (el) {
       el.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
-  const handleSelectCustomPrompt = (query: string) => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+  const navItems = [
+    { label: 'Research Search', href: '#section-search' },
+    { label: 'Evidence Graph', href: '#section-graph' },
+    { label: 'User Testing', href: '#section-simulation' },
+    { label: 'Calendar', href: '#section-timeline' },
+  ];
+
+  const handleNavItemClick = (item: { label: string; href: string }) => {
+    setActiveNavHref(item.href);
   };
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] text-[#0A0D14] flex flex-col font-['Geist','Inter',-apple-system,sans-serif]">
-      {/* SECTION 1: Minimal Linear Navigation */}
-      <Navbar
-        onOpenTry={() => setIsTryModalOpen(true)}
-        onNavigateSection={handleNavigateSection}
+      {/* PillNav component with Logo on far left, centered menu with visible gaps, and GitHub on far right */}
+      <PillNav
+        logo="/probe-logo.svg"
+        logoAlt="Probe Logo"
+        items={navItems}
+        activeHref={activeNavHref}
+        ease="power2.easeOut"
+        baseColor="#0A0D14"
+        pillColor="#FFFFFF"
+        hoveredPillTextColor="#FFFFFF"
+        pillTextColor="#0A0D14"
+        initialLoadAnimation={true}
+        onItemClick={handleNavItemClick}
       />
 
       {/* Main Content Area: 90% Visual Product Demonstration, 10% Explanatory Copy */}
-      <main ref={mainRef} className="flex-1">
-        {/* SCENE 01: Hero / Reasoning Pipeline (URL enters -> Product identified -> Assumptions -> Sources -> Classification -> Contradiction) */}
+      <main ref={mainRef} className="flex-1 pt-12 sm:pt-16">
+        {/* SCENE 01: Hero / Reasoning Pipeline with Grainient background & PROBE headline */}
         <HeroDemo onSelectSource={(source) => setSelectedSource(source)} />
 
-        {/* SCENE 02: Single Unified Product Autopsy Scene (Linear, Cursor, Notion with real public data) */}
-        <ProductProbing />
+        {/* MILESTONE 1: Real cross-source research search engine (Reddit, X, LinkedIn, ScholarXIV) */}
+        <SearchWorkspace />
 
-        {/* SCENE 03: Living Evidence Graph (React Flow + ELK.js intelligent layout) */}
+        {/* SCENE 02: Living Evidence Graph (React Flow + ELK.js with nodeTypes memoization) */}
         <EvidenceGraph onSelectSource={(source) => setSelectedSource(source)} />
 
-        {/* SCENE 04: The Fundamental Feature: Usability Session Replay ("Let someone try it before they do.") */}
+        {/* SCENE 03: The Fundamental Feature: Usability Session Replay */}
         <UserTesting />
 
-        {/* SCENE 05: 12-Month Signal Calendar & Accessible Artifacts ("See how the signal changes.") */}
+        {/* SCENE 04: 12-Month Signal Calendar & Accessible Artifacts */}
         <EvidenceTimeline />
 
-        {/* SCENE 06: Final Product Input CTA ("Before you build further, Probe it.") */}
+        {/* SCENE 05: Final Product Input CTA */}
         <FinalCTA onSubmitIdea={handleSelectCustomPrompt} />
       </main>
 

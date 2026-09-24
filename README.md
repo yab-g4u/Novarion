@@ -1,36 +1,105 @@
 # Probe
 
-> **Put your idea under pressure.**  
-> A research instrument and developer tool for founders, product teams, and builders to challenge ideas and existing products with real-world evidence before committing code.
+> **Put your idea under pressure.**
+> Real-world research discovery, living evidence graphs, and authentic product testing.
+
+Probe is a cross-source research search engine and validation system. It challenges product assumptions by retrieving semantically relevant, source-backed discussions from **Reddit**, **X**, **LinkedIn**, and academic papers from **ScholarXIV**, alongside authentic user testing sessions on real products like **[links.et](https://links.et/)**.
 
 ---
 
-## ⚡ Key Capabilities
+## Architecture Overview
 
-1. **Live Evidence Mind-Map & Graph**: Clustered multi-source signal analysis across Reddit, X, GitHub, Google/Web, Product Reviews, and Academic Research.
-2. **Product Probing**: Paste any product URL (e.g. `linear.app`, `cursor.sh`) to extract audience, core problem, positioning, substitutes, and public customer friction.
-3. **Idea Challenge**: Compare founder conviction directly against real-world counter-signals and discover reframed strategic questions.
-4. **Interactive Evidence Graph (`@xyflow/react` + `elkjs`)**: Deterministic layered layout of assumptions and evidence branches with confidence metrics and citation cards.
-5. **AI User Simulation & Session Replay**: Watch synthetic personas navigate onboarding flows, detect friction points, and identify drop-off triggers.
-6. **Cross-Functional Team Interrogation**: Pin counterarguments, architectural feasibility notes, and UX observations onto shared assumption nodes.
-7. **Blind Spot Detection**: Reveal high-risk questions that were absent from the team's initial whiteboarding session.
-8. **Signal Drift Timeline**: Scrub 12 months of public sentiment, discussion volume, and contradiction ratios to understand evolving market consensus.
-
----
-
-## 🚀 Getting Started
-
-### Local Development
-
-```bash
-npm install
-npm run dev
+```text
+probe/
+├── apps/
+│   ├── web/                         # Probe frontend
+│   │   ├── src/
+│   │   │   ├── app/                # routing, providers, global layout
+│   │   │   ├── features/
+│   │   │   │   ├── research/       # Cross-source research engine & workspace
+│   │   │   │   ├── evidence/       # React Flow living evidence graph
+│   │   │   │   ├── testing/        # Real product usability testing
+│   │   │   │   ├── voice/          # Voice synthesis/playback interfaces
+│   │   │   │   └── workspace/      # Idea challenge & signal review
+│   │   │   ├── components/          # Truly shared UI only (PillNav, TechText, Icons)
+│   │   │   ├── lib/                 # Frontend infrastructure & utilities
+│   │   │   ├── hooks/               # Core React hooks
+│   │   │   ├── styles/              # Global Tailwind styles
+│   │   │   └── main.tsx
+│   │   ├── public/
+│   │   └── package.json
+│   │
+│   └── api/                         # Backend / API
+│       ├── src/
+│       │   ├── modules/
+│       │   │   ├── research/       # Query parsing, expansion & retrieval
+│       │   │   ├── evidence/       # Graph layout & synthesis
+│       │   │   ├── testing/        # Session capture & analysis
+│       │   │   ├── voice/          # Voice processing
+│       │   │   └── workspace/      # Workspace orchestration
+│       │   ├── providers/
+│       │   │   ├── searxng/        # Multi-engine search provider
+│       │   │   ├── scholarxiv/     # arXiv and semantic scholar gateway
+│       │   │   ├── gemini/         # Query understanding & reranking
+│       │   │   └── browser/        # Headless testing runner
+│       │   ├── lib/                 # Server utilities & cache
+│       │   ├── middleware/          # Rate limiting, validation & CORS
+│       │   └── server.ts
+│       └── package.json
+│
+├── packages/
+│   ├── shared/                      # Shared types/contracts
+│   ├── ui/                          # Shared design-system components
+│   ├── schemas/                     # Zod/API schemas
+│   └── config/                      # ESLint, tsconfig, etc.
+│
+├── tests/
+│   ├── integration/                 # Search engine integration tests
+│   └── fixtures/                    # Test query sets & response payloads
+│
+├── docs/
+│   ├── architecture/                # System diagrams & data flow
+│   ├── decisions/                   # Architecture Decision Records (ADRs)
+│   └── api/                         # REST & WebSocket specifications
+│
+├── .github/
+│   └── workflows/                   # GitHub Actions CI/CD
+├── .env.example
+├── CONTRIBUTING.md
+├── README.md
+├── package.json
+└── pnpm-workspace.yaml
 ```
 
-Visit `http://localhost:3000`.
+---
 
-### Production Build
+## Quickstart
 
 ```bash
+# Clone repository
+git clone https://github.com/yab-g4u/Novarion.git
+cd Novarion
+
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+
+# Build for production
 npm run build
 ```
+
+---
+
+## Core Capabilities
+
+1. **Cross-Source Retrieval Pipeline**:
+   - Searches Reddit, X, LinkedIn, and ScholarXIV in parallel.
+   - Normalizes citations, handles rate limits gracefully, and prevents AI hallucination.
+2. **Living Evidence Graph**:
+   - Memoized `@xyflow/react` node layout with dynamic ELK hierarchy.
+   - Categorizes evidence into Supporting, Contradicting, and Unknown blind spots.
+3. **Real Product Usability Testing**:
+   - Test live products (e.g. `https://links.et/`) against concrete tasks.
+   - Captures genuine user friction and generates agentic graphic diagnostic reports.

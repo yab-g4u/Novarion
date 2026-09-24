@@ -4,28 +4,37 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0 --port 3000",
+    "dev": "tsx server.ts",
     "build": "tsc && vite build",
     "lint": "tsc --noEmit",
+    "start": "NODE_ENV=production tsx server.ts",
     "preview": "vite preview --host 0.0.0.0 --port 3000"
   },
   "dependencies": {
+    "@google/genai": "^2.24.0",
     "@xyflow/react": "^12.12.0",
     "clsx": "^2.1.1",
+    "cors": "^2.8.6",
     "elkjs": "^0.12.0",
+    "express": "^5.2.1",
     "gsap": "^3.15.0",
     "lucide-react": "^1.16.0",
     "ogl": "^1.0.11",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "tailwind-merge": "^2.5.4"
+    "react-router-dom": "^7.18.4",
+    "tailwind-merge": "^2.5.4",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
     "tailwindcss": "^4.0.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.6.3",
     "vite": "^6.0.0"
   }

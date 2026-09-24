@@ -1,0 +1,13 @@
+{
+  "queries": [
+    {
+      "query": "Why do developers abandon AI coding tools?",
+      "expectedSources": ["reddit", "x", "linkedin", "scholarxiv"]
+    },
+    {
+      "query": "DHV0BHI2GG",
+      "expectedProduct": "links.et",
+      "expectedProvider": "Telebirr"
+    }
+  ]
+}

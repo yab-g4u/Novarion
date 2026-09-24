@@ -1,0 +1,25 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="128" fill="#0A0D14" />
+  
+  <!-- Outer subtle radar concentric target ring -->
+  <circle cx="256" cy="256" r="180" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="2" stroke-dasharray="8 8" />
+  <circle cx="256" cy="256" r="140" stroke="#FFFFFF" stroke-opacity="0.12" stroke-width="2" />
+
+  <!-- Probe Vector Glyphs: Stylized P with keyhole focal aperture -->
+  <!-- Vertical Stem -->
+  <rect x="144" y="128" width="56" height="256" rx="28" fill="#FFFFFF" />
+
+  <!-- P Head Outer Arc -->
+  <path d="M 172 128 H 296 C 362.274 128 416 181.726 416 248 C 416 314.274 362.274 368 296 368 H 172 V 312 H 296 C 331.346 312 360 283.346 360 248 C 360 212.654 331.346 184 296 184 H 172 V 128 Z" fill="#FFFFFF" />
+
+  <!-- Central Optical Aperture / Eye Node -->
+  <circle cx="296" cy="248" r="48" fill="#0A0D14" />
+  <circle cx="296" cy="248" r="24" fill="#FFFFFF" />
+  <circle cx="296" cy="248" r="10" fill="#10B981" />
+
+  <!-- Precision Graticule ticks -->
+  <line x1="296" y1="184" x2="296" y2="196" stroke="#10B981" stroke-width="3" stroke-linecap="round" />
+  <line x1="296" y1="300" x2="296" y2="312" stroke="#10B981" stroke-width="3" stroke-linecap="round" />
+  <line x1="232" y1="248" x2="244" y2="248" stroke="#10B981" stroke-width="3" stroke-linecap="round" />
+  <line x1="348" y1="248" x2="360" y2="248" stroke="#10B981" stroke-width="3" stroke-linecap="round" />
+</svg>

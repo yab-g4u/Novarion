@@ -1,0 +1,27 @@
+{
+  "name": "@probe/web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@probe/shared": "workspace:*",
+    "@probe/ui": "workspace:*",
+    "@probe/schemas": "workspace:*",
+    "@xyflow/react": "^12.12.0",
+    "clsx": "^2.1.1",
+    "elkjs": "^0.12.0",
+    "gsap": "^3.15.0",
+    "lucide-react": "^1.16.0",
+    "ogl": "^1.0.11",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.18.4",
+    "tailwind-merge": "^2.5.4",
+    "zod": "^4.6.5"
+  }
+}
