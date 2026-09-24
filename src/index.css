@@ -1,0 +1,133 @@
+@import "tailwindcss";
+@import "@xyflow/react/dist/style.css";
+
+@layer base {
+  :root {
+    --bg-page: #fafafa;
+    --bg-surface: #ffffff;
+    --border-subtle: #eaeaea;
+    --border-strong: #d1d5db;
+    --text-primary: #0a0d14;
+    --text-secondary: #525866;
+    --text-muted: #868c98;
+    --accent-support: #10b981;
+    --accent-contradict: #f43f5e;
+    --accent-unknown: #8b5cf6;
+  }
+
+  body {
+    background-color: var(--bg-page);
+    color: var(--text-primary);
+    font-family: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+}
+
+/* React Flow custom styling overrides to match Linear aesthetic */
+.react-flow__attribution {
+  display: none !important;
+}
+
+.react-flow__pane {
+  cursor: grab;
+}
+
+.react-flow__pane:active {
+  cursor: grabbing;
+}
+
+.react-flow__controls {
+  border: 1px solid #e5e7eb !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04) !important;
+  border-radius: 10px !important;
+  overflow: hidden;
+  background: #ffffff !important;
+}
+
+.react-flow__controls-button {
+  border-bottom: 1px solid #f1f3f5 !important;
+  background: #ffffff !important;
+  color: #374151 !important;
+}
+
+.react-flow__controls-button:hover {
+  background: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+/* Custom subtle scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f3f5;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Moving faded grid for Hero section */
+@keyframes gridSlide {
+  0% {
+    background-position: 0px 0px;
+  }
+  100% {
+    background-position: 48px 48px;
+  }
+}
+
+.hero-moving-grid {
+  background-size: 48px 48px;
+  background-image: 
+    linear-gradient(to right, rgba(10, 13, 20, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(10, 13, 20, 0.04) 1px, transparent 1px);
+  animation: gridSlide 18s linear infinite;
+  mask-image: radial-gradient(ellipse 75% 65% at 50% 45%, #000 35%, transparent 80%);
+  -webkit-mask-image: radial-gradient(ellipse 75% 65% at 50% 45%, #000 35%, transparent 80%);
+}
+
+/* Dot grid background pattern */
+.bg-dot-grid {
+  background-image: radial-gradient(#d1d5db 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.bg-dot-grid-subtle {
+  background-image: radial-gradient(#e5e7eb 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Pulse signal stroke animation for connector paths */
+@keyframes dashTravel {
+  to {
+    stroke-dashoffset: -32;
+  }
+}
+
+.connector-pulse {
+  stroke-dasharray: 6 6;
+  animation: dashTravel 1.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-moving-grid {
+    animation: none;
+  }
+  .connector-pulse {
+    animation: none;
+  }
+}
