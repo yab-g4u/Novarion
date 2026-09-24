@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import {
   ReactFlow,
   Background,
@@ -13,13 +13,10 @@ import {
 } from '@xyflow/react';
 import ELK from 'elkjs/lib/elk.bundled.js';
 import { SourceIconSelector } from './Icons';
-import { REAL_PRODUCT_PROFILES, RealProductProbeProfile, RealSourceSnippet } from '../data/realEvidenceData';
+import { REAL_PRODUCT_PROFILES, RealSourceSnippet } from '../data/realEvidenceData';
 import { 
   RotateCcw, 
-  Filter, 
-  ExternalLink,
-  Layers,
-  ArrowRight
+  ExternalLink
 } from 'lucide-react';
 
 interface EvidenceGraphProps {
@@ -28,10 +25,10 @@ interface EvidenceGraphProps {
 
 const elk = new ELK();
 
-// Custom Central Assumption Node
-const CentralIdeaNode: React.FC<{ data: { label: string; product: string } }> = ({ data }) => {
+// MEMOIZATION OPTIMIZATION: Custom Central Assumption Node
+const CentralIdeaNodeComponent: React.FC<{ data: { label: string; product: string } }> = ({ data }) => {
   return (
-    <div className="relative bg-white border-2 border-[#0A0D14] rounded-2xl p-4 shadow-md max-w-xs text-center">
+    <div className="relative bg-white border-2 border-[#0A0D14] rounded-2xl p-4 shadow-md max-w-xs text-center transition-transform hover:scale-[1.01]">
       <Handle type="source" position={Position.Left} id="left" className="!bg-[#10B981] !w-2.5 !h-2.5" />
       <Handle type="source" position={Position.Right} id="right" className="!bg-[#F43F5E] !w-2.5 !h-2.5" />
       <Handle type="source" position={Position.Bottom} id="bottom" className="!bg-[#94A3B8] !w-2.5 !h-2.5" />
@@ -48,8 +45,10 @@ const CentralIdeaNode: React.FC<{ data: { label: string; product: string } }> = 
   );
 };
 
-// Custom Evidence Source Node
-const SourceItemNode: React.FC<{
+const CentralIdeaNode = memo(CentralIdeaNodeComponent);
+
+// MEMOIZATION OPTIMIZATION: Custom Evidence Source Node
+const SourceItemNodeComponent: React.FC<{
   data: {
     source: RealSourceSnippet;
     onSelect?: (source: any) => void;
@@ -71,10 +70,14 @@ const SourceItemNode: React.FC<{
     ? 'bg-[#FFF1F2] text-[#E11D48]'
     : 'bg-[#F1F3F5] text-[#525866]';
 
+  const handleClick = useCallback(() => {
+    if (onSelect) onSelect(source);
+  }, [onSelect, source]);
+
   return (
     <div
-      onClick={() => onSelect && onSelect(source)}
-      className={`bg-white border ${borderColor} rounded-2xl p-3 shadow-2xs hover:shadow-sm transition-all cursor-pointer w-60 text-left group`}
+      onClick={handleClick}
+      className={`bg-white border ${borderColor} rounded-2xl p-3 shadow-2xs hover:shadow-sm transition-all cursor-pointer w-60 text-left group will-change-transform`}
     >
       <Handle
         type="target"
@@ -108,6 +111,14 @@ const SourceItemNode: React.FC<{
   );
 };
 
+const SourceItemNode = memo(SourceItemNodeComponent);
+
+// NODETYPES OPTIMIZATION: Defined strictly outside component for reference stability
+const NODE_TYPES = {
+  centralNode: CentralIdeaNode,
+  sourceNode: SourceItemNode,
+};
+
 export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({ onSelectSource }) => {
   const [selectedProductId, setSelectedProductId] = useState<'linear' | 'cursor' | 'notion'>('linear');
   const [filterRelationship, setFilterRelationship] = useState<'all' | 'Supports' | 'Challenges'>('all');
@@ -115,23 +126,15 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({ onSelectSource }) 
 
   const activeProfile = REAL_PRODUCT_PROFILES[selectedProductId];
 
-  const nodeTypes = useMemo(
-    () => ({
-      centralNode: CentralIdeaNode,
-      sourceNode: SourceItemNode,
-    }),
-    []
-  );
-
   const filteredSources = useMemo(() => {
     if (filterRelationship === 'all') return activeProfile.sources;
     return activeProfile.sources.filter((s) => s.relationship === filterRelationship);
-  }, [activeProfile, filterRelationship]);
+  }, [activeProfile.sources, filterRelationship]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
-  // Calculate ELK layout dynamically
+  // Calculate ELK layout dynamically with memoized async layout
   const calculateLayout = useCallback(async () => {
     setIsLayoutCalculating(true);
 
@@ -179,8 +182,8 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({ onSelectSource }) 
       layoutOptions: {
         'elk.algorithm': 'layered',
         'elk.direction': 'RIGHT',
-        'elk.spacing.nodeNode': '40',
-        'elk.layered.spacing.nodeNodeBetweenLayers': '80',
+        'elk.spacing.nodeNode': '45',
+        'elk.layered.spacing.nodeNodeBetweenLayers': '90',
       },
       children: rawNodes.map((n) => ({
         id: n.id,
@@ -202,8 +205,8 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({ onSelectSource }) 
         return {
           ...node,
           position: {
-            x: layoutNode?.x || (node.id === 'center' ? 340 : 60),
-            y: layoutNode?.y || 100,
+            x: layoutNode?.x ?? (node.id === 'center' ? 340 : 60),
+            y: layoutNode?.y ?? 100,
           },
         };
       });
@@ -211,17 +214,24 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({ onSelectSource }) 
       setNodes(layoutedNodes);
       setEdges(rawEdges);
     } catch {
-      // Fallback
       setNodes(rawNodes);
       setEdges(rawEdges);
     } finally {
       setIsLayoutCalculating(false);
     }
-  }, [activeProfile, filteredSources, onSelectSource, setNodes, setEdges]);
+  }, [activeProfile.coreAssumption, activeProfile.name, filteredSources, onSelectSource, setNodes, setEdges]);
 
   useEffect(() => {
     calculateLayout();
   }, [calculateLayout]);
+
+  const handleSelectLinear = useCallback(() => setSelectedProductId('linear'), []);
+  const handleSelectCursor = useCallback(() => setSelectedProductId('cursor'), []);
+  const handleSelectNotion = useCallback(() => setSelectedProductId('notion'), []);
+
+  const handleFilterAll = useCallback(() => setFilterRelationship('all'), []);
+  const handleFilterSupports = useCallback(() => setFilterRelationship('Supports'), []);
+  const handleFilterChallenges = useCallback(() => setFilterRelationship('Challenges'), []);
 
   return (
     <section id="section-graph" className="py-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto border-t border-[#EAEAEA]">
@@ -241,19 +251,36 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({ onSelectSource }) 
 
         {/* Product Selector for Graph */}
         <div className="flex items-center gap-2">
-          {(['linear', 'cursor', 'notion'] as const).map((key) => (
-            <button
-              key={key}
-              onClick={() => setSelectedProductId(key)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-mono transition-colors cursor-pointer ${
-                selectedProductId === key
-                  ? 'bg-[#0A0D14] text-white font-bold'
-                  : 'bg-[#F1F3F5] text-[#525866] hover:text-[#0A0D14]'
-              }`}
-            >
-              {REAL_PRODUCT_PROFILES[key].name}
-            </button>
-          ))}
+          <button
+            onClick={handleSelectLinear}
+            className={`px-3 py-1.5 rounded-xl text-xs font-mono transition-colors cursor-pointer ${
+              selectedProductId === 'linear'
+                ? 'bg-[#0A0D14] text-white font-bold'
+                : 'bg-[#F1F3F5] text-[#525866] hover:text-[#0A0D14]'
+            }`}
+          >
+            Linear
+          </button>
+          <button
+            onClick={handleSelectCursor}
+            className={`px-3 py-1.5 rounded-xl text-xs font-mono transition-colors cursor-pointer ${
+              selectedProductId === 'cursor'
+                ? 'bg-[#0A0D14] text-white font-bold'
+                : 'bg-[#F1F3F5] text-[#525866] hover:text-[#0A0D14]'
+            }`}
+          >
+            Cursor
+          </button>
+          <button
+            onClick={handleSelectNotion}
+            className={`px-3 py-1.5 rounded-xl text-xs font-mono transition-colors cursor-pointer ${
+              selectedProductId === 'notion'
+                ? 'bg-[#0A0D14] text-white font-bold'
+                : 'bg-[#F1F3F5] text-[#525866] hover:text-[#0A0D14]'
+            }`}
+          >
+            Notion
+          </button>
         </div>
       </div>
 
@@ -262,7 +289,7 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({ onSelectSource }) 
         {/* Graph Controls Toolbar */}
         <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5 bg-white/90 backdrop-blur-xs border border-[#EAEAEA] p-1.5 rounded-xl shadow-xs text-xs font-mono">
           <button
-            onClick={() => setFilterRelationship('all')}
+            onClick={handleFilterAll}
             className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
               filterRelationship === 'all' ? 'bg-[#0A0D14] text-white' : 'text-[#525866] hover:bg-[#F3F4F6]'
             }`}
@@ -270,7 +297,7 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({ onSelectSource }) 
             All
           </button>
           <button
-            onClick={() => setFilterRelationship('Supports')}
+            onClick={handleFilterSupports}
             className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
               filterRelationship === 'Supports'
                 ? 'bg-[#ECFDF5] text-[#059669] font-bold'
@@ -280,7 +307,7 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({ onSelectSource }) 
             Supports
           </button>
           <button
-            onClick={() => setFilterRelationship('Challenges')}
+            onClick={handleFilterChallenges}
             className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
               filterRelationship === 'Challenges'
                 ? 'bg-[#FFF1F2] text-[#E11D48] font-bold'
@@ -319,7 +346,7 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({ onSelectSource }) 
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
-          nodeTypes={nodeTypes}
+          nodeTypes={NODE_TYPES}
           fitView
           fitViewOptions={{ padding: 0.2 }}
           minZoom={0.5}
