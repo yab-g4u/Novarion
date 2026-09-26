@@ -18,35 +18,40 @@ import {
 import ELK from 'elkjs/lib/elk.bundled.js';
 import { SourceIconSelector } from './Icons';
 import { REAL_PRODUCT_PROFILES, RealSourceSnippet } from '../data/realEvidenceData';
+import { DynamicGraphData, DynamicEvidenceSource } from '../types/evidenceGraph';
 import { 
   RotateCcw, 
   ExternalLink,
   PlusCircle,
   Database,
-  Layers
+  Layers,
+  Sparkles,
+  ArrowRight
 } from 'lucide-react';
 
 interface EvidenceGraphProps {
   onSelectSource?: (source: any) => void;
+  externalGraphData?: DynamicGraphData | null;
 }
 
 const elk = new ELK();
 
 // 1. MEMOIZATION: Memoized Central Assumption Node
 const CentralIdeaNodeComponent: React.FC<NodeProps> = ({ data }) => {
-  const nodeData = data as { label: string; product: string };
+  const nodeData = data as { label: string; product: string; isDynamic?: boolean };
   return (
-    <div className="relative bg-white border-2 border-[#0A0D14] rounded-2xl p-4 shadow-md max-w-xs text-center select-none transition-shadow hover:shadow-lg">
+    <div className={`relative bg-white border-2 ${nodeData.isDynamic ? 'border-[#0F52BA]' : 'border-[#0A0D14]'} rounded-2xl p-4 shadow-md max-w-xs text-center select-none transition-shadow hover:shadow-lg`}>
       <Handle type="source" position={Position.Left} id="left" className="!bg-[#10B981] !w-2.5 !h-2.5" />
       <Handle type="source" position={Position.Right} id="right" className="!bg-[#F43F5E] !w-2.5 !h-2.5" />
       <Handle type="source" position={Position.Bottom} id="bottom" className="!bg-[#94A3B8] !w-2.5 !h-2.5" />
 
       <div className="flex items-center justify-center gap-1.5 mb-1 text-[10px] font-mono text-[#868C98]">
+        {nodeData.isDynamic && <Sparkles size={11} className="text-[#0F52BA]" />}
         <span className="font-bold text-[#0A0D14] uppercase">{nodeData.product}</span>
         <span>·</span>
-        <span>CORE ASSUMPTION</span>
+        <span>{nodeData.isDynamic ? 'LIVE SEARCH QUERY' : 'CORE ASSUMPTION'}</span>
       </div>
-      <p className="text-xs font-bold text-[#0A0D14] leading-snug">
+      <p className="text-xs font-bold text-[#0A0D14] leading-snug line-clamp-3">
         "{nodeData.label}"
       </p>
     </div>
@@ -57,7 +62,7 @@ export const CentralIdeaNode = memo(CentralIdeaNodeComponent);
 // 2. MEMOIZATION: Memoized Evidence Source Node with strict prop comparison
 const SourceItemNodeComponent: React.FC<NodeProps> = ({ data }) => {
   const nodeData = data as {
-    source: RealSourceSnippet;
+    source: RealSourceSnippet | DynamicEvidenceSource;
     onSelect?: (source: any) => void;
   };
   const { source, onSelect } = nodeData;
@@ -89,7 +94,7 @@ const SourceItemNodeComponent: React.FC<NodeProps> = ({ data }) => {
 
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-1.5">
-          <SourceIconSelector type={source.sourceType} size={18} />
+          <SourceIconSelector type={source.sourceType as any} size={18} />
           <span className="text-[11px] font-bold text-[#0A0D14] truncate max-w-[110px]">
             {source.sourceIdentifier.split('·')[0]}
           </span>
@@ -120,24 +125,42 @@ const NODE_TYPES = {
   sourceNode: SourceItemNode,
 };
 
-// 4. Constant configuration defined outside component to maintain reference stability
 const FIT_VIEW_OPTIONS: FitViewOptions = { padding: 0.25, duration: 600 };
 const PRO_OPTIONS: ProOptions = { hideAttribution: true };
 const DEFAULT_EDGE_OPTIONS: DefaultEdgeOptions = {
   animated: true,
 };
 
-export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({ onSelectSource }) => {
-  const [selectedProductId, setSelectedProductId] = useState<'linear' | 'cursor' | 'notion'>('linear');
+export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({ 
+  onSelectSource,
+  externalGraphData
+}) => {
+  const [selectedProductId, setSelectedProductId] = useState<'live' | 'linear' | 'cursor' | 'notion'>('live');
   const [filterRelationship, setFilterRelationship] = useState<'all' | 'Supports' | 'Challenges'>('all');
   const [isLayoutCalculating, setIsLayoutCalculating] = useState<boolean>(false);
   const [datasetMultiplier, setDatasetMultiplier] = useState<number>(1);
 
-  const activeProfile = REAL_PRODUCT_PROFILES[selectedProductId];
+  // Automatically switch to live query graph when externalGraphData updates!
+  useEffect(() => {
+    if (externalGraphData && externalGraphData.sources.length > 0) {
+      setSelectedProductId('live');
+    }
+  }, [externalGraphData]);
+
+  const isLive = selectedProductId === 'live' && Boolean(externalGraphData);
+  const activeProfile = REAL_PRODUCT_PROFILES[selectedProductId === 'live' ? 'linear' : selectedProductId];
+
+  const currentLabel = isLive 
+    ? externalGraphData?.coreAssumption || ''
+    : activeProfile.coreAssumption;
+  
+  const currentProduct = isLive
+    ? 'LIVE PROBE SEARCH'
+    : activeProfile.name;
 
   // Stable node selection callback
   const handleSelectNode = useCallback(
-    (source: RealSourceSnippet) => {
+    (source: RealSourceSnippet | DynamicEvidenceSource) => {
       if (onSelectSource) {
         onSelectSource(source);
       }
@@ -145,16 +168,18 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({ onSelectSource }) 
     [onSelectSource]
   );
 
-  // Compute dataset: supports dynamic scaling to simulate large dynamic datasets
+  // Compute dataset: supports dynamic scaling or search injection
   const filteredSources = useMemo(() => {
-    let base = activeProfile.sources;
+    let base: (RealSourceSnippet | DynamicEvidenceSource)[] = isLive && externalGraphData
+      ? externalGraphData.sources
+      : activeProfile.sources;
+
     if (filterRelationship !== 'all') {
       base = base.filter((s) => s.relationship === filterRelationship);
     }
     if (datasetMultiplier <= 1) return base;
 
-    // Dynamically multiply evidence entries for stress-testing performance
-    const expanded: RealSourceSnippet[] = [];
+    const expanded: (RealSourceSnippet | DynamicEvidenceSource)[] = [];
     for (let i = 0; i < datasetMultiplier; i++) {
       base.forEach((src) => {
         expanded.push({
@@ -165,7 +190,7 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({ onSelectSource }) 
       });
     }
     return expanded;
-  }, [activeProfile, filterRelationship, datasetMultiplier]);
+  }, [isLive, externalGraphData, activeProfile, filterRelationship, datasetMultiplier]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -179,7 +204,11 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({ onSelectSource }) 
         id: 'center',
         type: 'centralNode',
         position: { x: 380, y: 180 },
-        data: { label: activeProfile.coreAssumption, product: activeProfile.name },
+        data: { 
+          label: currentLabel, 
+          product: currentProduct,
+          isDynamic: isLive
+        },
       },
     ];
 
@@ -256,37 +285,61 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({ onSelectSource }) 
     } finally {
       setIsLayoutCalculating(false);
     }
-  }, [activeProfile, filteredSources, handleSelectNode, setNodes, setEdges]);
+  }, [currentLabel, currentProduct, isLive, filteredSources, handleSelectNode, setNodes, setEdges]);
 
+  // Recalculate layout automatically when sources or product changes
   useEffect(() => {
     calculateLayout();
   }, [calculateLayout]);
 
+  const supportCount = filteredSources.filter((s) => s.relationship === 'Supports').length;
+  const challengeCount = filteredSources.filter((s) => s.relationship === 'Challenges').length;
+
   return (
-    <section id="section-graph" className="py-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto border-t border-[#EAEAEA]">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
+    <section id="section-graph" className="py-16 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto">
+      {/* Header and Live indicator */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
         <div>
-          <span className="text-[11px] font-mono font-semibold uppercase tracking-[0.2em] text-[#525866] block mb-1.5">
-            OPTIMIZED RELATIONSHIP GRAPH
-          </span>
-          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#0A0D14]">
-            Living Evidence Graph.
+          <div className="flex items-center gap-2 text-xs font-mono font-semibold uppercase tracking-wider text-[#525866] mb-1">
+            <Layers size={14} className="text-[#0A0D14]" />
+            <span>LIVING EVIDENCE GRAPH</span>
+            {isLive && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#ECFDF5] text-[#059669] text-[10px] font-bold border border-[#A7F3D0]">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-ping" />
+                <span>UPDATED FROM LIVE SEARCH</span>
+              </span>
+            )}
+          </div>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#0A0D14]">
+            Dynamic Multi-Source Evidence Mapping
           </h2>
-          <p className="text-xs sm:text-sm text-[#525866] mt-1.5 max-w-2xl">
-            ELK.js layout engine with memoized node types for fluid 60fps rendering even as high-volume evidence streams expand.
+          <p className="text-xs sm:text-sm text-[#525866] mt-1 max-w-xl">
+            {isLive 
+              ? `Visualizing real citations from your query: "${externalGraphData?.query}"`
+              : 'Interactive directed graph linking public citations directly to product positioning assumptions.'}
           </p>
         </div>
 
-        {/* Product Selector for Graph */}
-        <div className="flex items-center gap-2">
+        {/* Product selector buttons */}
+        <div className="flex flex-wrap items-center gap-1.5 p-1 bg-white border border-[#EAEAEA] rounded-2xl shadow-2xs self-start md:self-auto">
+          {externalGraphData && (
+            <button
+              onClick={() => setSelectedProductId('live')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-mono transition-colors cursor-pointer ${
+                selectedProductId === 'live'
+                  ? 'bg-[#0F52BA] text-white font-bold shadow-xs'
+                  : 'bg-[#F1F3F5] text-[#0F52BA] hover:bg-[#E0E7FF]'
+              }`}
+            >
+              <Sparkles size={12} />
+              <span>Current Search ({externalGraphData.sources.length})</span>
+            </button>
+          )}
+
           {(['linear', 'cursor', 'notion'] as const).map((key) => (
             <button
               key={key}
-              onClick={() => {
-                setSelectedProductId(key);
-                setDatasetMultiplier(1);
-              }}
+              onClick={() => setSelectedProductId(key)}
               className={`px-3 py-1.5 rounded-xl text-xs font-mono transition-colors cursor-pointer ${
                 selectedProductId === key
                   ? 'bg-[#0A0D14] text-white font-bold'
@@ -319,7 +372,7 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({ onSelectSource }) 
                 : 'text-[#525866] hover:bg-[#F3F4F6]'
             }`}
           >
-            Supports
+            Supports ({supportCount})
           </button>
           <button
             onClick={() => setFilterRelationship('Challenges')}
@@ -329,19 +382,19 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({ onSelectSource }) 
                 : 'text-[#525866] hover:bg-[#F3F4F6]'
             }`}
           >
-            Challenges
+            Challenges ({challengeCount})
           </button>
 
           <div className="h-4 w-[1px] bg-[#EAEAEA] mx-1" />
 
-          {/* Dynamic Dataset Stress-Test Button */}
+          {/* Dataset stress multiplier */}
           <button
             onClick={() => setDatasetMultiplier((prev) => (prev >= 3 ? 1 : prev + 1))}
             className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#0A0D14] font-medium border border-[#E2E8F0] cursor-pointer"
             title="Dynamically inject evidence clusters to test React Flow memoization & smoothness"
           >
             <PlusCircle size={13} className="text-[#3B82F6]" />
-            <span>Dataset: {datasetMultiplier === 1 ? '1x' : `${datasetMultiplier}x (${filteredSources.length} nodes)`}</span>
+            <span>Scale: {datasetMultiplier}x</span>
           </button>
 
           <button
@@ -349,49 +402,38 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({ onSelectSource }) 
             className="p-1.5 rounded-lg hover:bg-[#F3F4F6] text-[#525866] cursor-pointer ml-1"
             title="Re-layout ELK graph"
           >
-            <RotateCcw size={13} className={isLayoutCalculating ? 'animate-spin text-[#0A0D14]' : ''} />
+            <RotateCcw size={14} className={isLayoutCalculating ? 'animate-spin' : ''} />
           </button>
         </div>
 
-        {/* Legend Overlay */}
-        <div className="absolute bottom-4 left-4 z-10 flex items-center gap-3 bg-white/90 backdrop-blur-xs border border-[#EAEAEA] px-3 py-1.5 rounded-xl text-[10px] font-mono text-[#525866]">
+        {/* Legend Overlay at bottom-right */}
+        <div className="absolute bottom-4 right-4 z-10 flex items-center gap-3 bg-white/95 backdrop-blur-xs border border-[#EAEAEA] px-3 py-1.5 rounded-xl shadow-xs text-[10px] font-mono">
           <div className="flex items-center gap-1">
             <span className="w-2 h-2 rounded-full bg-[#10B981]" />
-            <span>Supports</span>
+            <span className="text-[#525866]">Supporting</span>
           </div>
           <div className="flex items-center gap-1">
             <span className="w-2 h-2 rounded-full bg-[#F43F5E]" />
-            <span>Challenges</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-[#94A3B8]" />
-            <span>Core Assumption</span>
+            <span className="text-[#525866]">Challenging</span>
           </div>
         </div>
 
-        {/* Dynamic Nodes Count Badge */}
-        <div className="absolute bottom-4 right-4 z-10 hidden sm:flex items-center gap-1.5 bg-white/90 backdrop-blur-xs border border-[#EAEAEA] px-2.5 py-1 rounded-xl text-[10px] font-mono text-[#525866]">
-          <Database size={11} className="text-[#10B981]" />
-          <span>Memoized Nodes: {nodes.length}</span>
-        </div>
-
+        {/* ReactFlow Canvas */}
         <ReactFlow
           nodes={nodes}
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           nodeTypes={NODE_TYPES}
-          defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
-          onlyRenderVisibleElements={true}
-          elevateNodesOnSelect={true}
           fitView
           fitViewOptions={FIT_VIEW_OPTIONS}
-          minZoom={0.3}
-          maxZoom={1.6}
+          defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
           proOptions={PRO_OPTIONS}
+          minZoom={0.2}
+          maxZoom={1.5}
         >
-          <Background color="#E5E7EB" gap={20} size={1} />
-          <Controls showInteractive={false} position="bottom-right" />
+          <Background color="#E2E8F0" gap={20} size={1} />
+          <Controls showInteractive={false} className="!bg-white !border !border-[#EAEAEA] !rounded-xl !shadow-xs" />
         </ReactFlow>
       </div>
     </section>

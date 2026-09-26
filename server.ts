@@ -4,6 +4,7 @@ import path from 'path';
 import { z } from 'zod';
 import { createServer as createViteServer } from 'vite';
 import { searchService } from './src/lib/search/search-service';
+import { pressureTestPipeline } from './src/lib/research/pipeline';
 
 const SearchRequestSchema = z.object({
   query: z
@@ -20,6 +21,19 @@ const SearchRequestSchema = z.object({
     .min(1)
     .max(50)
     .optional()
+});
+
+const PressureTestRequestSchema = z.object({
+  idea: z
+    .string()
+    .trim()
+    .min(3, { message: 'Idea must be at least 3 characters long' })
+    .max(1000, { message: 'Idea cannot exceed 1000 characters' })
+});
+
+const VoxideRequestSchema = z.object({
+  command: z.string().trim().min(2),
+  context: z.record(z.string(), z.unknown()).optional()
 });
 
 async function main() {
@@ -77,6 +91,71 @@ async function main() {
         message: err.message || 'Internal server error'
       });
     }
+  });
+
+  // REST API: POST /api/pressure-test (Primary Pressure-Testing Pipeline)
+  app.post('/api/pressure-test', async (req: Request, res: Response) => {
+    const parseResult = PressureTestRequestSchema.safeParse(req.body);
+
+    if (!parseResult.success) {
+      return res.status(400).json({
+        error: 'Invalid pressure-test request',
+        details: parseResult.error.format()
+      });
+    }
+
+    try {
+      const { idea } = parseResult.data;
+      const result = await pressureTestPipeline.executePressureTest(idea);
+      return res.json(result);
+    } catch (err: any) {
+      console.error('[API /api/pressure-test Error]:', err);
+      return res.status(500).json({
+        error: 'Pressure-test pipeline failed',
+        message: err.message || 'Internal server error'
+      });
+    }
+  });
+
+  // REST API: POST /api/voxide (Deterministic Voice Intent Mapper)
+  app.post('/api/voxide', async (req: Request, res: Response) => {
+    const parseResult = VoxideRequestSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({ error: 'Invalid voice intent command' });
+    }
+
+    const { command } = parseResult.data;
+    const lower = command.toLowerCase();
+
+    let intent = 'UNKNOWN';
+    let target = 'all';
+
+    if (lower.includes('willingness to pay') || lower.includes('willingness-to-pay') || lower.includes('pricing') || lower.includes('pay')) {
+      intent = 'FOCUS_ASSUMPTION';
+      target = 'willingness_to_pay';
+    } else if (lower.includes('against') || lower.includes('challeng') || lower.includes('counter')) {
+      intent = 'FILTER_STANCE';
+      target = 'CHALLENGES';
+    } else if (lower.includes('scholar') || lower.includes('paper') || lower.includes('academic')) {
+      intent = 'FILTER_SOURCE';
+      target = 'scholarxiv';
+    } else if (lower.includes('product test') || lower.includes('run test') || lower.includes('simulate')) {
+      intent = 'EXECUTE_PRODUCT_TEST';
+      target = 'links.et';
+    } else if (lower.includes('why') || lower.includes('explain')) {
+      intent = 'EXPLAIN_CONTRADICTION';
+      target = 'contradictions';
+    } else if (lower.includes('independent') || lower.includes('unique')) {
+      intent = 'SHOW_INDEPENDENT_CLUSTERS';
+      target = 'clusters';
+    }
+
+    return res.json({
+      command,
+      matchedIntent: intent,
+      targetAction: target,
+      status: 'executed'
+    });
   });
 
   // Health check endpoint

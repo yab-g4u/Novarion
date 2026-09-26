@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { PillNav } from '../components/PillNav';
 import { HeroDemo } from '../features/research/components/HeroDemo';
-import { SearchWorkspace } from '../features/research/components/SearchWorkspace';
+import { PressureTestWorkspace } from '../features/research/components/PressureTestWorkspace';
 import { EvidenceGraph } from '../features/evidence/components/EvidenceGraph';
-import { UserTesting } from '../features/testing/components/UserTesting';
 import { EvidenceTimeline } from '../features/evidence/components/EvidenceTimeline';
 import { FinalCTA } from '../features/workspace/components/FinalCTA';
 import { Footer } from '../components/Footer';
 import { EvidenceModal } from '../components/EvidenceModal';
 import { TryModal } from '../components/TryModal';
 import { EvidenceSource } from '../types';
+import { DynamicGraphData } from '../types/evidenceGraph';
+import { SearchResult } from '../features/research/lib/types';
 import { ExternalLink } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -21,6 +22,7 @@ export const App: React.FC = () => {
   const [selectedSource, setSelectedSource] = useState<EvidenceSource | null>(null);
   const [isTryModalOpen, setIsTryModalOpen] = useState<boolean>(false);
   const [activeNavHref, setActiveNavHref] = useState<string>('#');
+  const [activeGraphData, setActiveGraphData] = useState<DynamicGraphData | null>(null);
   const mainRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -70,14 +72,34 @@ export const App: React.FC = () => {
   };
 
   const navItems = [
-    { label: 'Research Search', href: '#section-search' },
+    { label: 'Pressure Test', href: '#section-search' },
     { label: 'Evidence Graph', href: '#section-graph' },
-    { label: 'User Testing', href: '#section-simulation' },
     { label: 'Calendar', href: '#section-timeline' },
   ];
 
   const handleNavItemClick = (item: { label: string; href: string }) => {
     setActiveNavHref(item.href);
+  };
+
+  // Convert SearchResult or DynamicEvidenceSource to EvidenceSource for modal
+  const handleOpenSourceDetail = (source: any) => {
+    if (!source) return;
+    const formatted: EvidenceSource = {
+      id: source.id,
+      sourceType: (source.sourceType || 'reddit') as any,
+      sourceLabel: source.title || source.sourceName || 'Evidence Source',
+      author: typeof source.author === 'string' ? source.author : source.author?.name || 'Practitioner',
+      timeAgo: source.publishedAt || source.date || 'Recent',
+      quote: source.text || source.excerpt || source.title || '',
+      url: source.url || 'https://reddit.com',
+      sentiment: source.relationship === 'Challenges' ? 'contradict' : 'support',
+      confidenceScore: source.confidence || Math.round((source.relevanceScore || 0.85) * 100),
+      metrics: {
+        upvotes: source.metadata?.score || 42,
+        replies: source.metadata?.commentCount || 12,
+      }
+    };
+    setSelectedSource(formatted);
   };
 
   return (
@@ -102,16 +124,19 @@ export const App: React.FC = () => {
         {/* SCENE 01: Hero / Reasoning Pipeline with Grainient background & PROBE headline */}
         <HeroDemo onSelectSource={(source) => setSelectedSource(source)} />
 
-        {/* MILESTONE 1: Real cross-source research search engine (Reddit, X, LinkedIn, ScholarXIV) */}
-        <SearchWorkspace />
+        {/* MILESTONE 1: Cross-Source Research Search Engine matching reference layout */}
+        <PressureTestWorkspace 
+          onOpenSourceModal={(item) => handleOpenSourceDetail(item)}
+          onPressureTestUpdated={(data) => setActiveGraphData(data)}
+        />
 
-        {/* SCENE 02: Living Evidence Graph (React Flow + ELK.js with nodeTypes memoization) */}
-        <EvidenceGraph onSelectSource={(source) => setSelectedSource(source)} />
+        {/* SCENE 02: Living Evidence Graph (Dynamically updates when search completes!) */}
+        <EvidenceGraph 
+          onSelectSource={(source) => handleOpenSourceDetail(source)}
+          externalGraphData={activeGraphData}
+        />
 
-        {/* SCENE 03: The Fundamental Feature: Usability Session Replay */}
-        <UserTesting />
-
-        {/* SCENE 04: 12-Month Signal Calendar & Accessible Artifacts */}
+        {/* SCENE 03: 12-Month Signal Calendar & Accessible Artifacts */}
         <EvidenceTimeline />
 
         {/* SCENE 05: Final Product Input CTA */}

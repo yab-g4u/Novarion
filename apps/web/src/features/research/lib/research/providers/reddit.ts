@@ -23,7 +23,7 @@ export class RedditProvider implements ResearchProvider {
           'User-Agent': 'ProbeResearchEngine/2.0 (Mozilla/5.0 compatible; academic idea testing)',
           'Accept': 'application/json'
         },
-        signal: AbortSignal.timeout(1200)
+        signal: AbortSignal.timeout(4500)
       });
 
       if (res.ok) {
@@ -78,7 +78,7 @@ export class RedditProvider implements ResearchProvider {
     // 2. Fallback to Pullpush public archive
     try {
       const ppUrl = `https://api.pullpush.io/reddit/search/submission/?q=${cleanQ}&size=${limit * 2}`;
-      const ppRes = await fetch(ppUrl, { signal: AbortSignal.timeout(1200) });
+      const ppRes = await fetch(ppUrl, { signal: AbortSignal.timeout(4500) });
       if (ppRes.ok) {
         const data = await ppRes.json();
         const posts = data?.data || [];
