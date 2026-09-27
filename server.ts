@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { createServer as createViteServer } from 'vite';
 import { searchService } from './src/lib/search/search-service';
 import { pressureTestPipeline } from './src/lib/research/pipeline';
+import { testingRouter } from './apps/api/src/modules/testing/testing.controller';
 
 const SearchRequestSchema = z.object({
   query: z
@@ -157,6 +158,9 @@ async function main() {
       status: 'executed'
     });
   });
+
+  // Mount Product Testing Subsystem routes
+  app.use('/api/testing', testingRouter);
 
   // Health check endpoint
   app.get('/api/health', (_req, res) => {

@@ -13,6 +13,26 @@
     --accent-support: #10b981;
     --accent-contradict: #f43f5e;
     --accent-unknown: #8b5cf6;
+
+    --background: #ffffff;
+    --foreground: #0a0d14;
+    --card: #ffffff;
+    --card-foreground: #0a0d14;
+    --popover: #ffffff;
+    --popover-foreground: #0a0d14;
+    --primary: #0a0d14;
+    --primary-foreground: #ffffff;
+    --secondary: #f4f4f5;
+    --secondary-foreground: #0a0d14;
+    --muted: #f4f4f5;
+    --muted-foreground: #71717a;
+    --accent: #f4f4f5;
+    --accent-foreground: #0a0d14;
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    --border: #e4e4e7;
+    --input: #e4e4e7;
+    --ring: #18181b;
   }
 
   body {

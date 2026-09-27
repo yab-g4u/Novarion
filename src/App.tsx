@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { PillNav } from './components/PillNav';
-import { HeroDemo } from './components/HeroDemo';
+import { ProbeHero } from './components/ui/probe-hero';
 import { PressureTestWorkspace } from './components/PressureTestWorkspace';
+import { TestingWorkspace } from './features/testing/components/TestingWorkspace';
 import { EvidenceGraph } from './components/EvidenceGraph';
 import { EvidenceTimeline } from './components/EvidenceTimeline';
 import { FinalCTA } from './components/FinalCTA';
@@ -23,6 +24,7 @@ export const App: React.FC = () => {
   const [isTryModalOpen, setIsTryModalOpen] = useState<boolean>(false);
   const [activeNavHref, setActiveNavHref] = useState<string>('#');
   const [activeGraphData, setActiveGraphData] = useState<DynamicGraphData | null>(null);
+  const [investigationIdea, setInvestigationIdea] = useState<string>('I want to build a cooking app');
   const mainRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -73,6 +75,7 @@ export const App: React.FC = () => {
 
   const navItems = [
     { label: 'Pressure Test', href: '#section-search' },
+    { label: 'Product Testing', href: '#section-product-testing' },
     { label: 'Evidence Graph', href: '#section-graph' },
     { label: 'Calendar', href: '#section-timeline' },
   ];
@@ -102,6 +105,39 @@ export const App: React.FC = () => {
     setSelectedSource(formatted);
   };
 
+  // Sync empirical product testing evidence directly to Living Evidence Graph
+  const handleProductTestSync = (evidence: any) => {
+    if (!evidence) return;
+    const dynamicSource: any = {
+      id: evidence.id,
+      sourceType: 'reddit',
+      sourceName: evidence.sourceName || 'PROBE PRODUCT TEST',
+      sourceIdentifier: evidence.sourceIdentifier,
+      date: 'Live Playwright Run',
+      excerpt: evidence.excerpt,
+      relationship: evidence.relationship === 'Supports' ? 'Supports' : 'Challenges',
+      url: evidence.productUrl,
+      topic: 'empirical_usability_verification',
+      confidence: evidence.confidence
+    };
+
+    setActiveGraphData((prev) => {
+      const existing = prev ? prev.sources : [];
+      const updated = [dynamicSource, ...existing.filter((s: any) => s.id !== dynamicSource.id)];
+      return {
+        query: prev?.query || evidence.productUrl,
+        coreAssumption: prev?.coreAssumption || evidence.task,
+        productName: evidence.sourceName,
+        sources: updated,
+        summary: {
+          supportingCount: updated.filter((s: any) => s.relationship === 'Supports').length,
+          challengingCount: updated.filter((s: any) => s.relationship === 'Challenges').length,
+          total: updated.length
+        }
+      };
+    });
+  };
+
   return (
     <div className="min-h-screen bg-[#FAFAFA] text-[#0A0D14] flex flex-col font-['Geist','Inter',-apple-system,sans-serif]">
       {/* PillNav component with Logo on far left, centered menu with visible gaps, and GitHub on far right */}
@@ -120,19 +156,32 @@ export const App: React.FC = () => {
       />
 
       {/* Main Content Area: 90% Visual Product Demonstration, 10% Explanatory Copy */}
-      <main ref={mainRef} className="flex-1 pt-12 sm:pt-16">
-        {/* SCENE 01: Hero / Reasoning Pipeline with Grainient background & PROBE headline */}
-        <HeroDemo onSelectSource={(source) => setSelectedSource(source)} />
+      <main ref={mainRef} className="flex-1">
+        {/* PROBE HERO: Put your idea under pressure */}
+        <ProbeHero
+          initialIdea={investigationIdea}
+          onInvestigateIdea={(idea) => {
+            setInvestigationIdea(idea);
+            const el = document.getElementById('section-search');
+            if (el) el.scrollIntoView({ behavior: 'smooth' });
+          }}
+          onSelectSource={(source) => handleOpenSourceDetail(source)}
+          onTryProbe={() => setIsTryModalOpen(true)}
+        />
 
         {/* PRIMARY OBJECTIVE: Idea Pressure-Testing Engine */}
         <PressureTestWorkspace 
+          externalIdea={investigationIdea}
           onOpenSourceModal={(item) => handleOpenSourceDetail(item)}
           onPressureTestUpdated={(data) => setActiveGraphData(data)}
           onFocusProductTest={() => {
-            const el = document.getElementById('section-simulation');
+            const el = document.getElementById('section-product-testing');
             if (el) el.scrollIntoView({ behavior: 'smooth' });
           }}
         />
+
+        {/* REAL BROWSER PRODUCT TESTING SUBSYSTEM */}
+        <TestingWorkspace onSyncToGraph={handleProductTestSync} />
 
         {/* SCENE 02: Living Evidence Graph (Dynamically updates when search completes!) */}
         <EvidenceGraph 

@@ -1,9 +1,4 @@
-export interface TestingModule {
-  name: string;
-  version: string;
-}
-
-export const testingModule: TestingModule = {
-  name: 'testing',
-  version: '1.0.0'
-};
+export * from './testing.types';
+export * from './testing.schema';
+export { testingService, TestingService } from './testing.service';
+export { testingRouter } from './testing.controller';

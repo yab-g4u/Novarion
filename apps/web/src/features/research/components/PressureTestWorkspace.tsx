@@ -27,10 +27,11 @@ import {
   ResearchSourceType,
   RejectedResultDebug
 } from '../lib/types';
-import { DynamicGraphData, DynamicEvidenceSource } from '../../../types/evidenceGraph';
+import { DynamicGraphData, DynamicEvidenceSource } from '../types/evidenceGraph';
 
 interface PressureTestWorkspaceProps {
   initialIdea?: string;
+  externalIdea?: string;
   onOpenSourceModal?: (source: any) => void;
   onPressureTestUpdated?: (graphData: DynamicGraphData) => void;
   onFocusProductTest?: () => void;
@@ -38,11 +39,12 @@ interface PressureTestWorkspaceProps {
 
 export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
   initialIdea = 'I want to build a cooking app',
+  externalIdea,
   onOpenSourceModal,
   onPressureTestUpdated,
   onFocusProductTest
 }) => {
-  const [ideaInput, setIdeaInput] = useState(initialIdea);
+  const [ideaInput, setIdeaInput] = useState(externalIdea || initialIdea);
   const [isInvestigating, setIsInvestigating] = useState(false);
   const [testResult, setTestResult] = useState<PressureTestResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -123,9 +125,9 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
   };
 
   useEffect(() => {
-    runInvestigation(initialIdea);
+    runInvestigation(externalIdea || initialIdea);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [externalIdea]);
 
   const getStatusBadge = (status: AssumptionStatus) => {
     switch (status) {
