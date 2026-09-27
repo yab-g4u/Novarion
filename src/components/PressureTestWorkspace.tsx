@@ -182,7 +182,7 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
   });
 
   return (
-    <section id="section-search" className="py-12 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto">
+    <section id="section-search" className="py-16 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto">
       {/* SECTION HEADER: Probe Philosophy */}
       <div className="mb-6 text-left">
         <div className="flex items-center gap-2 text-xs font-mono font-semibold uppercase tracking-wider text-[#525866] mb-1">
@@ -198,7 +198,7 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
       </div>
 
       {/* STAGE 1: IDEA INPUT CONTAINER */}
-      <div className="bg-white border border-[#E5E7EB] rounded-3xl p-5 sm:p-6 shadow-sm mb-8">
+      <div className="probe-glass rounded-2xl p-5 sm:p-6 mb-8">
         <div className="flex items-center justify-between text-xs font-mono font-bold uppercase tracking-wider text-[#868C98] mb-2">
           <span>YOUR IDEA UNDER INVESTIGATION</span>
           <span className="text-[11px] font-normal normal-case">Deterministic stages: 14-phase analysis</span>

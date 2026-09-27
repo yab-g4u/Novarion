@@ -4,7 +4,7 @@ import { ExternalLink } from 'lucide-react';
 
 export const Footer: React.FC = () => {
   return (
-    <footer className="border-t border-[#EAEAEA] bg-[#FAFAFA] py-12 px-4 sm:px-6 lg:px-8">
+    <footer className="border-t border-black/[0.07] bg-transparent py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6">
         {/* Brand */}
         <div className="flex items-center gap-2.5">

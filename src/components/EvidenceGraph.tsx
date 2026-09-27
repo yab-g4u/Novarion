@@ -40,7 +40,7 @@ const elk = new ELK();
 const CentralIdeaNodeComponent: React.FC<NodeProps> = ({ data }) => {
   const nodeData = data as { label: string; product: string; isDynamic?: boolean };
   return (
-    <div className={`relative bg-white border-2 ${nodeData.isDynamic ? 'border-[#0F52BA]' : 'border-[#0A0D14]'} rounded-2xl p-4 shadow-md max-w-xs text-center select-none transition-shadow hover:shadow-lg`}>
+    <div className={`relative probe-glass border-2 ${nodeData.isDynamic ? 'border-[#0F52BA]' : 'border-[#0A0D14]'} rounded-2xl p-4 shadow-md max-w-xs text-center select-none transition-shadow hover:shadow-lg`}>
       <Handle type="source" position={Position.Left} id="left" className="!bg-[#10B981] !w-2.5 !h-2.5" />
       <Handle type="source" position={Position.Right} id="right" className="!bg-[#F43F5E] !w-2.5 !h-2.5" />
       <Handle type="source" position={Position.Bottom} id="bottom" className="!bg-[#94A3B8] !w-2.5 !h-2.5" />
@@ -84,7 +84,7 @@ const SourceItemNodeComponent: React.FC<NodeProps> = ({ data }) => {
   return (
     <div
       onClick={() => onSelect && onSelect(source)}
-      className={`bg-white border ${borderColor} rounded-2xl p-3 shadow-2xs hover:shadow-md transition-all cursor-pointer w-60 text-left group select-none`}
+      className={`probe-glass border ${borderColor} rounded-2xl p-3 shadow-2xs hover:shadow-md transition-all cursor-pointer w-60 text-left group select-none`}
     >
       <Handle
         type="target"

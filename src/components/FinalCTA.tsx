@@ -16,7 +16,7 @@ export const FinalCTA: React.FC<FinalCTAProps> = ({ onSubmitIdea }) => {
   };
 
   return (
-    <section className="py-28 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto text-center border-t border-[#EAEAEA]">
+    <section className="py-28 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto text-center border-t border-black/[0.07]">
       <div className="space-y-4 max-w-2xl mx-auto">
         <span className="text-[11px] font-mono font-semibold uppercase tracking-[0.2em] text-[#525866]">
           GET STARTED
@@ -32,7 +32,7 @@ export const FinalCTA: React.FC<FinalCTAProps> = ({ onSubmitIdea }) => {
         <div className="pt-6 max-w-xl mx-auto">
           <form
             onSubmit={handleSubmit}
-            className="relative flex items-center bg-white border border-[#E2E8F0] hover:border-[#CBD5E1] focus-within:border-[#0A0D14] rounded-full p-2 pl-6 shadow-sm transition-all"
+            className="probe-glass relative flex items-center rounded-2xl p-2 pl-6 transition-all"
           >
             <input
               type="text"

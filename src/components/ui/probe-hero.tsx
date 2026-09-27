@@ -63,7 +63,7 @@ export const ProbeHero: React.FC<ProbeHeroProps> = ({
   };
 
   return (
-    <div className="relative min-h-[90vh] flex flex-col bg-[#FAFAFA] text-[#0A0D14] overflow-hidden font-['Geist','Inter',-apple-system,sans-serif]">
+    <div className="relative min-h-[90vh] flex flex-col bg-transparent text-[#111111] overflow-hidden font-['Geist','Inter',-apple-system,sans-serif]">
       {/* Probe Navigation Bar */}
       <Header onTryProbe={onTryProbe} />
 

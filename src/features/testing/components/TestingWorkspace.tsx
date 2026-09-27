@@ -90,7 +90,7 @@ export const TestingWorkspace: React.FC<TestingWorkspaceProps> = ({ onSyncToGrap
   };
 
   return (
-    <section id="section-product-testing" className="py-14 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto text-left font-['Geist',sans-serif]">
+    <section id="section-product-testing" className="py-16 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto text-left font-['Geist',sans-serif]">
       {/* Section Header */}
       <div className="mb-8">
         <div className="flex items-center gap-2 text-xs font-mono font-semibold uppercase tracking-wider text-[#525866] mb-1.5">

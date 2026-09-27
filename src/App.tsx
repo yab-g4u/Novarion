@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PillNav } from './components/PillNav';
 import { ProbeHero } from './components/ui/probe-hero';
 import { PressureTestWorkspace } from './components/PressureTestWorkspace';
 import { TestingWorkspace } from './features/testing/components/TestingWorkspace';
@@ -22,7 +21,6 @@ gsap.registerPlugin(ScrollTrigger);
 export const App: React.FC = () => {
   const [selectedSource, setSelectedSource] = useState<EvidenceSource | null>(null);
   const [isTryModalOpen, setIsTryModalOpen] = useState<boolean>(false);
-  const [activeNavHref, setActiveNavHref] = useState<string>('#');
   const [activeGraphData, setActiveGraphData] = useState<DynamicGraphData | null>(null);
   const [investigationIdea, setInvestigationIdea] = useState<string>('I want to build a cooking app');
   const mainRef = useRef<HTMLElement>(null);
@@ -71,17 +69,6 @@ export const App: React.FC = () => {
     } else {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
-  };
-
-  const navItems = [
-    { label: 'Pressure Test', href: '#section-search' },
-    { label: 'Product Testing', href: '#section-product-testing' },
-    { label: 'Evidence Graph', href: '#section-graph' },
-    { label: 'Calendar', href: '#section-timeline' },
-  ];
-
-  const handleNavItemClick = (item: { label: string; href: string }) => {
-    setActiveNavHref(item.href);
   };
 
   // Convert SearchResult or DynamicEvidenceSource to EvidenceSource for modal
@@ -139,21 +126,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] text-[#0A0D14] flex flex-col font-['Geist','Inter',-apple-system,sans-serif]">
-      {/* PillNav component with Logo on far left, centered menu with visible gaps, and GitHub on far right */}
-      <PillNav
-        logo="/probe-logo.svg"
-        logoAlt="Probe Logo"
-        items={navItems}
-        activeHref={activeNavHref}
-        ease="power2.easeOut"
-        baseColor="#0A0D14"
-        pillColor="#FFFFFF"
-        hoveredPillTextColor="#FFFFFF"
-        pillTextColor="#0A0D14"
-        initialLoadAnimation={true}
-        onItemClick={handleNavItemClick}
-      />
+    <div className="probe-app min-h-screen flex flex-col">
 
       {/* Main Content Area: 90% Visual Product Demonstration, 10% Explanatory Copy */}
       <main ref={mainRef} className="flex-1">

@@ -66,7 +66,7 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 w-full backdrop-blur-md bg-[#FAFAFA]/85 border-b border-[#E5E7EB]/80 transition-colors">
+    <header className="sticky top-0 z-40 w-full px-4 pt-4 sm:px-6 lg:px-8 backdrop-blur-md transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Probe Logo & Wordmark */}
         <a

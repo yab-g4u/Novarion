@@ -51,7 +51,7 @@ export const EvidenceTimeline: React.FC = () => {
   };
 
   return (
-    <section id="section-timeline" className="py-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto border-t border-[#EAEAEA]">
+    <section id="section-timeline" className="py-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto border-t border-black/[0.07]">
       {/* Section Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
         <div>
@@ -85,7 +85,7 @@ export const EvidenceTimeline: React.FC = () => {
       </div>
 
       {/* 12-MONTH SCRUBBER BAR WITH MINI SPARKLINE */}
-      <div className="bg-white border border-[#EAEAEA] rounded-2xl p-4 sm:p-5 shadow-xs mb-8">
+      <div className="probe-glass rounded-2xl p-4 sm:p-5 mb-8">
         <div className="flex items-center justify-between gap-2 overflow-x-auto pb-2 scrollbar-none">
           {TIMELINE_DATA.map((item, idx) => {
             const isSelected = selectedMonthIndex === idx;
