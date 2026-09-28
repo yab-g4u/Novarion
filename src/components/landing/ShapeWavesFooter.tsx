@@ -194,8 +194,8 @@ export const ShapeWavesFooter: React.FC = () => {
                 </a>
               </li>
               <li>
-                <a href="/app/calendar" className="hover:text-white transition-colors">
-                  12-Month Signal Calendar
+                <a href="#section-testing" className="hover:text-white transition-colors">
+                  Real User Playwright Surfing
                 </a>
               </li>
               <li>

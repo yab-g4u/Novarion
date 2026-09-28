@@ -17,12 +17,11 @@ export const App: React.FC = () => {
       {/* 3. SHARED INVESTIGATION ROOM WORKSPACE (Realtime Collaboration) */}
       <Route path="/r/:roomId" element={<SharedInvestigationPage />} />
 
-      {/* 4. MAIN WORKSPACE PLATFORM: Authenticated Research, Testing, Graph & Calendar */}
+      {/* 4. MAIN WORKSPACE PLATFORM: Authenticated Research, Testing & Evidence Graph */}
       <Route path="/app" element={<WorkspacePage />} />
       <Route path="/app/research" element={<WorkspacePage />} />
       <Route path="/app/testing" element={<WorkspacePage />} />
       <Route path="/app/evidence" element={<WorkspacePage />} />
-      <Route path="/app/calendar" element={<WorkspacePage />} />
 
       {/* Catch-all redirects to landing */}
       <Route path="*" element={<Navigate to="/" replace />} />

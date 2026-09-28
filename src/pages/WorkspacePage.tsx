@@ -4,7 +4,6 @@ import {
   Search, 
   Compass, 
   Layers, 
-  Calendar, 
   LogOut, 
   Sparkles, 
   Edit3, 
@@ -16,7 +15,6 @@ import {
 import { PressureTestWorkspace } from '../components/PressureTestWorkspace';
 import { TestingWorkspace } from '../features/testing/components/TestingWorkspace';
 import { EvidenceGraph } from '../components/EvidenceGraph';
-import { EvidenceTimeline } from '../components/EvidenceTimeline';
 import { EvidenceModal } from '../components/EvidenceModal';
 import { TryModal } from '../components/TryModal';
 import { EvidenceSource } from '../types';
@@ -30,10 +28,9 @@ export const WorkspacePage: React.FC = () => {
 
   // Active section based on URL path
   const path = location.pathname.toLowerCase();
-  let activeTab: 'research' | 'testing' | 'evidence' | 'calendar' = 'research';
+  let activeTab: 'research' | 'testing' | 'evidence' = 'research';
   if (path.includes('/app/testing')) activeTab = 'testing';
   else if (path.includes('/app/evidence')) activeTab = 'evidence';
-  else if (path.includes('/app/calendar')) activeTab = 'calendar';
   else activeTab = 'research';
 
   // State
@@ -128,7 +125,6 @@ export const WorkspacePage: React.FC = () => {
     { id: 'research', label: 'Research', path: '/app/research', icon: Search },
     { id: 'testing', label: 'Product Testing', path: '/app/testing', icon: Compass },
     { id: 'evidence', label: 'Evidence Graph', path: '/app/evidence', icon: Layers },
-    { id: 'calendar', label: 'Calendar', path: '/app/calendar', icon: Calendar },
   ];
 
   return (
@@ -285,31 +281,6 @@ export const WorkspacePage: React.FC = () => {
               externalGraphData={activeGraphData}
               roomId={roomCodeFromIdea(investigationIdea)}
               focusNodeId={focusNodeId}
-              onNavigateToCalendar={() => navigate('/app/calendar')}
-            />
-          </div>
-        )}
-
-        {activeTab === 'calendar' && (
-          <div>
-            <div className="pt-6 px-4 max-w-6xl mx-auto flex items-center justify-between text-xs text-[#64748B] font-mono border-b border-[#F1F3F5] pb-3 mb-6">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-[#0F52BA]" />
-                <span>VALIDATION CADENCE & CALENDAR</span>
-              </div>
-              <span className="text-[#868C98]">12-Month Sprints & Verification Milestones</span>
-            </div>
-            <EvidenceTimeline 
-              roomId={roomCodeFromIdea(investigationIdea)}
-              onNavigateToGraphNode={(nodeId) => {
-                setFocusNodeId(nodeId);
-                navigate('/app/evidence');
-              }}
-              onTestCompletedAsEvidence={(evidence) => {
-                handleProductTestSync(evidence);
-                setFocusNodeId(evidence.id);
-                navigate('/app/evidence');
-              }}
             />
           </div>
         )}

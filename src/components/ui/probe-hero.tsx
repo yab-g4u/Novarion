@@ -3,6 +3,7 @@ import Header from './probe-hero-utils/header';
 import { useProbeMotion } from '@/motion/useProbeMotion';
 import { EASE, gsap } from '@/motion/gsapConfig';
 import { ArrowDown } from 'lucide-react';
+import { Grainient } from '@/components/Grainient';
 
 export interface ProbeHeroProps {
   onTryProbe?: () => void;
@@ -136,13 +137,12 @@ export const ProbeHero: React.FC<ProbeHeroProps> = ({
   return (
     <div
       ref={heroRootRef}
-      className="relative min-h-[75vh] sm:min-h-[82vh] flex flex-col bg-white text-[#111111] overflow-hidden font-['Geist','Inter',-apple-system,sans-serif]"
+      className="relative min-h-[90vh] sm:min-h-screen flex flex-col bg-white text-[#111111] overflow-hidden font-['Geist','Inter',-apple-system,sans-serif]"
     >
-      {/* Cinematic Full Background Video with Subtle Scale Parallax */}
+      {/* Full Background Video covering whole hero section */}
       <div
         ref={videoWrapperRef}
-        className="absolute inset-0 pointer-events-none overflow-hidden z-0 will-change-transform"
-        style={{ width: '100%', height: '100%', position: 'absolute' }}
+        className="absolute inset-0 pointer-events-none overflow-hidden z-0 will-change-transform w-full h-full"
         aria-hidden="true"
       >
         <video
@@ -157,7 +157,7 @@ export const ProbeHero: React.FC<ProbeHeroProps> = ({
         {/* Subtle Darkening Overlay Layered During Scroll */}
         <div
           ref={overlayRef}
-          className="absolute inset-0 bg-[#0A0D14] opacity-0 pointer-events-none transition-opacity"
+          className="absolute inset-0 bg-[#0A0D14]/15 pointer-events-none transition-opacity"
         />
       </div>
 

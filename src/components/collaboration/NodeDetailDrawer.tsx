@@ -329,12 +329,16 @@ export const NodeDetailDrawer: React.FC<NodeDetailDrawerProps> = ({
 
               {node.url && (
                 <a
-                  href={node.url}
+                  href={
+                    node.sourceType === 'scholarxiv' && !node.url.includes('scholarxiv.com')
+                      ? `https://www.scholarxiv.com/papers/${node.id.replace('scholarxiv-', '')}`
+                      : node.url
+                  }
                   target="_blank"
                   rel="noreferrer"
-                  className="text-xs font-mono text-[#0F52BA] hover:underline flex items-center gap-1"
+                  className="text-xs font-mono text-[#0F52BA] hover:underline flex items-center gap-1 cursor-pointer font-medium"
                 >
-                  <span>Verify Upstream</span>
+                  <span>{node.sourceType === 'scholarxiv' ? 'ScholarXIV Paper' : 'Verify Upstream'}</span>
                   <ExternalLink size={11} />
                 </a>
               )}
@@ -576,23 +580,12 @@ export const NodeDetailDrawer: React.FC<NodeDetailDrawerProps> = ({
                   />
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <div className="flex-1">
-                    <label className="text-[10px] font-mono text-[#15803D] uppercase font-bold block mb-1">
-                      Calendar Date:
-                    </label>
-                    <input
-                      type="date"
-                      value={testDate}
-                      onChange={(e) => setTestDate(e.target.value)}
-                      className="w-full p-2 rounded-xl bg-white border border-[#86EFAC] text-xs text-[#0A0D14] focus:outline-none font-mono"
-                    />
-                  </div>
+                <div className="flex items-center justify-end">
                   <button
                     type="submit"
-                    className="mt-4 px-4 py-2 rounded-xl bg-[#0A0D14] hover:bg-[#1E293B] text-white font-semibold text-xs cursor-pointer shadow-xs"
+                    className="mt-2 px-4 py-2 rounded-xl bg-[#0A0D14] hover:bg-[#1E293B] text-white font-semibold text-xs cursor-pointer shadow-xs"
                   >
-                    Schedule on Calendar →
+                    Attach Product Study →
                   </button>
                 </div>
               </form>
@@ -711,16 +704,6 @@ export const NodeDetailDrawer: React.FC<NodeDetailDrawerProps> = ({
           <span className="w-2 h-2 rounded-full bg-[#10B981]" />
           <span>Realtime active</span>
         </div>
-        {onNavigateToCalendar && (
-          <button
-            type="button"
-            onClick={onNavigateToCalendar}
-            className="text-[#0F52BA] hover:underline flex items-center gap-1 cursor-pointer"
-          >
-            <span>View in Calendar</span>
-            <ArrowRight size={11} />
-          </button>
-        )}
       </div>
 
     </div>

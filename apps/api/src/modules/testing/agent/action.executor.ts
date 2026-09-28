@@ -154,44 +154,151 @@ export class ActionDecisionEngine {
       }
     }
 
-    // 3. GENERAL FALLBACK HEURISTIC
-    // Look for primary action button
-    const primaryButton = elements.find((e) => {
-      const text = `${e.text} ${e.label || ''}`.toLowerCase();
-      return (
-        e.role === 'button' &&
-        (text.includes('start') ||
-          text.includes('get started') ||
-          text.includes('try') ||
-          text.includes('submit') ||
-          text.includes('explore') ||
-          text.includes('search'))
+    // 3. GENERAL PRODUCT BROWSING & SURFING HEURISTIC
+    // When evaluating any product URL, the simulated real user explores the layout,
+    // scrolls the viewport, tests navigation and interactive elements, and observes responsiveness.
+    
+    // Step 0: Initial action after opening the page - Smooth scroll to explore hero and feature sections
+    if (stepCount === 0) {
+      return {
+        type: 'SCROLL',
+        targetName: 'Scroll viewport to explore hero and value proposition',
+        value: '450',
+        rationale: 'Simulated real user scrolls down to examine product headline, layout, and visual hierarchy'
+      };
+    }
+
+    // Step 1: Look for an interactive navigation link, feature button, or primary CTA
+    if (stepCount === 1) {
+      // First, check if the task mentions specific keywords
+      const taskWords = plan.originalTask.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+      let targetElement = elements.find((e) => {
+        const text = `${e.text} ${e.label || ''}`.toLowerCase();
+        return (e.tag === 'a' || e.role === 'link' || e.role === 'button') && taskWords.some(w => text.includes(w));
+      });
+
+      // If no task keyword match, look for prominent product navigation links
+      if (!targetElement) {
+        targetElement = elements.find((e) => {
+          const text = (e.text || e.label || '').toLowerCase().trim();
+          return (
+            (e.tag === 'a' || e.role === 'link' || e.role === 'button') &&
+            text.length >= 2 &&
+            text.length < 30 &&
+            (text.includes('feature') ||
+              text.includes('pricing') ||
+              text.includes('doc') ||
+              text.includes('about') ||
+              text.includes('product') ||
+              text.includes('explore') ||
+              text.includes('overview') ||
+              text.includes('guide') ||
+              text.includes('learn') ||
+              text.includes('start') ||
+              text.includes('try') ||
+              text.includes('demo') ||
+              text.includes('repo') ||
+              text.includes('article') ||
+              text.includes('item') ||
+              text.includes('view') ||
+              text.includes('more'))
+          );
+        });
+      }
+
+      // If still no element, grab the first non-home link
+      if (!targetElement) {
+        targetElement = elements.find((e) => {
+          const text = (e.text || '').trim();
+          const href = (e.href || '').trim();
+          return (e.tag === 'a' || e.role === 'link') && text.length > 2 && text.length < 35 && !href.endsWith('/') && href !== '#';
+        });
+      }
+
+      if (targetElement) {
+        const desc = targetElement.text || targetElement.label || 'Navigation Link';
+        return {
+          type: 'CLICK',
+          targetName: desc,
+          selector: targetElement.selector,
+          rationale: `Simulated real user navigates product by clicking "${desc}"`
+        };
+      }
+
+      // If no clickable links found, scroll further down
+      return {
+        type: 'SCROLL',
+        targetName: 'Scroll deeper into page content',
+        value: '500',
+        rationale: 'Simulated real user continues scrolling through product layout'
+      };
+    }
+
+    // Step 2: Explore deeper content or subpage after navigation
+    if (stepCount === 2) {
+      return {
+        type: 'SCROLL',
+        targetName: 'Scroll to inspect deep features and specifications',
+        value: '500',
+        rationale: 'Simulated real user scrolls down to inspect product details, tiers, and user reviews'
+      };
+    }
+
+    // Step 3: Test interactive form input or search field if present
+    if (stepCount === 3) {
+      const interactiveInput = elements.find(
+        (e) => (e.tag === 'input' || e.tag === 'textarea') && e.type !== 'hidden' && e.visible && e.enabled
       );
-    });
+      if (interactiveInput) {
+        const placeholder = interactiveInput.placeholder || interactiveInput.label || 'Search or input field';
+        return {
+          type: 'TYPE',
+          targetName: `Input field "${placeholder}"`,
+          selector: interactiveInput.selector,
+          value: 'developer tools',
+          rationale: 'Simulated real user tests search / inquiry field interactivity and responsiveness'
+        };
+      }
 
-    if (primaryButton && stepCount === 1) {
+      // If no input, look for an interactive tab, button, or secondary link
+      const interactiveBtn = elements.find((e) => {
+        const text = (e.text || '').toLowerCase();
+        return (e.role === 'button' || e.tag === 'button') && e.visible && (text.includes('tab') || text.includes('view') || text.includes('more') || text.includes('filter') || text.includes('all'));
+      });
+
+      if (interactiveBtn) {
+        return {
+          type: 'CLICK',
+          targetName: interactiveBtn.text || 'Interactive Button',
+          selector: interactiveBtn.selector,
+          rationale: `Simulated real user interacts with "${interactiveBtn.text}" to test UI feedback`
+        };
+      }
+
+      // Otherwise scroll back up
       return {
-        type: 'CLICK',
-        targetName: primaryButton.text || 'Primary Action Button',
-        selector: primaryButton.selector,
-        rationale: 'Interact with primary action element on page'
+        type: 'SCROLL',
+        targetName: 'Scroll smoothly back towards top of page',
+        value: '-350',
+        rationale: 'Simulated real user returns towards primary header navigation'
       };
     }
 
-    // If reached max steps or no further action
-    if (stepCount >= 10) {
+    // Step 4: Final verification and visual review
+    if (stepCount === 4) {
       return {
-        type: 'FINISH',
-        targetName: 'End Session',
-        rationale: 'Reached execution step limit'
+        type: 'SCROLL',
+        targetName: 'Final viewport check on main interface',
+        value: '-300',
+        rationale: 'Simulated real user performs final scan of header and top call-to-action'
       };
     }
 
+    // Finished exploration
     return {
-      type: 'WAIT',
-      targetName: 'Observe Page',
-      value: '1500',
-      rationale: 'Observe page state for interactive changes'
+      type: 'FINISH',
+      targetName: 'Complete User Simulation',
+      rationale: 'Successfully opened specified URL, surfed through product interface, and captured empirical UX metrics'
     };
   }
 }

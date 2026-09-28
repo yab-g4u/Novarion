@@ -67,9 +67,16 @@ export const ShareInvestigationModal: React.FC<ShareInvestigationModalProps> = (
 
         {/* Shareable Link Box */}
         <div className="space-y-2">
-          <label className="text-xs font-bold text-[#0A0D14] block">
-            Invite Link
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-bold text-[#0A0D14] block">
+              Public Collaborator Link
+            </label>
+            <span className="text-[10px] font-mono text-[#059669] bg-[#ECFDF5] px-2 py-0.5 rounded-full border border-[#A7F3D0] flex items-center gap-1 font-semibold">
+              <ShieldCheck size={11} />
+              Public Access (No 403)
+            </span>
+          </div>
+
           <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-[#FAFAFA] border border-[#CBD5E1] focus-within:border-[#0A0D14]">
             <input
               type="text"
@@ -91,7 +98,7 @@ export const ShareInvestigationModal: React.FC<ShareInvestigationModalProps> = (
             </button>
           </div>
           <p className="text-[11px] text-[#64748B] leading-relaxed">
-            Anyone with this link joins the live Supabase Realtime channel to interrogate the graph, challenge evidence, record decisions, and plan experiments together.
+            Teammates can immediately enter Room <strong className="font-mono text-[#0A0D14]">{roomId}</strong> without sign-up or Google 403 authorization walls to investigate the graph, challenge evidence, and record decisions together.
           </p>
         </div>
 
@@ -122,7 +129,7 @@ export const ShareInvestigationModal: React.FC<ShareInvestigationModalProps> = (
         <div className="flex items-center justify-between text-[11px] font-mono text-[#868C98] pt-2 border-t border-[#F1F3F5]">
           <span className="flex items-center gap-1">
             <Globe size={12} className="text-[#0F52BA]" />
-            <span>probe.pro.et/r/{roomId}</span>
+            <span className="truncate max-w-[260px]">{shareableUrl.replace(/^https?:\/\//, '')}</span>
           </span>
           <button
             onClick={onClose}

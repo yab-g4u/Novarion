@@ -251,6 +251,7 @@ export const SourceIconSelector: React.FC<{
       return <LinearIcon size={size} className={className} />;
     case 'reviews':
       return <ProductReviewsIcon size={size} className={className} />;
+    case 'scholarxiv':
     case 'research':
       return <ResearchPapersIcon size={size} className={className} />;
     default:

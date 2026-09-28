@@ -26,7 +26,6 @@ const DEFAULT_NAV: NavigationItem[] = [
   { title: 'Research', href: '#capability-research' },
   { title: 'Product Testing', href: '#capability-testing' },
   { title: 'Evidence Graph', href: '#capability-evidence' },
-  { title: 'Calendar', href: '#capability-calendar' },
 ];
 
 export const Header: React.FC<HeaderProps> = ({

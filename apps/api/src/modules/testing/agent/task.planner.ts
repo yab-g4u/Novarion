@@ -64,6 +64,44 @@ export class TaskPlanner {
       };
     }
 
+    // 2. Check if task is general surfing / exploratory UX evaluation
+    if (lower.includes('surf') || lower.includes('explore') || lower.includes('browse') || lower.includes('landing') || lower.includes('evaluat')) {
+      return {
+        originalTask: task,
+        inferredGoal: 'EXPLORE_FEATURE',
+        milestones: [
+          {
+            id: 'm1',
+            description: 'Open specified product URL via Playwright browser',
+            expectedKeywords: ['page', 'loaded', 'url', 'opened'],
+            actionType: 'NAVIGATE',
+            completed: true
+          },
+          {
+            id: 'm2',
+            description: 'Scroll viewport to observe above-the-fold layout and content',
+            expectedKeywords: ['scroll', 'hero', 'layout'],
+            actionType: 'LOCATE_INPUT',
+            completed: false
+          },
+          {
+            id: 'm3',
+            description: 'Interact with navigation links to explore product depth',
+            expectedKeywords: ['click', 'nav', 'features', 'pricing'],
+            actionType: 'SUBMIT',
+            completed: false
+          },
+          {
+            id: 'm4',
+            description: 'Test interactive responsiveness and detect user friction',
+            expectedKeywords: ['response', 'interactivity', 'time', 'metrics'],
+            actionType: 'VERIFY_RESULT',
+            completed: false
+          }
+        ]
+      };
+    }
+
     // 2. Check if task is e-commerce / add to cart
     if (lower.includes('cart') || lower.includes('add to cart') || lower.includes('buy')) {
       return {

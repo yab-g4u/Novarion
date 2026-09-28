@@ -1,4 +1,4 @@
-import { chromium, Browser, BrowserContext } from 'playwright';
+import { chromium, type Browser, type BrowserContext } from 'playwright';
 
 export class BrowserService {
   private static instance: BrowserService;
@@ -40,8 +40,7 @@ export class BrowserService {
           '--disable-accelerated-2d-canvas',
           '--no-first-run',
           '--no-zygote',
-          '--disable-gpu',
-          '--single-process'
+          '--disable-gpu'
         ]
       });
       return this.browser;

@@ -4,7 +4,6 @@ import {
   Search, 
   Compass, 
   Layers, 
-  Calendar, 
   ArrowRight, 
   CheckCircle2, 
   AlertTriangle, 
@@ -204,65 +203,6 @@ export const CapabilitiesPreview: React.FC = () => {
               ideaLabel="Universal Merchant Verification App" 
               onNodeClick={() => {}}
             />
-          </div>
-        </div>
-
-        {/* 04. CALENDAR */}
-        <div id="capability-calendar" className="grid grid-cols-1 lg:grid-cols-12 gap-8 sm:gap-12 items-center">
-          {/* Calendar Roadmap Preview */}
-          <div className="lg:col-span-7 order-2 lg:order-1 bg-white p-5 sm:p-7 rounded-3xl border border-[#E5E7EB] shadow-xs text-left">
-            <div className="flex items-center justify-between border-b border-[#F1F3F5] pb-3 mb-4 text-xs font-mono text-[#868C98]">
-              <span className="font-semibold text-[#0A0D14]">12-MONTH SIGNAL & VALIDATION CADENCE</span>
-              <span className="text-[#0F52BA]">Continuous Monitoring</span>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-4">
-              <div className="p-3 rounded-xl bg-[#FAFAFA] border border-[#F1F3F5]">
-                <div className="text-[10px] font-mono text-[#94A3B8]">M1 · DISCOVERY</div>
-                <div className="text-xs font-bold text-[#0A0D14] mt-1">5 Interviews</div>
-                <div className="text-[10px] text-[#10B981] mt-0.5">Completed</div>
-              </div>
-              <div className="p-3 rounded-xl bg-[#FAFAFA] border border-[#F1F3F5]">
-                <div className="text-[10px] font-mono text-[#94A3B8]">M2 · COMPETITION</div>
-                <div className="text-xs font-bold text-[#0A0D14] mt-1">Browser Run</div>
-                <div className="text-[10px] text-[#10B981] mt-0.5">Verified</div>
-              </div>
-              <div className="p-3 rounded-xl bg-[#FAFAFA] border border-[#F1F3F5]">
-                <div className="text-[10px] font-mono text-[#94A3B8]">M3 · SMOKE TEST</div>
-                <div className="text-xs font-bold text-[#0A0D14] mt-1">Pre-order Tier</div>
-                <div className="text-[10px] text-[#F59E0B] mt-0.5">Scheduled</div>
-              </div>
-              <div className="p-3 rounded-xl bg-[#FAFAFA] border border-[#F1F3F5]">
-                <div className="text-[10px] font-mono text-[#94A3B8]">M4 · PILOT</div>
-                <div className="text-xs font-bold text-[#0A0D14] mt-1">POS Cohort</div>
-                <div className="text-[10px] text-[#64748B] mt-0.5">Backlog</div>
-              </div>
-            </div>
-            <div className="p-3 bg-[#F8FAFC] rounded-xl text-xs text-[#525866] flex items-center justify-between">
-              <span>Next experiment: Measure cashier checkout abandonment under 5s delay</span>
-              <span className="font-mono text-[#0F52BA] font-semibold">Sprint 03</span>
-            </div>
-          </div>
-
-          <div className="lg:col-span-5 order-1 lg:order-2 text-left space-y-4">
-            <div className="flex items-center gap-2 text-xs font-mono font-semibold uppercase tracking-wider text-[#0F52BA]">
-              <Calendar size={14} />
-              <span>04 / CALENDAR</span>
-            </div>
-            <h3 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#0A0D14]">
-              Turn findings into structured validation milestones.
-            </h3>
-            <p className="text-[#525866] text-sm sm:text-base leading-relaxed">
-              Don't let research sit idle in a report. Turn findings into concrete experiments, customer discovery interviews, pricing smoke tests, and next steps scheduled across a 12-month timeline.
-            </p>
-            <div className="pt-3">
-              <Link
-                to="/signin"
-                className="inline-flex items-center gap-2 text-xs font-semibold text-[#0A0D14] hover:text-[#0F52BA] transition-colors group"
-              >
-                <span>Start investigating</span>
-                <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
-              </Link>
-            </div>
           </div>
         </div>
       </div>

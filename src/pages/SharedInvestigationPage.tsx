@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { 
   Layers, 
-  Calendar as CalendarIcon, 
   Search, 
   Share2, 
   Users, 
@@ -17,7 +16,6 @@ import {
 } from 'lucide-react';
 import { ProbeLogo } from '../components/ProbeLogo';
 import { EvidenceGraph } from '../components/EvidenceGraph';
-import { EvidenceTimeline } from '../components/EvidenceTimeline';
 import { PressureTestWorkspace } from '../components/PressureTestWorkspace';
 import { EvidenceModal } from '../components/EvidenceModal';
 import { EvidenceSource } from '../types';
@@ -31,7 +29,7 @@ export const SharedInvestigationPage: React.FC = () => {
   const navigate = useNavigate();
 
   // Active tab inside shared workspace
-  const [activeTab, setActiveTab] = useState<'graph' | 'calendar' | 'research'>('graph');
+  const [activeTab, setActiveTab] = useState<'graph' | 'research'>('graph');
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [selectedSource, setSelectedSource] = useState<EvidenceSource | null>(null);
@@ -145,22 +143,6 @@ export const SharedInvestigationPage: React.FC = () => {
 
           <button
             type="button"
-            onClick={() => setActiveTab('calendar')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full font-medium transition-all cursor-pointer ${
-              activeTab === 'calendar'
-                ? 'bg-white text-[#0A0D14] font-bold shadow-xs'
-                : 'text-[#525866] hover:text-[#0A0D14]'
-            }`}
-          >
-            <CalendarIcon size={13} className={activeTab === 'calendar' ? 'text-[#0F52BA]' : 'text-[#868C98]'} />
-            <span>Validation Calendar</span>
-            {tests.length > 0 && (
-              <span className="w-1.5 h-1.5 rounded-full bg-[#4F46E5]" />
-            )}
-          </button>
-
-          <button
-            type="button"
             onClick={() => setActiveTab('research')}
             className={`hidden sm:flex items-center gap-1.5 px-3.5 py-1.5 rounded-full font-medium transition-all cursor-pointer ${
               activeTab === 'research'
@@ -232,28 +214,6 @@ export const SharedInvestigationPage: React.FC = () => {
               externalGraphData={graphData}
               focusNodeId={focusNodeId}
               onSelectSource={handleOpenSourceDetail}
-              onNavigateToCalendar={() => setActiveTab('calendar')}
-            />
-          </div>
-        )}
-
-        {activeTab === 'calendar' && (
-          <div className="w-full bg-white">
-            <EvidenceTimeline
-              roomId={roomId}
-              onNavigateToGraphNode={(nodeId) => {
-                setFocusNodeId(nodeId);
-                setActiveTab('graph');
-              }}
-              onTestCompletedAsEvidence={(evidence) => {
-                // Return result to graph
-                setGraphData((prev) => ({
-                  ...prev,
-                  sources: [evidence, ...prev.sources]
-                }));
-                setFocusNodeId(evidence.id);
-                setActiveTab('graph');
-              }}
             />
           </div>
         )}

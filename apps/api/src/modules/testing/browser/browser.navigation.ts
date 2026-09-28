@@ -1,4 +1,4 @@
-import { Page, Response } from 'playwright';
+import type { Page, Response } from 'playwright';
 import { NavigationRecord } from '../testing.types';
 
 export class NavigationTracker {

@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { BrowserContext, Page } from 'playwright';
+import type { BrowserContext, Page } from 'playwright';
 import {
   BrowserSessionData,
   SessionStatus,
@@ -428,9 +428,13 @@ export class BrowserSession extends EventEmitter {
       case 'PRESS_KEY':
         executionResult = await this.actionExecutor.pressKey(this.page, value || 'Enter');
         break;
-      case 'SCROLL':
-        executionResult = await this.actionExecutor.scroll(this.page, (value as any) || 'down');
+      case 'SCROLL': {
+        const num = value ? parseInt(value, 10) : 400;
+        const dir = isNaN(num) ? 'down' : num < 0 ? 'up' : 'down';
+        const dist = isNaN(num) ? 400 : Math.abs(num);
+        executionResult = await this.actionExecutor.scroll(this.page, dir, dist);
         break;
+      }
       case 'BACK':
         executionResult = await this.actionExecutor.goBack(this.page);
         break;
@@ -443,7 +447,7 @@ export class BrowserSession extends EventEmitter {
 
     // Capture screenshot after meaningful action
     let scr: ScreenshotRecord | null = null;
-    if (this.page && (type === 'CLICK' || type === 'TYPE' || !executionResult.success)) {
+    if (this.page && (type === 'CLICK' || type === 'TYPE' || type === 'SCROLL' || !executionResult.success)) {
       scr = await this.screenshotManager.capture(
         this.page,
         executionResult.success ? 'after_action' : 'error',

@@ -8,7 +8,6 @@ import { UXAnalyzer } from '../analysis/ux.analyzer';
 
 export class TestingAgent {
   private planner = new TaskPlanner();
-  private decisionEngine = new ActionDecisionEngine();
   private completionDetector = new CompletionDetector();
   private frictionDetector = new FrictionDetector();
   private sessionAnalyzer = new SessionAnalyzer();
@@ -25,6 +24,7 @@ export class TestingAgent {
       }
 
       const plan = this.planner.plan(session.task, session.productUrl);
+      const decisionEngine = new ActionDecisionEngine();
       let isTaskFinished = false;
 
       // Agent Action Loop
@@ -37,20 +37,22 @@ export class TestingAgent {
         const observation = await session.observePage();
         if (!observation) break;
 
-        // 2. CHECK COMPLETION
-        const completionCheck = this.completionDetector.evaluate(
-          plan,
-          observation,
-          session.getStepCount()
-        );
-        if (completionCheck.status === 'COMPLETED') {
-          session.setCompletion(completionCheck);
-          isTaskFinished = true;
-          break;
+        // 2. CHECK COMPLETION (only after at least 1 step has been executed)
+        if (session.getStepCount() > 0) {
+          const completionCheck = this.completionDetector.evaluate(
+            plan,
+            observation,
+            session.getStepCount()
+          );
+          if (completionCheck.status === 'COMPLETED') {
+            session.setCompletion(completionCheck);
+            isTaskFinished = true;
+            break;
+          }
         }
 
         // 3. CHOOSE NEXT ACTION
-        const decision = this.decisionEngine.decide(
+        const decision = decisionEngine.decide(
           plan,
           observation,
           session.getStepCount()

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import {
   ReactFlow,
   Background,
@@ -17,6 +17,7 @@ import {
 } from '@xyflow/react';
 import ELK from 'elkjs/lib/elk.bundled.js';
 import { SourceIconSelector } from './Icons';
+import { ProbeLogo } from './ProbeLogo';
 import { REAL_PRODUCT_PROFILES, RealSourceSnippet } from '../data/realEvidenceData';
 import { DynamicGraphData, DynamicEvidenceSource } from '../types/evidenceGraph';
 import { 
@@ -34,7 +35,10 @@ import {
   Check,
   ChevronRight,
   HelpCircle,
-  Lightbulb
+  Lightbulb,
+  Maximize2,
+  Minimize2,
+  Copy
 } from 'lucide-react';
 import { useInvestigationRoom } from '../lib/collaboration/useInvestigationRoom';
 import { ShareInvestigationModal } from './collaboration/ShareInvestigationModal';
@@ -283,6 +287,9 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
   const [filterRelationship, setFilterRelationship] = useState<'all' | 'Supports' | 'Challenges' | 'Tests' | 'Decisions'>('all');
   const [isLayoutCalculating, setIsLayoutCalculating] = useState<boolean>(false);
   const [activeToast, setActiveToast] = useState<string | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [copiedRoomCode, setCopiedRoomCode] = useState<boolean>(false);
+  const rfInstanceRef = useRef<any>(null);
 
   // Realtime collaborative room hook
   const {
@@ -305,6 +312,48 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
   // Modals state
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [selectedNodeContext, setSelectedNodeContext] = useState<SelectedNodeContext | null>(null);
+
+  const toggleFullscreen = useCallback(() => {
+    setIsFullscreen((prev) => {
+      const next = !prev;
+      setTimeout(() => {
+        rfInstanceRef.current?.fitView({ duration: 450, padding: 0.15 });
+      }, 120);
+      return next;
+    });
+  }, []);
+
+  // Listen for Escape key to exit fullscreen
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        setIsFullscreen(false);
+        setTimeout(() => {
+          rfInstanceRef.current?.fitView({ duration: 450, padding: 0.15 });
+        }, 120);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullscreen]);
+
+  // Lock body scroll in fullscreen mode
+  useEffect(() => {
+    if (isFullscreen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isFullscreen]);
+
+  const handleCopyShareLink = useCallback(() => {
+    navigator.clipboard.writeText(shareableUrl);
+    setCopiedRoomCode(true);
+    setTimeout(() => setCopiedRoomCode(false), 2000);
+  }, [shareableUrl]);
 
   const showToast = useCallback((msg: string) => {
     setActiveToast(msg);
@@ -643,8 +692,18 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
           </h2>
         </div>
 
-        {/* Share Button & Clean Action */}
+        {/* Fullscreen, Share & Action Buttons */}
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            className="px-3.5 py-2 rounded-xl bg-white hover:bg-[#F8FAFC] border border-[#CBD5E1] text-[#0A0D14] text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer"
+            title="Open Full Screen (Vertical & Width) to collaborate"
+          >
+            <Maximize2 size={13} className="text-[#0F52BA]" />
+            <span>Full Screen</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setIsShareModalOpen(true)}
@@ -748,6 +807,13 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
             >
               <RotateCcw size={13} className={isLayoutCalculating ? 'animate-spin' : ''} />
             </button>
+            <button
+              onClick={toggleFullscreen}
+              className="p-1.5 rounded-lg hover:bg-white text-[#64748B] hover:text-[#0A0D14] transition-colors cursor-pointer"
+              title="Toggle Full Screen"
+            >
+              <Maximize2 size={13} />
+            </button>
           </div>
         </div>
       </div>
@@ -784,6 +850,7 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           nodeTypes={NODE_TYPES}
+          onInit={(instance) => { rfInstanceRef.current = instance; }}
           fitView
           fitViewOptions={FIT_VIEW_OPTIONS}
           defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
@@ -795,6 +862,199 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
           <Controls showInteractive={false} className="!bg-white !border !border-[#E5E7EB] !rounded-2xl !shadow-xs" />
         </ReactFlow>
       </div>
+
+      {/* 4. IMMERSIVE FULL SCREEN COLLABORATIVE WORKSPACE (FULL VERTICAL & FULL WIDTH) */}
+      {isFullscreen && (
+        <div className="fixed inset-0 z-50 w-screen h-screen bg-[#F8FAFC] flex flex-col overflow-hidden font-['Geist','Inter',sans-serif] animate-in fade-in duration-200">
+          {/* Top Collaborative Header Bar */}
+          <header className="h-16 px-4 sm:px-6 bg-white border-b border-[#E5E7EB] flex items-center justify-between shadow-2xs z-20 flex-shrink-0">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-[#0A0D14] flex items-center justify-center text-white p-1 shadow-xs flex-shrink-0">
+                <ProbeLogo className="w-5 h-5" inverted />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-extrabold text-sm tracking-tight text-[#0A0D14] uppercase">
+                    LIVING EVIDENCE GRAPH
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0] font-bold flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse" />
+                    Collaborative Canvas
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-[#64748B] font-mono">
+                  <span className="truncate max-w-[260px] sm:max-w-md font-medium text-[#0A0D14]">"{currentLabel}"</span>
+                  <span>·</span>
+                  <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#F1F3F5] text-[#0A0D14]">
+                    <span>room: {roomId}</span>
+                    <button
+                      onClick={handleCopyShareLink}
+                      className="hover:text-[#0F52BA] transition-colors cursor-pointer"
+                      title="Copy Public Link"
+                    >
+                      {copiedRoomCode ? <Check size={11} className="text-[#10B981]" /> : <Copy size={11} />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Middle: Stepper Filters in Fullscreen */}
+            <div className="hidden lg:flex items-center gap-1 bg-[#F1F3F5] p-1 rounded-full border border-[#E5E7EB] text-xs font-mono">
+              <button
+                onClick={() => {
+                  setFilterRelationship('all');
+                  handleSelectCentralNode();
+                }}
+                className={`px-3 py-1 rounded-full transition-all cursor-pointer ${
+                  filterRelationship === 'all'
+                    ? 'bg-white text-[#0A0D14] font-bold shadow-xs'
+                    : 'text-[#64748B] hover:text-[#0A0D14]'
+                }`}
+              >
+                All Signals
+              </button>
+              <button
+                onClick={() => setFilterRelationship('Supports')}
+                className={`px-3 py-1 rounded-full transition-all cursor-pointer flex items-center gap-1 ${
+                  filterRelationship === 'Supports'
+                    ? 'bg-[#ECFDF5] text-[#059669] font-bold shadow-xs'
+                    : 'text-[#64748B] hover:text-[#059669]'
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
+                <span>Supports ({supportCount})</span>
+              </button>
+              <button
+                onClick={() => setFilterRelationship('Challenges')}
+                className={`px-3 py-1 rounded-full transition-all cursor-pointer flex items-center gap-1 ${
+                  filterRelationship === 'Challenges'
+                    ? 'bg-[#FFF1F2] text-[#E11D48] font-bold shadow-xs'
+                    : 'text-[#64748B] hover:text-[#E11D48]'
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444]" />
+                <span>Contradicts ({challengeCount})</span>
+              </button>
+              <button
+                onClick={() => setFilterRelationship('Tests')}
+                className={`px-3 py-1 rounded-full transition-all cursor-pointer flex items-center gap-1 ${
+                  filterRelationship === 'Tests'
+                    ? 'bg-[#EEF2FF] text-[#4F46E5] font-bold shadow-xs'
+                    : 'text-[#64748B] hover:text-[#4F46E5]'
+                }`}
+              >
+                <FlaskConical size={10} className="text-[#4F46E5]" />
+                <span>Next Tests ({tests.length})</span>
+              </button>
+            </div>
+
+            {/* Right: Presence, Invite Teammates, Recalculate, and Exit Full Screen */}
+            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsShareModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#F8FAFC] border border-[#CBD5E1] text-xs font-mono shadow-2xs hover:border-[#0A0D14] transition-colors cursor-pointer"
+                title="Click to view all collaborators & invite"
+              >
+                <div className="flex -space-x-1.5 overflow-hidden">
+                  {collaborators.slice(0, 3).map((c) => (
+                    <span
+                      key={c.id}
+                      className="inline-block w-4 h-4 rounded-full ring-1 ring-white"
+                      style={{ backgroundColor: c.color }}
+                      title={c.name}
+                    />
+                  ))}
+                </div>
+                <span className="font-bold text-[#0A0D14] text-[11px]">
+                  {collaboratorCount} online
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsShareModalOpen(true)}
+                className="px-3.5 py-1.5 rounded-xl bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-transform active:scale-95 cursor-pointer"
+              >
+                <Share2 size={12} />
+                <span className="hidden sm:inline">Invite Teammates</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={calculateLayout}
+                className="p-1.5 rounded-xl border border-[#E5E7EB] bg-white hover:bg-[#F8FAFC] text-[#64748B] hover:text-[#0A0D14] transition-colors cursor-pointer"
+                title="Recalculate topology"
+              >
+                <RotateCcw size={13} className={isLayoutCalculating ? 'animate-spin' : ''} />
+              </button>
+
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                className="px-3.5 py-1.5 rounded-xl bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                title="Exit Full Screen (Esc)"
+              >
+                <Minimize2 size={13} />
+                <span>Exit Full Screen</span>
+                <span className="text-[10px] font-mono text-[#94A3B8] hidden sm:inline">(Esc)</span>
+              </button>
+            </div>
+          </header>
+
+          {/* Fullscreen Graph Canvas */}
+          <div className="flex-1 w-full h-full relative">
+            {/* Top Collaboration Mode Status Bar */}
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 pointer-events-none flex items-center gap-2 bg-white/90 backdrop-blur-md border border-[#E2E8F0] px-4 py-1.5 rounded-full shadow-sm text-xs font-mono text-[#475467]">
+              <Users size={13} className="text-[#0F52BA]" />
+              <span>Live Collaborative Session • Room: <strong className="text-[#0A0D14]">{roomId}</strong></span>
+              <span>·</span>
+              <span className="text-[#10B981] font-semibold">Realtime Active</span>
+            </div>
+
+            {/* Bottom Legend */}
+            <div className="absolute bottom-6 left-6 z-10 flex items-center gap-3 bg-white/95 backdrop-blur-md border border-[#E5E7EB] px-4 py-2 rounded-full shadow-md text-xs font-mono text-[#525866]">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#10B981]" />
+                <span>Supporting Signal</span>
+              </span>
+              <span className="text-[#CBD5E1]">·</span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#EF4444]" />
+                <span>Challenging Signal</span>
+              </span>
+              {tests.length > 0 && (
+                <>
+                  <span className="text-[#CBD5E1]">·</span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#4F46E5]" />
+                    <span>Validation Test</span>
+                  </span>
+                </>
+              )}
+            </div>
+
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              nodeTypes={NODE_TYPES}
+              onInit={(instance) => { rfInstanceRef.current = instance; }}
+              fitView
+              fitViewOptions={FIT_VIEW_OPTIONS}
+              defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
+              proOptions={PRO_OPTIONS}
+              minZoom={0.15}
+              maxZoom={1.8}
+            >
+              <Background color="#E2E8F0" gap={24} size={1} />
+              <Controls showInteractive={false} className="!bg-white !border !border-[#CBD5E1] !rounded-2xl !shadow-md !m-6" />
+            </ReactFlow>
+          </div>
+        </div>
+      )}
 
       {/* TOAST FEEDBACK */}
       {activeToast && (

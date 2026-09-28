@@ -11,10 +11,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenTry, onNavigateSection }) 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navLinks = [
-    { label: 'Product Autopsy', id: 'section-product' },
-    { label: 'Evidence Graph', id: 'section-graph' },
-    { label: 'User Simulation', id: 'section-simulation' },
-    { label: 'Signal Calendar', id: 'section-timeline' },
+    { label: 'Live Investigation', id: 'live-investigation' },
+    { label: 'Evidence Graph', id: 'section-evidence-graph' },
+    { label: 'Product Testing', id: 'section-testing' },
   ];
 
   const handleLinkClick = (id: string) => {

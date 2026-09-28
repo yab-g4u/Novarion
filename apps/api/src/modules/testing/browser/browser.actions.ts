@@ -1,4 +1,4 @@
-import { Page } from 'playwright';
+import type { Page } from 'playwright';
 
 export interface ActionExecutionResult {
   success: boolean;
@@ -22,13 +22,32 @@ export class BrowserActionExecutor {
     const desc = targetName || selector;
     try {
       const locator = page.locator(selector).first();
-      await locator.waitFor({ state: 'visible', timeout: 6000 });
-      await locator.scrollIntoViewIfNeeded({ timeout: 3000 });
-      await locator.click({ timeout: 5000 });
-      // Brief stabilization pause
-      await page.waitForTimeout(800);
+      await locator.waitFor({ state: 'visible', timeout: 4000 });
+      await locator.scrollIntoViewIfNeeded({ timeout: 2000 });
+      await locator.click({ timeout: 4000 });
+      // Brief stabilization pause for navigation or DOM update
+      await page.waitForTimeout(1000);
       return { success: true, targetDescription: `Clicked "${desc}"` };
     } catch (err: any) {
+      // Resilient DOM fallback: search by text content across interactive elements
+      try {
+        const clicked = await page.evaluate((targetDesc) => {
+          const els = Array.from(document.querySelectorAll('button, a, [role="button"], [role="link"], input'));
+          const match = els.find((el) => {
+            const txt = (el.textContent || '').trim().toLowerCase();
+            return txt && (txt.includes(targetDesc.toLowerCase()) || targetDesc.toLowerCase().includes(txt));
+          });
+          if (match) {
+            (match as HTMLElement).click();
+            return true;
+          }
+          return false;
+        }, desc);
+        if (clicked) {
+          await page.waitForTimeout(1000);
+          return { success: true, targetDescription: `Clicked "${desc}"` };
+        }
+      } catch {}
       return { success: false, error: err.message, targetDescription: `Click "${desc}"` };
     }
   }
@@ -37,14 +56,31 @@ export class BrowserActionExecutor {
     const desc = targetName || selector;
     try {
       const locator = page.locator(selector).first();
-      await locator.waitFor({ state: 'visible', timeout: 6000 });
-      await locator.scrollIntoViewIfNeeded({ timeout: 3000 });
-      await locator.click({ timeout: 3000 });
+      await locator.waitFor({ state: 'visible', timeout: 4000 });
+      await locator.scrollIntoViewIfNeeded({ timeout: 2000 });
+      await locator.click({ timeout: 2000 });
       await locator.fill(''); // Clear first
-      await locator.fill(text, { timeout: 5000 });
-      await page.waitForTimeout(500);
+      await locator.fill(text, { timeout: 4000 });
+      await page.waitForTimeout(600);
       return { success: true, targetDescription: `Typed "${text.slice(0, 30)}" into ${desc}` };
     } catch (err: any) {
+      // DOM fallback for typing into inputs
+      try {
+        const filled = await page.evaluate(({ sel, val }) => {
+          const input = document.querySelector(sel) as HTMLInputElement | null;
+          if (input) {
+            input.value = val;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            return true;
+          }
+          return false;
+        }, { sel: selector, val: text });
+        if (filled) {
+          await page.waitForTimeout(600);
+          return { success: true, targetDescription: `Typed "${text.slice(0, 30)}" into ${desc}` };
+        }
+      } catch {}
       return { success: false, error: err.message, targetDescription: `Type into "${desc}"` };
     }
   }
@@ -62,8 +98,10 @@ export class BrowserActionExecutor {
   public async scroll(page: Page, direction: 'up' | 'down' = 'down', amount = 400): Promise<ActionExecutionResult> {
     try {
       const deltaY = direction === 'down' ? amount : -amount;
-      await page.mouse.wheel(0, deltaY);
-      await page.waitForTimeout(600);
+      await page.evaluate((dy) => {
+        window.scrollBy({ top: dy, behavior: 'smooth' });
+      }, deltaY);
+      await page.waitForTimeout(700);
       return { success: true, targetDescription: `Scrolled ${direction} by ${amount}px` };
     } catch (err: any) {
       return { success: false, error: err.message, targetDescription: `Scroll ${direction}` };

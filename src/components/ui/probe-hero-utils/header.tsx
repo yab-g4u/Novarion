@@ -23,10 +23,9 @@ interface HeaderProps {
 }
 
 const DEFAULT_NAV: NavigationItem[] = [
-  { title: 'Research', href: '#capability-research' },
-  { title: 'Product Testing', href: '#capability-testing' },
-  { title: 'Evidence Graph', href: '#capability-evidence' },
-  { title: 'Calendar', href: '#capability-calendar' },
+  { title: 'Investigation', href: '#live-investigation' },
+  { title: 'Evidence Graph', href: '#section-evidence-graph' },
+  { title: 'Product Testing', href: '#section-testing' },
 ];
 
 export const Header: React.FC<HeaderProps> = ({

@@ -4,7 +4,6 @@ import { ProbeHero } from '../components/ui/probe-hero';
 import { LiveInvestigationExperience } from '../components/landing/LiveInvestigationExperience';
 import { EvidenceGraph } from '../components/EvidenceGraph';
 import { ProductTestingSection } from '../components/ProductTestingSection';
-import { EvidenceTimeline } from '../components/EvidenceTimeline';
 import { FinalCTARefined } from '../components/landing/FinalCTARefined';
 import { ShapeWavesFooter } from '../components/landing/ShapeWavesFooter';
 import { safeRefreshScrollTrigger } from '../motion/gsapConfig';
@@ -53,7 +52,7 @@ export const LandingPage: React.FC = () => {
           if (el) el.scrollIntoView({ behavior: 'smooth' });
         }}
         onExploreDemo={() => {
-          const el = document.getElementById('section-graph');
+          const el = document.getElementById('section-evidence-graph');
           if (el) el.scrollIntoView({ behavior: 'smooth' });
         }}
       />
@@ -75,12 +74,7 @@ export const LandingPage: React.FC = () => {
         <ProductTestingSection />
       </div>
 
-      {/* EXPERIENCE E: 12-MONTH SIGNAL CALENDAR (MATCHES signal.png WITH DRIFT & ACCESSIBLE ARTIFACTS) */}
-      <div id="section-timeline" className="w-full bg-white">
-        <EvidenceTimeline />
-      </div>
-
-      {/* EXPERIENCE F: FINAL CTA & SIGN IN */}
+      {/* EXPERIENCE E: FINAL CTA & SIGN IN */}
       <FinalCTARefined
         onStartInvestigating={(idea) => handleStartInvestigating(idea)}
         onExploreProduct={handleExploreProduct}

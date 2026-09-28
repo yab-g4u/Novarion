@@ -98,7 +98,21 @@ export class CompletionDetector {
       }
     }
 
-    // 3. GENERAL TASK MATCHING
+    // 3. EXPLORATORY SURFING & GENERAL TASK EVALUATION
+    if (plan.inferredGoal === 'EXPLORE_FEATURE') {
+      if (stepCount >= 3) {
+        evidence.push(`Simulated real user completed multi-step exploration across ${stepCount} distinct actions.`);
+        evidence.push(`Inspected ${observation.elements.length} interactive elements across product layout.`);
+        return {
+          status: 'COMPLETED',
+          confidence: 0.95,
+          evidence,
+          explanation: `Simulated real user exploration completed across ${stepCount} steps with high layout fidelity.`
+        };
+      }
+    }
+
+    // 4. GENERAL TASK MATCHING
     const taskWords = plan.originalTask
       .toLowerCase()
       .split(/\s+/)

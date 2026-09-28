@@ -102,18 +102,20 @@ export class ScholarXIVProvider implements SearchProvider {
 
       const title = titleMatch ? titleMatch[1].replace(/\s+/g, ' ').trim() : 'Research Paper';
       const abstract = summaryMatch ? summaryMatch[1].replace(/\s+/g, ' ').trim() : '';
-      const paperUrl = idMatch ? idMatch[1].trim() : 'https://arxiv.org';
+      const rawPaperUrl = idMatch ? idMatch[1].trim() : '';
       const publishedAt = publishedMatch ? publishedMatch[1].trim() : undefined;
 
-      const paperIdMatch = paperUrl.match(/abs\/([^/]+)/);
+      const paperIdMatch = rawPaperUrl.match(/abs\/([^/]+)/);
       const paperId = paperIdMatch ? paperIdMatch[1] : `paper-${i}`;
+      // ScholarXIV website paper URL
+      const scholarxivUrl = `https://www.scholarxiv.com/papers/${paperId}`;
 
       results.push({
         id: `scholarxiv-${paperId}`,
         sourceType: 'scholarxiv',
         title,
         text: abstract.slice(0, 900),
-        url: paperUrl,
+        url: scholarxivUrl,
         author: {
           name: authors || 'Academic Researchers'
         },
@@ -122,7 +124,8 @@ export class ScholarXIVProvider implements SearchProvider {
         relevanceScore: 0.85,
         metadata: {
           paperId,
-          sourceRepository: 'ScholarXIV Academic Index (arXiv Open Access)',
+          sourceRepository: 'ScholarXIV Academic Repository',
+          originalArxivUrl: rawPaperUrl || undefined,
           contentCompleteness: 'full'
         }
       });

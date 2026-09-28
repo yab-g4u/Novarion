@@ -7,6 +7,7 @@ export type SourceType =
   | 'google'
   | 'reviews'
   | 'research'
+  | 'scholarxiv'
   | 'playstore'
   | 'producthunt'
   | 'linear'

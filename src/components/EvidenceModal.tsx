@@ -135,21 +135,39 @@ export const EvidenceModal: React.FC<EvidenceModalProps> = ({ source, onClose })
         )}
 
         {/* Bottom Actions */}
-        <div className="pt-2 border-t border-[#E5E7EB] flex items-center justify-between text-xs">
+        <div className="pt-2 border-t border-[#E5E7EB] flex flex-wrap items-center justify-between gap-2 text-xs">
           <button
             onClick={handleCopy}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#F3F4F6] hover:bg-[#E5E7EB] text-[#0A0D14] font-medium transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#F3F4F6] hover:bg-[#E5E7EB] text-[#0A0D14] font-medium transition cursor-pointer"
           >
             {copied ? <Check size={13} className="text-[#10B981]" /> : <Copy size={13} />}
             <span>{copied ? 'Copied' : 'Copy Evidence Citation'}</span>
           </button>
 
-          <button
-            onClick={onClose}
-            className="px-4 py-1.5 rounded-lg bg-[#0A0D14] hover:bg-[#202530] text-white font-medium transition"
-          >
-            Close
-          </button>
+          <div className="flex items-center gap-2">
+            {source.url && source.url !== '#' && (
+              <a
+                href={
+                  source.sourceType === 'scholarxiv' && !source.url.includes('scholarxiv.com')
+                    ? `https://www.scholarxiv.com/papers/${source.id.replace('scholarxiv-', '')}`
+                    : source.url
+                }
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#0F52BA] hover:bg-[#0D47A1] text-white font-medium transition cursor-pointer shadow-xs"
+              >
+                <span>{source.sourceType === 'scholarxiv' ? 'Read Paper on ScholarXIV' : 'View Source'}</span>
+                <ExternalLink size={13} />
+              </a>
+            )}
+
+            <button
+              onClick={onClose}
+              className="px-4 py-1.5 rounded-lg bg-[#0A0D14] hover:bg-[#202530] text-white font-medium transition cursor-pointer"
+            >
+              Close
+            </button>
+          </div>
         </div>
       </div>
     </div>
