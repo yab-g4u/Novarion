@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="1000" height="1000" fill="#000000">
+  <!-- Top Loop / Arc of the P -->
+  <path d="
+    M 250 310
+    L 470 185
+    A 330 330 0 0 1 800 500
+    C 800 630 700 710 560 710
+    L 560 590
+    C 640 590 680 540 680 500
+    A 210 210 0 0 0 470 290
+    L 250 415
+    Z
+  " />
+
+  <!-- Middle Chevron + Probe Needle Head -->
+  <!-- Probe Pin Head Circle -->
+  <circle cx="560" cy="430" r="65" />
+
+  <!-- Pin Tapered Neck + Middle Chevron -->
+  <path d="
+    M 250 490
+    L 430 670
+    L 515 480
+    L 560 430
+    L 480 560
+    L 525 740
+    L 430 830
+    L 250 635
+    Z
+  " />
+
+  <!-- Bottom Chevron -->
+  <path d="
+    M 250 670
+    L 430 860
+    L 525 775
+    L 525 845
+    L 430 930
+    L 250 785
+    Z
+  " />
+</svg>

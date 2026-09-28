@@ -24,9 +24,6 @@ export const FinalCTA: React.FC<FinalCTAProps> = ({ onSubmitIdea }) => {
         <h2 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-[#0A0D14] leading-tight">
           Before you build further, Probe it.
         </h2>
-        <p className="text-sm text-[#525866]">
-          Free to test your first 5 assumptions. No credit card required.
-        </p>
 
         {/* Input Bar Pill */}
         <div className="pt-6 max-w-xl mx-auto">

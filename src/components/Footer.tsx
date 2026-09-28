@@ -1,5 +1,5 @@
 import React from 'react';
-import { ProbeLogo } from './Icons';
+import { ProbeLogo } from './ProbeLogo';
 import { ExternalLink } from 'lucide-react';
 
 export const Footer: React.FC = () => {

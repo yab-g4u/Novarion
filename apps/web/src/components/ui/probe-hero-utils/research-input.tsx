@@ -12,7 +12,6 @@ const EXAMPLE_SUGGESTIONS = [
   { label: 'Cooking app', idea: 'I want to build a cooking app' },
   { label: 'Student housing', idea: 'A subletting and roommate verification platform for college students' },
   { label: 'Fitness platform', idea: 'Adaptive strength training planner that adjusts around daily fatigue' },
-  { label: 'Invoicing tool', idea: 'Automated receipt categorization and tax reserve estimator for solo freelancers' },
 ];
 
 export const ResearchInput: React.FC<ResearchInputProps> = ({
@@ -31,18 +30,17 @@ export const ResearchInput: React.FC<ResearchInputProps> = ({
 
   const handleSelectSuggestion = (idea: string) => {
     setInputValue(idea);
-    // As per user specification: "Clicking a suggestion should populate the input. Do not automatically start research. The user must explicitly click Investigate."
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto space-y-4">
+    <div className="w-full max-w-2xl mx-auto flex flex-col items-center">
       {/* Main Idea Input Form */}
-      <form onSubmit={handleSubmit} className="relative group">
+      <form onSubmit={handleSubmit} className="w-full relative group">
         <label htmlFor="probe-idea-input" className="sr-only">
           What are you thinking of building?
         </label>
 
-        <div className="relative flex flex-col sm:flex-row items-stretch sm:items-center bg-white border border-[#CBD5E1] group-hover:border-[#94A3B8] focus-within:border-[#0F52BA] focus-within:ring-4 focus-within:ring-[#0F52BA]/10 rounded-2xl sm:rounded-3xl p-2 sm:p-2.5 shadow-sm transition-all bg-[#FFFFFF]">
+        <div className="relative flex flex-col sm:flex-row items-stretch sm:items-center bg-white border border-[#CBD5E1] group-hover:border-[#94A3B8] focus-within:border-[#0A0D14] focus-within:ring-4 focus-within:ring-black/5 rounded-2xl sm:rounded-3xl p-2 sm:p-2.5 shadow-sm transition-all">
           {/* Leading Sparkle Icon */}
           <div className="hidden sm:flex items-center justify-center pl-3 pr-2 text-[#0F52BA]">
             <span className="text-base select-none">✦</span>
@@ -73,7 +71,7 @@ export const ResearchInput: React.FC<ResearchInputProps> = ({
               </>
             ) : (
               <>
-                <span>Investigate</span>
+                <span>Start investigating</span>
                 <ArrowRight size={14} className="text-[#94A3B8] group-hover:translate-x-0.5 transition-transform" />
               </>
             )}
@@ -81,28 +79,47 @@ export const ResearchInput: React.FC<ResearchInputProps> = ({
         </div>
       </form>
 
-      {/* Suggestion Chips */}
-      <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 text-[11px] font-mono text-[#64748B]">
-        <span className="text-[#868C98]">Try an example:</span>
-        {EXAMPLE_SUGGESTIONS.map((sug) => (
-          <button
-            key={sug.label}
-            type="button"
-            onClick={() => handleSelectSuggestion(sug.idea)}
-            className={`px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
-              inputValue === sug.idea
-                ? 'bg-[#EFF6FF] border-[#BFDBFE] text-[#1D4ED8] font-semibold'
-                : 'bg-white border-[#E2E8F0] hover:border-[#CBD5E1] text-[#334155]'
-            }`}
-          >
-            {sug.label}
-          </button>
-        ))}
+      {/* Small Example Suggestions - Exactly 3 Examples with Generous Spacing */}
+      <div className="mt-5 flex flex-wrap items-center justify-center gap-2 sm:gap-3 text-xs text-[#525866]">
+        <button
+          type="button"
+          onClick={() => handleSelectSuggestion(EXAMPLE_SUGGESTIONS[0].idea)}
+          className={`px-3 py-1.5 rounded-full border transition-all cursor-pointer ${
+            inputValue === EXAMPLE_SUGGESTIONS[0].idea
+              ? 'bg-[#0A0D14] text-white border-[#0A0D14] font-medium'
+              : 'bg-white/80 hover:bg-white text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]'
+          }`}
+        >
+          {EXAMPLE_SUGGESTIONS[0].label}
+        </button>
+        <span className="text-[#CBD5E1] select-none">·</span>
+        <button
+          type="button"
+          onClick={() => handleSelectSuggestion(EXAMPLE_SUGGESTIONS[1].idea)}
+          className={`px-3 py-1.5 rounded-full border transition-all cursor-pointer ${
+            inputValue === EXAMPLE_SUGGESTIONS[1].idea
+              ? 'bg-[#0A0D14] text-white border-[#0A0D14] font-medium'
+              : 'bg-white/80 hover:bg-white text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]'
+          }`}
+        >
+          {EXAMPLE_SUGGESTIONS[1].label}
+        </button>
+        <span className="text-[#CBD5E1] select-none">·</span>
+        <button
+          type="button"
+          onClick={() => handleSelectSuggestion(EXAMPLE_SUGGESTIONS[2].idea)}
+          className={`px-3 py-1.5 rounded-full border transition-all cursor-pointer ${
+            inputValue === EXAMPLE_SUGGESTIONS[2].idea
+              ? 'bg-[#0A0D14] text-white border-[#0A0D14] font-medium'
+              : 'bg-white/80 hover:bg-white text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]'
+          }`}
+        >
+          {EXAMPLE_SUGGESTIONS[2].label}
+        </button>
       </div>
 
-      {/* Trust Signal Line */}
-      <div className="pt-1 flex items-center justify-center gap-2 text-xs font-mono text-[#868C98]">
-        <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
+      {/* One Tiny Credibility Line Below with Generous Spacing */}
+      <div className="mt-5 flex items-center justify-center gap-2 text-xs font-mono text-[#64748B]">
         <span>Real conversations · Real products · Real research</span>
       </div>
     </div>

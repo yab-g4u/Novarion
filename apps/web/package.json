@@ -9,9 +9,9 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@probe/shared": "workspace:*",
-    "@probe/ui": "workspace:*",
-    "@probe/schemas": "workspace:*",
+    "@probe/shared": "*",
+    "@probe/ui": "*",
+    "@probe/schemas": "*",
     "@xyflow/react": "^12.12.0",
     "clsx": "^2.1.1",
     "elkjs": "^0.12.0",
