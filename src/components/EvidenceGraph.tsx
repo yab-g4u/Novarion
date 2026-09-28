@@ -22,96 +22,187 @@ import { DynamicGraphData, DynamicEvidenceSource } from '../types/evidenceGraph'
 import { 
   RotateCcw, 
   ExternalLink,
-  PlusCircle,
-  Database,
-  Layers,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  Share2,
+  Users,
+  MessageSquare,
+  AlertTriangle,
+  CheckCircle2,
+  FlaskConical,
+  Scale,
+  Check,
+  ChevronRight,
+  HelpCircle,
+  Lightbulb
 } from 'lucide-react';
+import { useInvestigationRoom } from '../lib/collaboration/useInvestigationRoom';
+import { ShareInvestigationModal } from './collaboration/ShareInvestigationModal';
+import { NodeDetailDrawer, SelectedNodeContext } from './collaboration/NodeDetailDrawer';
+import { ValidationTest, NodeDecision } from '../types/collaboration';
 
 interface EvidenceGraphProps {
   onSelectSource?: (source: any) => void;
   externalGraphData?: DynamicGraphData | null;
+  roomId?: string;
+  onNavigateToCalendar?: () => void;
+  onTestCreated?: (test: ValidationTest) => void;
+  focusNodeId?: string | null;
 }
 
 const elk = new ELK();
 
-// 1. MEMOIZATION: Memoized Central Assumption Node
+// 1. REFINED CENTRAL IDEA / CORE ASSUMPTION NODE
 const CentralIdeaNodeComponent: React.FC<NodeProps> = ({ data }) => {
-  const nodeData = data as { label: string; product: string; isDynamic?: boolean };
-  return (
-    <div className={`relative probe-glass border-2 ${nodeData.isDynamic ? 'border-[#0F52BA]' : 'border-[#0A0D14]'} rounded-2xl p-4 shadow-md max-w-xs text-center select-none transition-shadow hover:shadow-lg`}>
-      <Handle type="source" position={Position.Left} id="left" className="!bg-[#10B981] !w-2.5 !h-2.5" />
-      <Handle type="source" position={Position.Right} id="right" className="!bg-[#F43F5E] !w-2.5 !h-2.5" />
-      <Handle type="source" position={Position.Bottom} id="bottom" className="!bg-[#94A3B8] !w-2.5 !h-2.5" />
+  const nodeData = data as { 
+    id: string;
+    label: string; 
+    product: string; 
+    isDynamic?: boolean;
+    commentsCount?: number;
+    decision?: NodeDecision;
+    onSelect?: () => void;
+  };
 
-      <div className="flex items-center justify-center gap-1.5 mb-1 text-[10px] font-mono text-[#868C98]">
-        {nodeData.isDynamic && <Sparkles size={11} className="text-[#0F52BA]" />}
-        <span className="font-bold text-[#0A0D14] uppercase">{nodeData.product}</span>
-        <span>·</span>
-        <span>{nodeData.isDynamic ? 'LIVE SEARCH QUERY' : 'CORE ASSUMPTION'}</span>
+  return (
+    <div 
+      onClick={() => nodeData.onSelect && nodeData.onSelect()}
+      className={`relative bg-white border ${
+        nodeData.decision
+          ? 'border-[#10B981] shadow-[0_4px_20px_rgba(16,185,129,0.08)]'
+          : 'border-[#0A0D14] shadow-[0_4px_20px_rgba(0,0,0,0.06)]'
+      } rounded-2xl p-4 w-72 text-left select-none transition-all hover:scale-[1.01] hover:shadow-lg cursor-pointer group`}
+    >
+      <Handle type="source" position={Position.Left} id="left" className="!bg-[#10B981] !w-2.5 !h-2.5 !border-2 !border-white" />
+      <Handle type="source" position={Position.Right} id="right" className="!bg-[#F43F5E] !w-2.5 !h-2.5 !border-2 !border-white" />
+      <Handle type="source" position={Position.Bottom} id="bottom" className="!bg-[#4F46E5] !w-2.5 !h-2.5 !border-2 !border-white" />
+
+      {/* Header Pill */}
+      <div className="flex items-center justify-between gap-1 mb-2">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#F1F3F5] text-[#0A0D14] font-mono text-[9px] font-bold uppercase tracking-wider">
+          <Lightbulb size={10} className="text-[#0F52BA]" />
+          <span>CORE HYPOTHESIS</span>
+        </span>
+
+        {/* Realtime Comments badge */}
+        {Boolean(nodeData.commentsCount && nodeData.commentsCount > 0) && (
+          <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-[#EFF6FF] text-[#1D4ED8] text-[9px] font-mono font-bold">
+            <MessageSquare size={9} />
+            <span>{nodeData.commentsCount}</span>
+          </span>
+        )}
       </div>
+
       <p className="text-xs font-bold text-[#0A0D14] leading-snug line-clamp-3">
         "{nodeData.label}"
       </p>
+
+      {/* Decision Tag */}
+      {nodeData.decision ? (
+        <div className="mt-3 pt-2 border-t border-[#E5E7EB] flex items-center justify-between text-[10px] font-mono">
+          <span className="flex items-center gap-1 font-bold text-[#059669]">
+            <CheckCircle2 size={11} />
+            <span>DECISION</span>
+          </span>
+          <span className="truncate max-w-[140px] text-[#334155] font-medium">{nodeData.decision.conclusion}</span>
+        </div>
+      ) : (
+        <div className="mt-2.5 flex items-center justify-between text-[10px] font-mono text-[#868C98]">
+          <span>Click to interrogate</span>
+          <span className="text-[#0A0D14] group-hover:translate-x-0.5 transition-transform">→</span>
+        </div>
+      )}
     </div>
   );
 };
 export const CentralIdeaNode = memo(CentralIdeaNodeComponent);
 
-// 2. MEMOIZATION: Memoized Evidence Source Node with strict prop comparison
+// 2. REFINED EVIDENCE SOURCE NODE
 const SourceItemNodeComponent: React.FC<NodeProps> = ({ data }) => {
   const nodeData = data as {
     source: RealSourceSnippet | DynamicEvidenceSource;
+    commentsCount?: number;
+    isChallenged?: boolean;
+    challengeReason?: string;
     onSelect?: (source: any) => void;
   };
-  const { source, onSelect } = nodeData;
+  const { source, commentsCount, isChallenged, onSelect } = nodeData;
   const isSupport = source.relationship === 'Supports';
   const isChallenges = source.relationship === 'Challenges';
-
-  const borderColor = isSupport
-    ? 'border-[#A7F3D0] hover:border-[#10B981]'
-    : isChallenges
-    ? 'border-[#FECDD3] hover:border-[#F43F5E]'
-    : 'border-[#E5E7EB] hover:border-[#94A3B8]';
-
-  const badgeBg = isSupport
-    ? 'bg-[#ECFDF5] text-[#059669]'
-    : isChallenges
-    ? 'bg-[#FFF1F2] text-[#E11D48]'
-    : 'bg-[#F1F3F5] text-[#525866]';
+  const isUnknown = source.relationship === 'Unknown' || (source as any).relationship === 'unknown';
 
   return (
     <div
       onClick={() => onSelect && onSelect(source)}
-      className={`probe-glass border ${borderColor} rounded-2xl p-3 shadow-2xs hover:shadow-md transition-all cursor-pointer w-60 text-left group select-none`}
+      className={`bg-white border rounded-2xl p-3.5 shadow-2xs hover:shadow-md transition-all cursor-pointer w-64 text-left group select-none relative ${
+        isChallenged
+          ? 'border-[#FDA4AF] ring-2 ring-[#FFE4E6]'
+          : isSupport
+          ? 'border-[#E2E8F0] hover:border-[#10B981]'
+          : isChallenges
+          ? 'border-[#E2E8F0] hover:border-[#F43F5E]'
+          : isUnknown
+          ? 'border-[#FDE68A] hover:border-[#D97706] bg-[#FFFDF5]'
+          : 'border-[#E5E7EB]'
+      }`}
     >
       <Handle
         type="target"
         position={isSupport ? Position.Right : isChallenges ? Position.Left : Position.Top}
-        className={`!w-2 !h-2 ${isSupport ? '!bg-[#10B981]' : isChallenges ? '!bg-[#F43F5E]' : '!bg-[#94A3B8]'}`}
+        className={`!w-2 !h-2 !border-2 !border-white ${
+          isSupport ? '!bg-[#10B981]' : isChallenges ? '!bg-[#F43F5E]' : isUnknown ? '!bg-[#F59E0B]' : '!bg-[#94A3B8]'
+        }`}
       />
 
-      <div className="flex items-center justify-between mb-1.5">
-        <div className="flex items-center gap-1.5">
-          <SourceIconSelector type={source.sourceType as any} size={18} />
+      {/* Top Header */}
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <SourceIconSelector type={source.sourceType as any} size={16} />
           <span className="text-[11px] font-bold text-[#0A0D14] truncate max-w-[110px]">
             {source.sourceIdentifier.split('·')[0]}
           </span>
         </div>
-        <span className={`text-[9px] font-mono px-2 py-0.5 rounded-full font-semibold ${badgeBg}`}>
-          {source.relationship}
-        </span>
+        
+        <div className="flex items-center gap-1">
+          {Boolean(commentsCount && commentsCount > 0) && (
+            <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-[#EFF6FF] text-[#1D4ED8] text-[9px] font-mono font-bold">
+              <MessageSquare size={9} />
+              <span>{commentsCount}</span>
+            </span>
+          )}
+
+          <span className={`text-[9px] font-mono px-2 py-0.5 rounded-full font-semibold ${
+            isSupport
+              ? 'bg-[#ECFDF5] text-[#059669]'
+              : isChallenges
+              ? 'bg-[#FFF1F2] text-[#E11D48]'
+              : isUnknown
+              ? 'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]'
+              : 'bg-[#F1F3F5] text-[#525866]'
+          }`}>
+            {isSupport ? '↑ Supports' : isChallenges ? '↓ Challenges' : isUnknown ? '? Blind Spot' : 'Signal'}
+          </span>
+        </div>
       </div>
 
-      <p className="text-[11px] text-[#525866] line-clamp-2 leading-relaxed group-hover:text-[#0A0D14] transition-colors">
+      {/* Excerpt */}
+      <p className="text-[11px] text-[#475467] line-clamp-2 leading-relaxed group-hover:text-[#0A0D14] transition-colors">
         "{source.excerpt}"
       </p>
 
-      <div className="mt-2 pt-1.5 border-t border-[#F8FAFC] flex items-center justify-between text-[9px] font-mono text-[#868C98]">
+      {/* Challenge Alert Ribbon */}
+      {isChallenged && (
+        <div className="mt-2 py-0.5 px-1.5 rounded-md bg-[#FEF2F2] border border-[#FECACA] flex items-center gap-1 text-[9px] font-mono text-[#B91C1C] font-semibold">
+          <AlertTriangle size={10} />
+          <span>Challenged by collaborator</span>
+        </div>
+      )}
+
+      {/* Bottom meta */}
+      <div className="mt-2.5 pt-2 border-t border-[#F8FAFC] flex items-center justify-between text-[9px] font-mono text-[#868C98]">
         <span>{source.date}</span>
         <span className="text-[#0A0D14] group-hover:underline flex items-center gap-0.5">
-          Source <ExternalLink size={9} />
+          {isUnknown ? 'Interrogate' : 'Inspect'} <ArrowRight size={9} />
         </span>
       </div>
     </div>
@@ -119,13 +210,63 @@ const SourceItemNodeComponent: React.FC<NodeProps> = ({ data }) => {
 };
 export const SourceItemNode = memo(SourceItemNodeComponent);
 
-// 3. REACT FLOW OPTIMIZATION: nodeTypes defined outside of the component to prevent re-creation
+// 3. REFINED REAL-WORLD NEXT TEST NODE
+const TestItemNodeComponent: React.FC<NodeProps> = ({ data }) => {
+  const nodeData = data as {
+    test: ValidationTest;
+    onSelect?: (test: ValidationTest) => void;
+  };
+  const { test, onSelect } = nodeData;
+  const isCompleted = test.status === 'COMPLETED';
+  const isRunning = test.status === 'RUNNING';
+
+  return (
+    <div
+      onClick={() => onSelect && onSelect(test)}
+      className={`bg-white border rounded-2xl p-3.5 shadow-2xs hover:shadow-md transition-all cursor-pointer w-64 text-left group select-none relative ${
+        isCompleted
+          ? 'border-[#86EFAC] bg-[#F0FDF4]/50'
+          : isRunning
+          ? 'border-[#FDE68A] bg-[#FFFBEB]/50'
+          : 'border-[#C7D2FE] bg-[#EEF2FF]/40 hover:border-[#4F46E5]'
+      }`}
+    >
+      <Handle type="target" position={Position.Top} className="!w-2 !h-2 !bg-[#4F46E5] !border-2 !border-white" />
+      <Handle type="source" position={Position.Bottom} className="!w-2 !h-2 !bg-[#4F46E5] !border-2 !border-white" />
+
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[9px] font-mono px-2 py-0.5 rounded-md font-bold uppercase tracking-wider bg-white border border-[#CBD5E1] text-[#4F46E5] flex items-center gap-1 shadow-2xs">
+          <FlaskConical size={10} />
+          <span>EXPERIMENT</span>
+        </span>
+        <span className={`text-[9px] font-mono px-2 py-0.5 rounded-full font-semibold ${
+          isCompleted ? 'bg-[#DCFCE7] text-[#166534]' : isRunning ? 'bg-[#FEF3C7] text-[#92400E]' : 'bg-[#E0E7FF] text-[#3730A3]'
+        }`}>
+          {test.status}
+        </span>
+      </div>
+
+      <p className="text-[11px] font-bold text-[#0A0D14] line-clamp-2 leading-snug">
+        {test.question}
+      </p>
+
+      <div className="mt-2.5 pt-2 border-t border-black/5 flex items-center justify-between text-[9px] font-mono text-[#525866]">
+        <span>{test.methodLabel.split(' ')[0]} Test</span>
+        <span className="text-[#4F46E5] font-semibold">{test.scheduledDate}</span>
+      </div>
+    </div>
+  );
+};
+export const TestItemNode = memo(TestItemNodeComponent);
+
+// Node types registered
 const NODE_TYPES = {
   centralNode: CentralIdeaNode,
   sourceNode: SourceItemNode,
+  testNode: TestItemNode,
 };
 
-const FIT_VIEW_OPTIONS: FitViewOptions = { padding: 0.25, duration: 600 };
+const FIT_VIEW_OPTIONS: FitViewOptions = { padding: 0.2, duration: 500 };
 const PRO_OPTIONS: ProOptions = { hideAttribution: true };
 const DEFAULT_EDGE_OPTIONS: DefaultEdgeOptions = {
   animated: true,
@@ -133,64 +274,187 @@ const DEFAULT_EDGE_OPTIONS: DefaultEdgeOptions = {
 
 export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({ 
   onSelectSource,
-  externalGraphData
+  externalGraphData,
+  roomId: propRoomId,
+  onNavigateToCalendar,
+  onTestCreated,
+  focusNodeId
 }) => {
-  const [selectedProductId, setSelectedProductId] = useState<'live' | 'linear' | 'cursor' | 'notion'>('live');
-  const [filterRelationship, setFilterRelationship] = useState<'all' | 'Supports' | 'Challenges'>('all');
+  const [filterRelationship, setFilterRelationship] = useState<'all' | 'Supports' | 'Challenges' | 'Tests' | 'Decisions'>('all');
   const [isLayoutCalculating, setIsLayoutCalculating] = useState<boolean>(false);
-  const [datasetMultiplier, setDatasetMultiplier] = useState<number>(1);
+  const [activeToast, setActiveToast] = useState<string | null>(null);
 
-  // Automatically switch to live query graph when externalGraphData updates!
-  useEffect(() => {
-    if (externalGraphData && externalGraphData.sources.length > 0) {
-      setSelectedProductId('live');
-    }
-  }, [externalGraphData]);
+  // Realtime collaborative room hook
+  const {
+    roomId,
+    shareableUrl,
+    currentUser,
+    collaborators,
+    collaboratorCount,
+    comments,
+    decisions,
+    tests,
+    challenges,
+    addComment,
+    toggleChallengeEvidence,
+    recordDecision,
+    createNextTest,
+    updateTestStatus,
+  } = useInvestigationRoom(propRoomId, externalGraphData?.query, externalGraphData?.coreAssumption);
 
-  const isLive = selectedProductId === 'live' && Boolean(externalGraphData);
-  const activeProfile = REAL_PRODUCT_PROFILES[selectedProductId === 'live' ? 'linear' : selectedProductId];
+  // Modals state
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [selectedNodeContext, setSelectedNodeContext] = useState<SelectedNodeContext | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    setActiveToast(msg);
+    setTimeout(() => setActiveToast(null), 3000);
+  }, []);
+
+  const isLive = Boolean(externalGraphData && externalGraphData.sources.length > 0);
+  const activeProfile = REAL_PRODUCT_PROFILES['linear'];
 
   const currentLabel = isLive 
     ? externalGraphData?.coreAssumption || ''
     : activeProfile.coreAssumption;
   
   const currentProduct = isLive
-    ? 'LIVE PROBE SEARCH'
+    ? 'INVESTIGATED ASSUMPTION'
     : activeProfile.name;
 
-  // Stable node selection callback
-  const handleSelectNode = useCallback(
+  // Compute dataset: supports dynamic scaling or search injection + completed tests as new evidence
+  const filteredSources = useMemo(() => {
+    let base: (RealSourceSnippet | DynamicEvidenceSource)[] = isLive && externalGraphData
+      ? [...externalGraphData.sources]
+      : [...activeProfile.sources];
+
+    // Inject completed validation tests as NEW EVIDENCE back into the graph
+    tests.forEach((test) => {
+      if (test.status === 'COMPLETED' && test.result) {
+        const testEvidence: DynamicEvidenceSource = {
+          id: `evidence-from-${test.id}`,
+          sourceType: 'docs',
+          sourceName: 'REAL-WORLD EXPERIMENT',
+          sourceIdentifier: `${test.methodLabel} · Completed`,
+          date: test.result.completedAt || 'Recent Experiment',
+          excerpt: test.result.summary,
+          relationship: test.result.verdict === 'SUPPORTS' ? 'Supports' : test.result.verdict === 'CHALLENGES' ? 'Challenges' : 'Unknown',
+          url: '#',
+          topic: 'empirical_experiment_result',
+          confidence: 95
+        };
+        if (!base.some((s) => s.id === testEvidence.id)) {
+          base.unshift(testEvidence);
+        }
+      }
+    });
+
+    if (filterRelationship === 'Supports' || filterRelationship === 'Challenges') {
+      base = base.filter((s) => s.relationship === filterRelationship);
+    }
+    return base;
+  }, [isLive, externalGraphData, activeProfile, filterRelationship, tests]);
+
+  // Stable node selection callback for sources
+  const handleSelectSourceNode = useCallback(
     (source: RealSourceSnippet | DynamicEvidenceSource) => {
+      const isUnknown = source.relationship === 'Unknown' || (source as any).relationship === 'unknown';
+      
+      const supporting = filteredSources
+        .filter((s) => s.relationship === 'Supports')
+        .map((s) => ({ id: s.id, source: s.sourceIdentifier, excerpt: s.excerpt, date: s.date, url: s.url }));
+      const contradicting = filteredSources
+        .filter((s) => s.relationship === 'Challenges')
+        .map((s) => ({ id: s.id, source: s.sourceIdentifier, excerpt: s.excerpt, date: s.date, url: s.url }));
+
+      setSelectedNodeContext({
+        id: source.id,
+        type: 'sourceNode',
+        category: isUnknown ? 'UNKNOWN' : 'EVIDENCE',
+        title: isUnknown ? `Unresolved: ${source.topic || 'Blind Spot'}` : source.sourceIdentifier,
+        subtitle: source.date,
+        excerpt: source.excerpt,
+        relationship: source.relationship as any,
+        sourceType: source.sourceType,
+        sourceIdentifier: source.sourceIdentifier,
+        date: source.date,
+        url: source.url,
+        confidence: (source as any).confidence || 85,
+        whyItMatters: (source as any).topic 
+          ? `Grounded signal in ${(source as any).topic.replace(/_/g, ' ')} reflecting real practitioner behavior.`
+          : 'Adversarial market signal challenging unexamined user demand.',
+        supportingEvidence: isUnknown ? supporting : undefined,
+        contradictingEvidence: isUnknown ? contradicting : undefined,
+        whatRemainsUnknown: isUnknown ? source.excerpt : undefined,
+      });
       if (onSelectSource) {
         onSelectSource(source);
       }
     },
-    [onSelectSource]
+    [onSelectSource, filteredSources]
   );
 
-  // Compute dataset: supports dynamic scaling or search injection
-  const filteredSources = useMemo(() => {
-    let base: (RealSourceSnippet | DynamicEvidenceSource)[] = isLive && externalGraphData
-      ? externalGraphData.sources
-      : activeProfile.sources;
+  // Stable node selection callback for central node
+  const handleSelectCentralNode = useCallback(() => {
+    const supporting = filteredSources
+      .filter((s) => s.relationship === 'Supports')
+      .map((s) => ({ id: s.id, source: s.sourceIdentifier, excerpt: s.excerpt, date: s.date, url: s.url }));
+    const contradicting = filteredSources
+      .filter((s) => s.relationship === 'Challenges')
+      .map((s) => ({ id: s.id, source: s.sourceIdentifier, excerpt: s.excerpt, date: s.date, url: s.url }));
+    const unknownSource = filteredSources.find((s) => s.relationship === 'Unknown' || (s as any).relationship === 'unknown');
 
-    if (filterRelationship !== 'all') {
-      base = base.filter((s) => s.relationship === filterRelationship);
-    }
-    if (datasetMultiplier <= 1) return base;
+    setSelectedNodeContext({
+      id: 'center',
+      type: 'centralNode',
+      category: 'ASSUMPTION',
+      title: currentLabel || 'Core Product Assumption',
+      subtitle: currentProduct,
+      excerpt: isLive 
+        ? `Investigated idea: "${externalGraphData?.query}" under empirical scrutiny.`
+        : 'Primary value hypothesis under pressure testing against real-world sources.',
+      confidence: 90,
+      whyItMatters: 'If this assumption fails in production, customer acquisition drops to near zero and retention cannot be sustained.',
+      supportingEvidence: supporting,
+      contradictingEvidence: contradicting,
+      whatRemainsUnknown: unknownSource 
+        ? unknownSource.excerpt 
+        : 'Willingness to commit upfront payments or deposits remains unvalidated without a real smoke test.',
+    });
+  }, [currentLabel, currentProduct, isLive, externalGraphData, filteredSources]);
 
-    const expanded: (RealSourceSnippet | DynamicEvidenceSource)[] = [];
-    for (let i = 0; i < datasetMultiplier; i++) {
-      base.forEach((src) => {
-        expanded.push({
-          ...src,
-          id: `${src.id}-batch-${i}`,
-          sourceIdentifier: `${src.sourceIdentifier} [Cluster #${i + 1}]`,
-        });
-      });
+  // Stable node selection callback for test nodes
+  const handleSelectTestNode = useCallback((test: ValidationTest) => {
+    setSelectedNodeContext({
+      id: test.id,
+      type: 'testNode',
+      category: 'NEXT_TEST',
+      title: test.question,
+      subtitle: test.methodLabel,
+      excerpt: `Target: ${test.target}. Success Signal: ${test.successSignal}`,
+      testData: test,
+      date: test.scheduledDate,
+      whyItMatters: 'Converts unresolved hypothesis into an empirical real-world experiment to remove team blind spots.',
+    });
+  }, []);
+
+  // Handle focusNodeId navigation from calendar
+  useEffect(() => {
+    if (!focusNodeId) return;
+    if (focusNodeId === 'center') {
+      handleSelectCentralNode();
+    } else {
+      const foundSource = filteredSources.find((s) => s.id === focusNodeId);
+      if (foundSource) {
+        handleSelectSourceNode(foundSource);
+      } else {
+        const foundTest = tests.find((t) => t.id === focusNodeId);
+        if (foundTest) {
+          handleSelectTestNode(foundTest);
+        }
+      }
     }
-    return expanded;
-  }, [isLive, externalGraphData, activeProfile, filterRelationship, datasetMultiplier]);
+  }, [focusNodeId, filteredSources, tests, handleSelectCentralNode, handleSelectSourceNode, handleSelectTestNode]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -199,48 +463,96 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
   const calculateLayout = useCallback(async () => {
     setIsLayoutCalculating(true);
 
+    const centralComments = comments['center'] || [];
+    const centralDecision = decisions['center'];
+
     const rawNodes: Node[] = [
       {
         id: 'center',
         type: 'centralNode',
         position: { x: 380, y: 180 },
         data: { 
+          id: 'center',
           label: currentLabel, 
           product: currentProduct,
-          isDynamic: isLive
+          isDynamic: isLive,
+          commentsCount: centralComments.length,
+          decision: centralDecision,
+          onSelect: handleSelectCentralNode,
         },
       },
     ];
 
     const rawEdges: Edge[] = [];
 
-    filteredSources.forEach((src) => {
-      const isSupport = src.relationship === 'Supports';
-      const isChallenges = src.relationship === 'Challenges';
-      const strokeColor = isSupport ? '#10B981' : isChallenges ? '#F43F5E' : '#94A3B8';
+    // 1. Evidence source nodes
+    if (filterRelationship !== 'Tests') {
+      filteredSources.forEach((src) => {
+        const isSupport = src.relationship === 'Supports';
+        const isChallenges = src.relationship === 'Challenges';
+        const strokeColor = isSupport ? '#10B981' : isChallenges ? '#F43F5E' : '#94A3B8';
+        const nodeComments = comments[src.id] || [];
+        const nodeChallenge = challenges[src.id];
 
-      rawNodes.push({
-        id: src.id,
-        type: 'sourceNode',
-        position: { x: 0, y: 0 },
-        data: { source: src, onSelect: handleSelectNode },
-      });
+        rawNodes.push({
+          id: src.id,
+          type: 'sourceNode',
+          position: { x: 0, y: 0 },
+          data: { 
+            source: src, 
+            commentsCount: nodeComments.length,
+            isChallenged: nodeChallenge?.challenged,
+            challengeReason: nodeChallenge?.reason,
+            onSelect: () => handleSelectSourceNode(src),
+          },
+        });
 
-      rawEdges.push({
-        id: `edge-${src.id}`,
-        source: 'center',
-        sourceHandle: isSupport ? 'left' : isChallenges ? 'right' : 'bottom',
-        target: src.id,
-        animated: true,
-        style: { stroke: strokeColor, strokeWidth: 1.5, strokeDasharray: '4 4' },
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          width: 14,
-          height: 14,
-          color: strokeColor,
-        },
+        rawEdges.push({
+          id: `edge-${src.id}`,
+          source: 'center',
+          sourceHandle: isSupport ? 'left' : isChallenges ? 'right' : 'bottom',
+          target: src.id,
+          animated: true,
+          style: { stroke: strokeColor, strokeWidth: 1.5, strokeDasharray: '4 4' },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            width: 14,
+            height: 14,
+            color: strokeColor,
+          },
+        });
       });
-    });
+    }
+
+    // 2. Real-World Validation Test nodes
+    if (filterRelationship === 'all' || filterRelationship === 'Tests') {
+      tests.forEach((test) => {
+        rawNodes.push({
+          id: test.id,
+          type: 'testNode',
+          position: { x: 0, y: 0 },
+          data: {
+            test,
+            onSelect: () => handleSelectTestNode(test),
+          },
+        });
+
+        rawEdges.push({
+          id: `edge-${test.id}`,
+          source: 'center',
+          sourceHandle: 'bottom',
+          target: test.id,
+          animated: true,
+          style: { stroke: '#4F46E5', strokeWidth: 1.5 },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            width: 14,
+            height: 14,
+            color: '#4F46E5',
+          },
+        });
+      });
+    }
 
     const elkGraph = {
       id: 'root',
@@ -253,8 +565,8 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
       },
       children: rawNodes.map((n) => ({
         id: n.id,
-        width: n.id === 'center' ? 240 : 230,
-        height: n.id === 'center' ? 100 : 95,
+        width: n.id === 'center' ? 290 : 260,
+        height: n.id === 'center' ? 120 : 100,
       })),
       edges: rawEdges.map((e) => ({
         id: e.id,
@@ -285,144 +597,184 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
     } finally {
       setIsLayoutCalculating(false);
     }
-  }, [currentLabel, currentProduct, isLive, filteredSources, handleSelectNode, setNodes, setEdges]);
+  }, [
+    currentLabel, 
+    currentProduct, 
+    isLive, 
+    filteredSources, 
+    tests, 
+    comments, 
+    decisions, 
+    challenges, 
+    filterRelationship,
+    handleSelectCentralNode, 
+    handleSelectSourceNode, 
+    handleSelectTestNode, 
+    setNodes, 
+    setEdges
+  ]);
 
-  // Recalculate layout automatically when sources or product changes
   useEffect(() => {
     calculateLayout();
   }, [calculateLayout]);
 
   const supportCount = filteredSources.filter((s) => s.relationship === 'Supports').length;
   const challengeCount = filteredSources.filter((s) => s.relationship === 'Challenges').length;
+  const decisionCount = Object.keys(decisions).length;
 
   return (
-    <section id="section-graph" className="py-16 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto">
-      {/* Header and Live indicator matching evidence-graph.png */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
+    <section id="section-graph" className="py-12 sm:py-16 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto select-none font-['Geist','Inter',sans-serif]">
+      
+      {/* 1. REFINED HEADER WITH SUBTLE COLLABORATION PRESENCE */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-          <div className="inline-flex items-center gap-1.5 text-[11px] font-mono font-semibold uppercase tracking-[0.2em] text-[#525866] mb-2">
-            <span>OPTIMIZED RELATIONSHIP GRAPH</span>
-            {isLive && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#ECFDF5] text-[#059669] text-[10px] font-bold border border-[#A7F3D0]">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-ping" />
-                <span>UPDATED FROM LIVE SEARCH</span>
-              </span>
-            )}
+          <div className="flex items-center gap-2 text-[11px] font-mono text-[#64748B] mb-1">
+            <span className="font-semibold text-[#0A0D14]">EVIDENCE REASONING SPACE</span>
+            <span>·</span>
+            {/* Live presence pill */}
+            <span className="inline-flex items-center gap-1.5 text-[#059669]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse" />
+              <span>{collaboratorCount} {collaboratorCount === 1 ? 'investigator' : 'investigators'}</span>
+            </span>
           </div>
-          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#0A0D14]">
-            Living Evidence Graph.
+
+          <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#0A0D14]">
+            Living Evidence Graph
           </h2>
-          <p className="text-xs sm:text-sm text-[#525866] mt-1.5 max-w-2xl">
-            ELK.js layout engine with memoized node types for fluid 60fps rendering even as high-volume evidence streams expand.
-          </p>
         </div>
 
-        {/* Product selector buttons */}
-        <div className="flex flex-wrap items-center gap-1.5 self-start md:self-auto">
-          {externalGraphData && (
-            <button
-              onClick={() => setSelectedProductId('live')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-mono transition-colors cursor-pointer ${
-                selectedProductId === 'live'
-                  ? 'bg-[#0A0D14] text-white font-bold shadow-xs'
-                  : 'bg-[#F1F3F5] text-[#0F52BA] hover:bg-[#E0E7FF]'
-              }`}
-            >
-              <Sparkles size={12} />
-              <span>Live Query</span>
-            </button>
-          )}
-
-          {(['linear', 'cursor', 'notion'] as const).map((key) => (
-            <button
-              key={key}
-              onClick={() => setSelectedProductId(key)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-mono transition-colors cursor-pointer ${
-                selectedProductId === key
-                  ? 'bg-[#0A0D14] text-white font-bold shadow-xs'
-                  : 'bg-[#F1F3F5] text-[#525866] hover:text-[#0A0D14]'
-              }`}
-            >
-              {REAL_PRODUCT_PROFILES[key].name}
-            </button>
-          ))}
+        {/* Share Button & Clean Action */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsShareModalOpen(true)}
+            className="px-4 py-2 rounded-xl bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-transform active:scale-95 cursor-pointer"
+          >
+            <Share2 size={13} />
+            <span>Share Workspace</span>
+          </button>
         </div>
       </div>
 
-      {/* REACT FLOW CANVAS CONTAINER */}
-      <div className="relative bg-white border border-[#EAEAEA] rounded-3xl overflow-hidden shadow-xs h-[520px]">
-        {/* Graph Controls Toolbar */}
-        <div className="absolute top-4 left-4 z-10 flex flex-wrap items-center gap-1.5 bg-white/95 backdrop-blur-xs border border-[#EAEAEA] p-1.5 rounded-xl shadow-xs text-xs font-mono">
-          <button
-            onClick={() => setFilterRelationship('all')}
-            className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-              filterRelationship === 'all' ? 'bg-[#0A0D14] text-white' : 'text-[#525866] hover:bg-[#F3F4F6]'
-            }`}
-          >
-            All ({filteredSources.length})
-          </button>
-          <button
-            onClick={() => setFilterRelationship('Supports')}
-            className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-              filterRelationship === 'Supports'
-                ? 'bg-[#ECFDF5] text-[#059669] font-bold'
-                : 'text-[#525866] hover:bg-[#F3F4F6]'
-            }`}
-          >
-            Supports ({supportCount})
-          </button>
-          <button
-            onClick={() => setFilterRelationship('Challenges')}
-            className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-              filterRelationship === 'Challenges'
-                ? 'bg-[#FFF1F2] text-[#E11D48] font-bold'
-                : 'text-[#525866] hover:bg-[#F3F4F6]'
-            }`}
-          >
-            Challenges ({challengeCount})
-          </button>
+      {/* 2. THE OBVIOUS INVESTIGATION FLOW (Idea → Assumptions → Evidence → Contradictions → Decisions → Tests → New Evidence) */}
+      <div className="mb-4 p-2 rounded-2xl bg-[#F8FAFC] border border-[#E5E7EB] text-xs font-mono">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5">
+          {/* Flow Stepper Buttons */}
+          <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto py-0.5">
+            <button
+              onClick={() => {
+                setFilterRelationship('all');
+                handleSelectCentralNode();
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                filterRelationship === 'all'
+                  ? 'bg-white text-[#0A0D14] font-bold shadow-xs'
+                  : 'text-[#64748B] hover:text-[#0A0D14]'
+              }`}
+            >
+              <Lightbulb size={11} className="text-[#0F52BA]" />
+              <span>1. Idea & Assumptions</span>
+            </button>
 
-          <div className="h-4 w-[1px] bg-[#EAEAEA] mx-1" />
+            <span className="text-[#CBD5E1] hidden sm:inline">→</span>
 
-          {/* Dataset stress multiplier */}
-          <button
-            onClick={() => setDatasetMultiplier((prev) => (prev >= 3 ? 1 : prev + 1))}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#0A0D14] font-medium border border-[#E2E8F0] cursor-pointer"
-            title="Dynamically inject evidence clusters to test React Flow memoization & smoothness"
-          >
-            <PlusCircle size={13} className="text-[#3B82F6]" />
-            <span>Scale: {datasetMultiplier}x</span>
-          </button>
+            <button
+              onClick={() => setFilterRelationship('Supports')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                filterRelationship === 'Supports'
+                  ? 'bg-[#ECFDF5] text-[#059669] font-bold shadow-xs'
+                  : 'text-[#64748B] hover:text-[#059669]'
+              }`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
+              <span>2. Evidence ({supportCount})</span>
+            </button>
 
-          <button
-            onClick={calculateLayout}
-            className="p-1.5 rounded-lg hover:bg-[#F3F4F6] text-[#525866] cursor-pointer ml-1"
-            title="Re-layout ELK graph"
-          >
-            <RotateCcw size={14} className={isLayoutCalculating ? 'animate-spin' : ''} />
-          </button>
+            <span className="text-[#CBD5E1] hidden sm:inline">→</span>
+
+            <button
+              onClick={() => setFilterRelationship('Challenges')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                filterRelationship === 'Challenges'
+                  ? 'bg-[#FFF1F2] text-[#E11D48] font-bold shadow-xs'
+                  : 'text-[#64748B] hover:text-[#E11D48]'
+              }`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444]" />
+              <span>3. Contradictions ({challengeCount})</span>
+            </button>
+
+            <span className="text-[#CBD5E1] hidden sm:inline">→</span>
+
+            <button
+              onClick={() => {
+                handleSelectCentralNode();
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[#64748B] hover:text-[#0A0D14] transition-all cursor-pointer hover:bg-white"
+            >
+              <CheckCircle2 size={11} className="text-[#10B981]" />
+              <span>4. Decisions ({decisionCount})</span>
+            </button>
+
+            <span className="text-[#CBD5E1] hidden sm:inline">→</span>
+
+            <button
+              onClick={() => setFilterRelationship('Tests')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                filterRelationship === 'Tests'
+                  ? 'bg-[#EEF2FF] text-[#4F46E5] font-bold shadow-xs'
+                  : 'text-[#64748B] hover:text-[#4F46E5]'
+              }`}
+            >
+              <FlaskConical size={11} className="text-[#4F46E5]" />
+              <span>5. Next Tests ({tests.length})</span>
+            </button>
+          </div>
+
+          {/* Quick controls */}
+          <div className="flex items-center gap-1.5 ml-auto">
+            {filterRelationship !== 'all' && (
+              <button
+                onClick={() => setFilterRelationship('all')}
+                className="text-[11px] text-[#64748B] hover:text-[#0A0D14] px-2 py-1 rounded-lg hover:bg-white cursor-pointer"
+              >
+                Reset Filter
+              </button>
+            )}
+            <button
+              onClick={calculateLayout}
+              className="p-1.5 rounded-lg hover:bg-white text-[#64748B] hover:text-[#0A0D14] transition-colors cursor-pointer"
+              title="Recalculate topology"
+            >
+              <RotateCcw size={13} className={isLayoutCalculating ? 'animate-spin' : ''} />
+            </button>
+          </div>
         </div>
+      </div>
 
-        {/* Legend Overlay at bottom (matching evidence-graph.png) */}
-        <div className="absolute bottom-4 left-4 z-10 flex items-center gap-4 bg-white/95 backdrop-blur-xs border border-[#EAEAEA] px-3.5 py-1.5 rounded-xl shadow-xs text-[11px] font-mono">
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#10B981]" />
-            <span className="text-[#525866]">Supports</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#F43F5E]" />
-            <span className="text-[#525866]">Challenges</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#64748B]" />
-            <span className="text-[#525866]">Core Assumption</span>
-          </div>
-        </div>
-
-        {/* Node count telemetry at bottom-right (matching evidence-graph.png) */}
-        <div className="absolute bottom-4 right-14 z-10 hidden sm:flex items-center gap-1.5 bg-white/95 backdrop-blur-xs border border-[#EAEAEA] px-3 py-1.5 rounded-xl shadow-xs text-[11px] font-mono text-[#525866]">
-          <Database size={12} className="text-[#059669]" />
-          <span>Memoized Nodes: {filteredSources.length + 1}</span>
+      {/* 3. CANVAS CONTAINER (POLISHED CLEAN CANVAS WITH REACT FLOW) */}
+      <div className="relative bg-white border border-[#E5E7EB] rounded-3xl overflow-hidden shadow-xs h-[580px] sm:h-[630px] lg:h-[670px]">
+        
+        {/* Subtle Bottom Legend */}
+        <div className="absolute bottom-4 left-4 z-10 flex items-center gap-3 bg-white/90 backdrop-blur-xs border border-[#E5E7EB] px-3.5 py-1.5 rounded-full shadow-2xs text-[11px] font-mono text-[#525866]">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#10B981]" />
+            <span>Supporting Signal</span>
+          </span>
+          <span className="text-[#CBD5E1]">·</span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#EF4444]" />
+            <span>Challenging Signal</span>
+          </span>
+          {tests.length > 0 && (
+            <>
+              <span className="text-[#CBD5E1]">·</span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-[#4F46E5]" />
+                <span>Validation Test</span>
+              </span>
+            </>
+          )}
         </div>
 
         {/* ReactFlow Canvas */}
@@ -439,10 +791,68 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
           minZoom={0.2}
           maxZoom={1.5}
         >
-          <Background color="#E2E8F0" gap={20} size={1} />
-          <Controls showInteractive={false} className="!bg-white !border !border-[#EAEAEA] !rounded-xl !shadow-xs" />
+          <Background color="#F1F5F9" gap={24} size={1} />
+          <Controls showInteractive={false} className="!bg-white !border !border-[#E5E7EB] !rounded-2xl !shadow-xs" />
         </ReactFlow>
       </div>
+
+      {/* TOAST FEEDBACK */}
+      {activeToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-[#0A0D14] text-white text-xs font-mono px-4 py-2.5 rounded-2xl shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <Check size={14} className="text-[#10B981]" />
+          <span>{activeToast}</span>
+        </div>
+      )}
+
+      {/* SHARE INVESTIGATION MODAL */}
+      <ShareInvestigationModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        roomId={roomId}
+        query={externalGraphData?.query}
+        collaborators={collaborators}
+      />
+
+      {/* NODE CONTEXTUAL DETAIL DRAWER */}
+      <NodeDetailDrawer
+        node={selectedNodeContext}
+        onClose={() => setSelectedNodeContext(null)}
+        currentUser={currentUser}
+        comments={selectedNodeContext ? comments[selectedNodeContext.id] || [] : []}
+        decision={selectedNodeContext ? decisions[selectedNodeContext.id] : undefined}
+        challenge={selectedNodeContext ? challenges[selectedNodeContext.id] : undefined}
+        onAddComment={(nodeId, text, stance) => {
+          addComment(nodeId, text, stance);
+          showToast('Comment synced to investigation');
+        }}
+        onToggleChallenge={(nodeId, reason) => {
+          toggleChallengeEvidence(nodeId, reason);
+          showToast(challenges[nodeId]?.challenged ? 'Challenge removed' : 'Evidence challenged by team');
+        }}
+        onRecordDecision={(nodeId, conclusion, rationale, confidence) => {
+          recordDecision(nodeId, conclusion, rationale, confidence);
+          showToast('Decision recorded on node');
+        }}
+        onCreateTest={(testData) => {
+          createNextTest(testData);
+          showToast('Next Test scheduled on Calendar');
+          if (onTestCreated) {
+            onTestCreated({
+              ...testData,
+              id: `test_${Date.now()}`,
+              status: 'PLANNED',
+              author: currentUser.name,
+              createdAt: new Date().toISOString()
+            });
+          }
+        }}
+        onUpdateTestStatus={(testId, status, resultSummary, verdict) => {
+          updateTestStatus(testId, status, resultSummary, verdict);
+          showToast('Test result recorded as new evidence');
+        }}
+        onNavigateToCalendar={onNavigateToCalendar}
+      />
+
     </section>
   );
 };

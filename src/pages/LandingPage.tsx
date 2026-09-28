@@ -66,17 +66,17 @@ export const LandingPage: React.FC = () => {
       />
 
       {/* EXPERIENCE C: LIVING EVIDENCE GRAPH (MATCHES evidence-graph.png WITH ELK.JS & REACT FLOW) */}
-      <div id="section-evidence-graph" className="w-full bg-white border-b border-[#E5E7EB] py-12 sm:py-16">
+      <div id="section-evidence-graph" className="w-full bg-white py-12 sm:py-16">
         <EvidenceGraph externalGraphData={currentInvestigation.graphData} />
       </div>
 
       {/* EXPERIENCE D: PRODUCT TESTING (SIMULATED USER ENGINE WITH LIVE SESSIONS & FRICTION EXTRACTION) */}
-      <div id="section-testing" className="w-full bg-[#FAFAFA] border-b border-[#E5E7EB]">
+      <div id="section-testing" className="w-full bg-white">
         <ProductTestingSection />
       </div>
 
       {/* EXPERIENCE E: 12-MONTH SIGNAL CALENDAR (MATCHES signal.png WITH DRIFT & ACCESSIBLE ARTIFACTS) */}
-      <div id="section-timeline" className="w-full bg-white border-b border-[#E5E7EB]">
+      <div id="section-timeline" className="w-full bg-white">
         <EvidenceTimeline />
       </div>
 

@@ -52,7 +52,7 @@ export const FinalCTARefined: React.FC<FinalCTARefinedProps> = ({
   return (
     <section
       ref={sectionRef}
-      className="relative z-10 w-full bg-white py-24 sm:py-32 border-b border-[#E5E7EB] text-center overflow-hidden"
+      className="relative z-10 w-full bg-white py-24 sm:py-32 text-center overflow-hidden"
     >
       <div
         ref={contentRef}

@@ -28,6 +28,7 @@ import {
   RejectedResultDebug
 } from '../lib/research/types';
 import { DynamicGraphData, DynamicEvidenceSource } from '../types/evidenceGraph';
+import { BuildBriefPanel } from './buildBrief/BuildBriefPanel';
 
 interface PressureTestWorkspaceProps {
   initialIdea?: string;
@@ -678,6 +679,16 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
           </div>
         )}
       </div>
+
+      {/* STAGE 4: EVIDENCE-BACKED BUILD BRIEF TRANSITION: "WHAT SHOULD YOU BUILD FROM THIS?" */}
+      {testResult && (
+        <div className="mt-8">
+          <BuildBriefPanel 
+            pressureTestData={testResult} 
+            rawQuery={ideaInput} 
+          />
+        </div>
+      )}
     </section>
   );
 };

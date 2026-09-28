@@ -136,7 +136,7 @@ export const ProbeHero: React.FC<ProbeHeroProps> = ({
   return (
     <div
       ref={heroRootRef}
-      className="relative min-h-[75vh] sm:min-h-[82vh] flex flex-col bg-[#FAFAFA] text-[#111111] overflow-hidden font-['Geist','Inter',-apple-system,sans-serif]"
+      className="relative min-h-[75vh] sm:min-h-[82vh] flex flex-col bg-white text-[#111111] overflow-hidden font-['Geist','Inter',-apple-system,sans-serif]"
     >
       {/* Cinematic Full Background Video with Subtle Scale Parallax */}
       <div
@@ -185,16 +185,16 @@ export const ProbeHero: React.FC<ProbeHeroProps> = ({
           {/* 2. Main Headline - Dominant Element with Masked Line Reveal */}
           <h1
             className="mt-5 sm:mt-6 text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold tracking-tight text-[#0A0D14] leading-[1.08] max-w-2xl"
-            aria-label="Put your idea under pressure."
+            aria-label="Before you vibe code it, Probe it."
           >
             <span className="block overflow-hidden pb-1">
               <span ref={headlineLine1Ref} className="block will-change-transform">
-                Put your idea
+                Before you vibe code it,
               </span>
             </span>
             <span className="block overflow-hidden pb-1">
               <span ref={headlineLine2Ref} className="block text-[#0A0D14] will-change-transform">
-                under pressure.
+                Probe it.
               </span>
             </span>
           </h1>

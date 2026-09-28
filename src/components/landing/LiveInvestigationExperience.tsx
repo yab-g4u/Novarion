@@ -10,12 +10,12 @@ import {
   CheckCircle2,
   AlertCircle
 } from 'lucide-react';
-import { ProbeLogo } from '../ProbeLogo';
 import { 
   generateDynamicInvestigation, 
   InvestigationResultData, 
   RadialEvidenceItem 
 } from '../../lib/research/dynamicInvestigationResolver';
+import { BuildBriefPanel } from '../buildBrief/BuildBriefPanel';
 
 interface LiveInvestigationExperienceProps {
   initialQuery?: string;
@@ -103,38 +103,7 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
   };
 
   return (
-    <div id="live-investigation" className="relative w-full bg-[#FAFAFA] text-[#0A0D14] font-['Geist','Inter',-apple-system,sans-serif] selection:bg-[#0F52BA]/15 selection:text-[#0A0D14] overflow-hidden border-b border-[#E5E7EB]">
-      
-      {/* 1. TOP BRAND NAVIGATION (MATCHES home-page.png) */}
-      <header className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex items-center justify-between relative z-30">
-        <a href="/" className="flex items-center gap-2.5 group">
-          <ProbeLogo className="w-7 h-7" />
-          <span className="font-extrabold text-lg tracking-tight text-[#0A0D14] font-['Geist',sans-serif]">
-            Probe
-          </span>
-        </a>
-
-        <div className="flex items-center gap-6 text-sm font-medium text-[#525866]">
-          <a href="#section-timeline" className="hover:text-[#0A0D14] transition-colors">
-            About
-          </a>
-          <a
-            href="https://github.com/yab-g4u/Novarion.git"
-            target="_blank"
-            rel="noreferrer"
-            className="hover:text-[#0A0D14] flex items-center gap-1 transition-colors"
-          >
-            GitHub <ExternalLink size={13} className="opacity-70" />
-          </a>
-          <a
-            href="/signin"
-            className="px-3.5 py-1.5 rounded-full bg-white hover:bg-[#F1F3F5] text-[#0A0D14] border border-[#E5E7EB] text-xs font-semibold shadow-2xs transition-all"
-          >
-            Sign In
-          </a>
-        </div>
-      </header>
-
+    <div id="live-investigation" className="relative w-full bg-white text-[#0A0D14] font-['Geist','Inter',-apple-system,sans-serif] selection:bg-[#0F52BA]/15 selection:text-[#0A0D14] overflow-hidden">
       {/* 2. HERO HEADLINE & SEARCH INPUT (MATCHES home-page.png) */}
       <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-10 sm:pt-14 pb-8 text-center relative z-20">
         
@@ -190,93 +159,205 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
         </div>
       </div>
 
-      {/* 3. THE LIVE RADIAL INVESTIGATION GRAPH (PIXEL CLONE OF home-page.png) */}
+      {/* 3. THE LIVE RADIAL INVESTIGATION GRAPH */}
       <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-14 select-none">
         
-        {/* DESKTOP RADIAL VIEW (min-width: 1024px) */}
-        <div className="hidden lg:block relative min-h-[520px]">
+        {/* DESKTOP RADIAL VIEW (min-width: 1024px) - 1020x560 Precision Canvas */}
+        <div className="hidden lg:block relative w-[1020px] h-[560px] mx-auto">
           
-          {/* SVG Connecting Bezier Curves */}
+          {/* SVG Connecting Bezier Curves with Precision Animated Moving Dots */}
           <svg
-            className="absolute inset-0 w-full h-full pointer-events-none z-10"
+            viewBox="0 0 1020 560"
+            className="absolute inset-0 w-[1020px] h-[560px] pointer-events-none z-10"
             xmlns="http://www.w3.org/2000/svg"
           >
-            {/* LEFT BRANCH (GREEN / SUPPORTS) */}
-            {/* Node 1: Reddit */}
+            {/* LEFT BRANCHES (GREEN / SUPPORTS) */}
+            {/* Node 1: Reddit - Path from Center Left (385, 260) to Node 1 Port (320, 80) */}
             <path
-              d="M 500 250 C 420 250, 360 160, 275 160"
+              id="path-branch-reddit"
+              d="M 385 260 C 355 260, 335 120, 320 80"
               fill="none"
               stroke="#A7F3D0"
               strokeWidth="1.5"
             />
-            <circle cx="275" cy="160" r="3" fill="#10B981" />
-            <circle cx="390" cy="200" r="2.5" fill="#10B981" />
+            {/* Moving Pulse Dot 1 */}
+            <circle cx="0" cy="0" r="3.5" fill="#10B981">
+              <animateMotion dur="2.4s" repeatCount="indefinite">
+                <mpath href="#path-branch-reddit" />
+              </animateMotion>
+            </circle>
+            {/* Moving Pulse Dot 2 (Trailing) */}
+            <circle cx="0" cy="0" r="2.2" fill="#10B981" opacity="0.8">
+              <animateMotion dur="2.4s" begin="1.2s" repeatCount="indefinite">
+                <mpath href="#path-branch-reddit" />
+              </animateMotion>
+            </circle>
+            {/* Terminal Anchor Dot on Node 1 */}
+            <circle cx="320" cy="80" r="3.5" fill="#10B981" />
+            <circle cx="320" cy="80" r="7" fill="#10B981" opacity="0.25">
+              <animate attributeName="r" values="3.5;7.5;3.5" dur="2s" repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0.35;0.05;0.35" dur="2s" repeatCount="indefinite" />
+            </circle>
 
-            {/* Node 2: GitHub */}
+            {/* Node 2: GitHub - Direct Horizontal Path from Center Left (385, 260) to Node 2 Port (320, 260) */}
             <path
-              d="M 500 250 C 410 250, 330 250, 220 250"
+              id="path-branch-github"
+              d="M 385 260 L 320 260"
               fill="none"
               stroke="#A7F3D0"
               strokeWidth="1.5"
             />
-            <circle cx="220" cy="250" r="3" fill="#10B981" />
-            <circle cx="360" cy="250" r="2.5" fill="#10B981" />
+            {/* Moving Pulse Dot 1 */}
+            <circle cx="0" cy="0" r="3.5" fill="#10B981">
+              <animateMotion dur="2.0s" repeatCount="indefinite">
+                <mpath href="#path-branch-github" />
+              </animateMotion>
+            </circle>
+            {/* Moving Pulse Dot 2 (Trailing) */}
+            <circle cx="0" cy="0" r="2.2" fill="#10B981" opacity="0.8">
+              <animateMotion dur="2.0s" begin="1.0s" repeatCount="indefinite">
+                <mpath href="#path-branch-github" />
+              </animateMotion>
+            </circle>
+            {/* Terminal Anchor Dot on Node 2 */}
+            <circle cx="320" cy="260" r="3.5" fill="#10B981" />
+            <circle cx="320" cy="260" r="7" fill="#10B981" opacity="0.25">
+              <animate attributeName="r" values="3.5;7.5;3.5" dur="2s" repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0.35;0.05;0.35" dur="2s" repeatCount="indefinite" />
+            </circle>
 
-            {/* Node 3: Google / Web */}
+            {/* Node 3: Google / Web - Path from Center Left (385, 260) to Node 3 Port (320, 440) */}
             <path
-              d="M 500 250 C 420 250, 360 340, 250 340"
+              id="path-branch-google"
+              d="M 385 260 C 355 260, 335 400, 320 440"
               fill="none"
               stroke="#A7F3D0"
               strokeWidth="1.5"
             />
-            <circle cx="250" cy="340" r="3" fill="#10B981" />
-            <circle cx="370" cy="300" r="2.5" fill="#10B981" />
+            {/* Moving Pulse Dot 1 */}
+            <circle cx="0" cy="0" r="3.5" fill="#10B981">
+              <animateMotion dur="2.4s" repeatCount="indefinite">
+                <mpath href="#path-branch-google" />
+              </animateMotion>
+            </circle>
+            {/* Moving Pulse Dot 2 (Trailing) */}
+            <circle cx="0" cy="0" r="2.2" fill="#10B981" opacity="0.8">
+              <animateMotion dur="2.4s" begin="1.2s" repeatCount="indefinite">
+                <mpath href="#path-branch-google" />
+              </animateMotion>
+            </circle>
+            {/* Terminal Anchor Dot on Node 3 */}
+            <circle cx="320" cy="440" r="3.5" fill="#10B981" />
+            <circle cx="320" cy="440" r="7" fill="#10B981" opacity="0.25">
+              <animate attributeName="r" values="3.5;7.5;3.5" dur="2s" repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0.35;0.05;0.35" dur="2s" repeatCount="indefinite" />
+            </circle>
 
-            {/* RIGHT BRANCH (RED/CORAL / CONTRADICTS) */}
-            {/* Node 4: X */}
+            {/* RIGHT BRANCHES (RED/CORAL / CONTRADICTS) */}
+            {/* Node 4: X / Twitter - Path from Center Right (635, 260) to Node 4 Port (700, 80) */}
             <path
-              d="M 650 250 C 730 250, 780 160, 860 160"
+              id="path-branch-x"
+              d="M 635 260 C 665 260, 685 120, 700 80"
               fill="none"
               stroke="#FECACA"
               strokeWidth="1.5"
             />
-            <circle cx="860" cy="160" r="3" fill="#EF4444" />
-            <circle cx="760" cy="200" r="2.5" fill="#EF4444" />
+            {/* Moving Pulse Dot 1 */}
+            <circle cx="0" cy="0" r="3.5" fill="#EF4444">
+              <animateMotion dur="2.4s" repeatCount="indefinite">
+                <mpath href="#path-branch-x" />
+              </animateMotion>
+            </circle>
+            {/* Moving Pulse Dot 2 (Trailing) */}
+            <circle cx="0" cy="0" r="2.2" fill="#EF4444" opacity="0.8">
+              <animateMotion dur="2.4s" begin="1.2s" repeatCount="indefinite">
+                <mpath href="#path-branch-x" />
+              </animateMotion>
+            </circle>
+            {/* Terminal Anchor Dot on Node 4 */}
+            <circle cx="700" cy="80" r="3.5" fill="#EF4444" />
+            <circle cx="700" cy="80" r="7" fill="#EF4444" opacity="0.25">
+              <animate attributeName="r" values="3.5;7.5;3.5" dur="2s" repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0.35;0.05;0.35" dur="2s" repeatCount="indefinite" />
+            </circle>
 
-            {/* Node 5: Product Reviews */}
+            {/* Node 5: Product Reviews - Direct Horizontal Path from Center Right (635, 260) to Node 5 Port (700, 260) */}
             <path
-              d="M 650 250 C 740 250, 820 250, 920 250"
+              id="path-branch-reviews"
+              d="M 635 260 L 700 260"
               fill="none"
               stroke="#FECACA"
               strokeWidth="1.5"
             />
-            <circle cx="920" cy="250" r="3" fill="#EF4444" />
-            <circle cx="790" cy="250" r="2.5" fill="#EF4444" />
+            {/* Moving Pulse Dot 1 */}
+            <circle cx="0" cy="0" r="3.5" fill="#EF4444">
+              <animateMotion dur="2.0s" repeatCount="indefinite">
+                <mpath href="#path-branch-reviews" />
+              </animateMotion>
+            </circle>
+            {/* Moving Pulse Dot 2 (Trailing) */}
+            <circle cx="0" cy="0" r="2.2" fill="#EF4444" opacity="0.8">
+              <animateMotion dur="2.0s" begin="1.0s" repeatCount="indefinite">
+                <mpath href="#path-branch-reviews" />
+              </animateMotion>
+            </circle>
+            {/* Terminal Anchor Dot on Node 5 */}
+            <circle cx="700" cy="260" r="3.5" fill="#EF4444" />
+            <circle cx="700" cy="260" r="7" fill="#EF4444" opacity="0.25">
+              <animate attributeName="r" values="3.5;7.5;3.5" dur="2s" repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0.35;0.05;0.35" dur="2s" repeatCount="indefinite" />
+            </circle>
 
-            {/* Node 6: Research Papers */}
+            {/* Node 6: Research Papers - Path from Center Right (635, 260) to Node 6 Port (700, 440) */}
             <path
-              d="M 650 250 C 730 250, 780 340, 860 340"
+              id="path-branch-papers"
+              d="M 635 260 C 665 260, 685 400, 700 440"
               fill="none"
               stroke="#FECACA"
               strokeWidth="1.5"
             />
-            <circle cx="860" cy="340" r="3" fill="#EF4444" />
-            <circle cx="760" cy="300" r="2.5" fill="#EF4444" />
+            {/* Moving Pulse Dot 1 */}
+            <circle cx="0" cy="0" r="3.5" fill="#EF4444">
+              <animateMotion dur="2.4s" repeatCount="indefinite">
+                <mpath href="#path-branch-papers" />
+              </animateMotion>
+            </circle>
+            {/* Moving Pulse Dot 2 (Trailing) */}
+            <circle cx="0" cy="0" r="2.2" fill="#EF4444" opacity="0.8">
+              <animateMotion dur="2.4s" begin="1.2s" repeatCount="indefinite">
+                <mpath href="#path-branch-papers" />
+              </animateMotion>
+            </circle>
+            {/* Terminal Anchor Dot on Node 6 */}
+            <circle cx="700" cy="440" r="3.5" fill="#EF4444" />
+            <circle cx="700" cy="440" r="7" fill="#EF4444" opacity="0.25">
+              <animate attributeName="r" values="3.5;7.5;3.5" dur="2s" repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0.35;0.05;0.35" dur="2s" repeatCount="indefinite" />
+            </circle>
+
+            {/* Center Origin Ports */}
+            <circle cx="385" cy="260" r="3.5" fill="#10B981" />
+            <circle cx="635" cy="260" r="3.5" fill="#EF4444" />
+            <circle cx="510" cy="318" r="2.5" fill="#94A3B8" />
 
             {/* BOTTOM BRANCH (GRAY DASHED / UNKNOWN) */}
-            <line
-              x1="575"
-              y1="300"
-              x2="575"
-              y2="385"
+            <path
+              id="path-branch-unknown"
+              d="M 510 318 L 510 495"
               stroke="#CBD5E1"
               strokeWidth="1.5"
               strokeDasharray="4 4"
             />
+            <circle cx="0" cy="0" r="2.5" fill="#94A3B8">
+              <animateMotion dur="2.2s" repeatCount="indefinite">
+                <mpath href="#path-branch-unknown" />
+              </animateMotion>
+            </circle>
+            <circle cx="510" cy="495" r="3" fill="#94A3B8" />
           </svg>
 
           {/* LEFT HEADER PILL: ↑ Support */}
-          <div className="absolute left-[130px] top-[75px] z-20">
+          <div className="absolute left-[140px] top-[14px] z-20">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0] text-xs font-semibold shadow-2xs">
               <span>↑</span>
               <span>Support</span>
@@ -284,28 +365,31 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
           </div>
 
           {/* RIGHT HEADER PILL: ↓ Contradict */}
-          <div className="absolute right-[130px] top-[75px] z-20">
+          <div className="absolute right-[140px] top-[14px] z-20">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FEF2F2] text-[#EF4444] border border-[#FECACA] text-xs font-semibold shadow-2xs">
               <span>↓</span>
               <span>Contradict</span>
             </span>
           </div>
 
-          {/* LEFT SUPPORT NODES */}
+          {/* LEFT SUPPORT NODES - Text on left, Icon on inner right facing center (Port at x=320) */}
           {/* Node 1: Reddit */}
-          <div className="absolute left-[60px] top-[125px] z-20 flex items-start gap-3 max-w-[240px] text-left">
+          <div 
+            className="absolute z-20 flex flex-row-reverse items-center gap-3.5 text-right p-2.5 rounded-2xl bg-white/95 backdrop-blur-xs border border-[#E5E7EB]/80 shadow-2xs hover:shadow-xs transition-shadow"
+            style={{ left: '20px', top: '44px', width: '318px' }}
+          >
             <div className="relative w-9 h-9 rounded-full bg-[#FF4500] text-white flex items-center justify-center shrink-0 shadow-2xs">
               <svg className="w-5 h-5 fill-white" viewBox="0 0 24 24">
                 <path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.703z"/>
               </svg>
               <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#10B981] ring-2 ring-white" />
             </div>
-            <div>
-              <div className="flex items-center gap-1.5 text-xs font-bold text-[#0A0D14]">
-                <span>{activeData.supportItems[0]?.sourceName || 'Reddit'}</span>
+            <div className="flex-1 min-w-0 pr-1">
+              <div className="flex items-center justify-end gap-1.5 text-xs font-bold text-[#0A0D14]">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
+                <span className="truncate">{activeData.supportItems[0]?.sourceName || 'Reddit'}</span>
               </div>
-              <p className="text-[11px] text-[#64748B] font-mono mb-1">
+              <p className="text-[11px] text-[#64748B] font-mono mb-0.5 truncate">
                 {activeData.supportItems[0]?.subHeader || 'r/technology • 12h ago'}
               </p>
               <p className="text-[11px] text-[#334155] leading-snug line-clamp-2 italic font-serif">
@@ -315,27 +399,33 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
           </div>
 
           {/* Node 2: GitHub */}
-          <div className="absolute left-[10px] top-[220px] z-20 flex items-start gap-3 max-w-[240px] text-left">
+          <div 
+            className="absolute z-20 flex flex-row-reverse items-center gap-3.5 text-right p-2.5 rounded-2xl bg-white/95 backdrop-blur-xs border border-[#E5E7EB]/80 shadow-2xs hover:shadow-xs transition-shadow"
+            style={{ left: '20px', top: '224px', width: '318px' }}
+          >
             <div className="relative w-9 h-9 rounded-full bg-[#0A0D14] text-white flex items-center justify-center shrink-0 shadow-2xs">
               <svg className="w-5 h-5 fill-white" viewBox="0 0 24 24">
                 <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
               </svg>
               <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#10B981] ring-2 ring-white" />
             </div>
-            <div>
-              <div className="flex items-center gap-1.5 text-xs font-bold text-[#0A0D14]">
-                <span>{activeData.supportItems[1]?.sourceName || 'GitHub'}</span>
+            <div className="flex-1 min-w-0 pr-1">
+              <div className="flex items-center justify-end gap-1.5 text-xs font-bold text-[#0A0D14]">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
-                <span className="text-[10px] text-[#64748B] font-mono">1d ago</span>
+                <span className="truncate">{activeData.supportItems[1]?.sourceName || 'GitHub'}</span>
               </div>
-              <p className="text-[11px] text-[#334155] leading-snug line-clamp-2 mt-0.5">
+              <p className="text-[11px] text-[#64748B] font-mono mb-0.5">1d ago</p>
+              <p className="text-[11px] text-[#334155] leading-snug line-clamp-2">
                 {activeData.supportItems[1]?.excerpt}
               </p>
             </div>
           </div>
 
           {/* Node 3: Google / Web */}
-          <div className="absolute left-[40px] top-[320px] z-20 flex items-start gap-3 max-w-[240px] text-left">
+          <div 
+            className="absolute z-20 flex flex-row-reverse items-center gap-3.5 text-right p-2.5 rounded-2xl bg-white/95 backdrop-blur-xs border border-[#E5E7EB]/80 shadow-2xs hover:shadow-xs transition-shadow"
+            style={{ left: '20px', top: '404px', width: '318px' }}
+          >
             <div className="relative w-9 h-9 rounded-full bg-white border border-[#E5E7EB] text-[#EA4335] flex items-center justify-center shrink-0 shadow-2xs">
               <svg className="w-4 h-4" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
@@ -345,21 +435,24 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
               </svg>
               <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#10B981] ring-2 ring-white" />
             </div>
-            <div>
-              <div className="flex items-center gap-1.5 text-xs font-bold text-[#0A0D14]">
-                <span>{activeData.supportItems[2]?.sourceName || 'Google / Web'}</span>
+            <div className="flex-1 min-w-0 pr-1">
+              <div className="flex items-center justify-end gap-1.5 text-xs font-bold text-[#0A0D14]">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
-                <span className="text-[10px] text-[#64748B] font-mono">2d ago</span>
+                <span className="truncate">{activeData.supportItems[2]?.sourceName || 'Google / Web'}</span>
               </div>
-              <p className="text-[11px] text-[#334155] leading-snug line-clamp-2 mt-0.5">
+              <p className="text-[11px] text-[#64748B] font-mono mb-0.5">2d ago</p>
+              <p className="text-[11px] text-[#334155] leading-snug line-clamp-2">
                 {activeData.supportItems[2]?.excerpt}
               </p>
             </div>
           </div>
 
-          {/* CENTER NODE: THE INVESTIGATED IDEA */}
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20">
-            <div className="rounded-3xl bg-white border border-[#E5E7EB] px-8 py-5 shadow-sm text-center relative ring-8 ring-[#F8FAFC] max-w-[280px]">
+          {/* CENTER NODE: THE INVESTIGATED IDEA (Anchors: Left 385, Right 635, Top 205, Bottom 315) */}
+          <div 
+            className="absolute z-20"
+            style={{ left: '510px', top: '260px', transform: 'translate(-50%, -50%)', width: '250px' }}
+          >
+            <div className="rounded-3xl bg-white border border-[#E5E7EB] px-6 py-5 shadow-sm text-center relative ring-8 ring-[#F8FAFC]">
               <div className="text-[10px] font-mono text-[#868C98] font-bold tracking-widest uppercase mb-1">
                 IDEA
               </div>
@@ -376,65 +469,74 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
             </div>
           </div>
 
-          {/* RIGHT CONTRADICT NODES */}
+          {/* RIGHT CONTRADICT NODES - Icon on left facing center, Text on right (Port at x=700) */}
           {/* Node 4: X */}
-          <div className="absolute right-[50px] top-[125px] z-20 flex items-start gap-3 max-w-[240px] text-left">
+          <div 
+            className="absolute z-20 flex flex-row items-center gap-3.5 text-left p-2.5 rounded-2xl bg-white/95 backdrop-blur-xs border border-[#E5E7EB]/80 shadow-2xs hover:shadow-xs transition-shadow"
+            style={{ left: '682px', top: '44px', width: '318px' }}
+          >
             <div className="relative w-9 h-9 rounded-full bg-[#0A0D14] text-white flex items-center justify-center shrink-0 shadow-2xs">
               <svg className="w-4 h-4 fill-white" viewBox="0 0 24 24">
                 <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
               </svg>
               <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#EF4444] ring-2 ring-white" />
             </div>
-            <div>
+            <div className="flex-1 min-w-0 pl-1">
               <div className="flex items-center gap-1.5 text-xs font-bold text-[#0A0D14]">
-                <span>{activeData.contradictItems[0]?.sourceName || 'X'}</span>
+                <span className="truncate">{activeData.contradictItems[0]?.sourceName || 'X'}</span>
                 <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444]" />
-                <span className="text-[10px] text-[#64748B] font-mono">18h ago</span>
               </div>
-              <p className="text-[11px] text-[#334155] leading-snug line-clamp-2 mt-0.5">
+              <p className="text-[11px] text-[#64748B] font-mono mb-0.5">18h ago</p>
+              <p className="text-[11px] text-[#334155] leading-snug line-clamp-2">
                 {activeData.contradictItems[0]?.excerpt}
               </p>
             </div>
           </div>
 
           {/* Node 5: Product Reviews */}
-          <div className="absolute right-[0px] top-[220px] z-20 flex items-start gap-3 max-w-[240px] text-left">
+          <div 
+            className="absolute z-20 flex flex-row items-center gap-3.5 text-left p-2.5 rounded-2xl bg-white/95 backdrop-blur-xs border border-[#E5E7EB]/80 shadow-2xs hover:shadow-xs transition-shadow"
+            style={{ left: '682px', top: '224px', width: '318px' }}
+          >
             <div className="relative w-9 h-9 rounded-full bg-[#FFFBEB] border border-[#FDE68A] text-[#F59E0B] flex items-center justify-center shrink-0 shadow-2xs">
               <Star size={16} className="fill-[#F59E0B]" />
               <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#EF4444] ring-2 ring-white" />
             </div>
-            <div>
+            <div className="flex-1 min-w-0 pl-1">
               <div className="flex items-center gap-1.5 text-xs font-bold text-[#0A0D14]">
-                <span>{activeData.contradictItems[1]?.sourceName || 'Product Reviews'}</span>
+                <span className="truncate">{activeData.contradictItems[1]?.sourceName || 'Product Reviews'}</span>
                 <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444]" />
-                <span className="text-[10px] text-[#64748B] font-mono">1d ago</span>
               </div>
-              <p className="text-[11px] text-[#334155] leading-snug line-clamp-2 mt-0.5">
+              <p className="text-[11px] text-[#64748B] font-mono mb-0.5">1d ago</p>
+              <p className="text-[11px] text-[#334155] leading-snug line-clamp-2">
                 {activeData.contradictItems[1]?.excerpt}
               </p>
             </div>
           </div>
 
           {/* Node 6: Research Papers */}
-          <div className="absolute right-[50px] top-[320px] z-20 flex items-start gap-3 max-w-[240px] text-left">
+          <div 
+            className="absolute z-20 flex flex-row items-center gap-3.5 text-left p-2.5 rounded-2xl bg-white/95 backdrop-blur-xs border border-[#E5E7EB]/80 shadow-2xs hover:shadow-xs transition-shadow"
+            style={{ left: '682px', top: '404px', width: '318px' }}
+          >
             <div className="relative w-9 h-9 rounded-full bg-[#FEF2F2] border border-[#FECACA] text-[#EF4444] flex items-center justify-center shrink-0 shadow-2xs">
               <FileText size={16} />
               <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#EF4444] ring-2 ring-white" />
             </div>
-            <div>
+            <div className="flex-1 min-w-0 pl-1">
               <div className="flex items-center gap-1.5 text-xs font-bold text-[#0A0D14]">
-                <span>{activeData.contradictItems[2]?.sourceName || 'Research Papers'}</span>
+                <span className="truncate">{activeData.contradictItems[2]?.sourceName || 'Research Papers'}</span>
                 <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444]" />
-                <span className="text-[10px] text-[#64748B] font-mono">3d ago</span>
               </div>
-              <p className="text-[11px] text-[#334155] leading-snug line-clamp-2 mt-0.5">
+              <p className="text-[11px] text-[#64748B] font-mono mb-0.5">3d ago</p>
+              <p className="text-[11px] text-[#334155] leading-snug line-clamp-2">
                 {activeData.contradictItems[2]?.excerpt}
               </p>
             </div>
           </div>
 
           {/* BOTTOM NODE: UNKNOWN */}
-          <div className="absolute left-1/2 bottom-[10px] -translate-x-1/2 z-20 flex flex-col items-center text-center max-w-xs">
+          <div className="absolute left-1/2 bottom-[15px] -translate-x-1/2 z-20 flex flex-col items-center text-center max-w-xs">
             <div className="w-8 h-8 rounded-full bg-white border border-[#CBD5E1] text-[#64748B] flex items-center justify-center font-bold text-xs shadow-2xs mb-1.5">
               ?
             </div>
@@ -446,7 +548,7 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
             <p className="text-[11px] text-[#525866] leading-snug line-clamp-2 mt-0.5 max-w-[220px]">
               {activeData.unknownItem.excerpt}
             </p>
-            <div className="mt-2">
+            <div className="mt-1.5">
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#F1F3F5] text-[#525866] border border-[#E5E7EB] text-[10px] font-mono font-semibold">
                 <span>→</span>
                 <span>Unknown</span>
@@ -511,8 +613,8 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
 
       </div>
 
-      {/* 4. BOTTOM STATUS BAR (PIXEL CLONE OF home-page.png) */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-5 border-t border-[#E5E7EB] flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-mono">
+      {/* 4. BOTTOM STATUS BAR - Zero horizontal line */}
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-mono">
         
         {/* Left: Spinner + Status Text + Progress Line */}
         <div className="flex items-center gap-3 w-full sm:w-auto">
@@ -564,7 +666,12 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
 
       </div>
 
-      {/* 5. TWO-INVESTIGATION TRIAL LIMIT MODAL (SECTION 1 & 23) */}
+      {/* 5. EVIDENCE-BACKED BUILD BRIEF TRANSITION: "WHAT SHOULD YOU BUILD FROM THIS?" */}
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-12 pt-2">
+        <BuildBriefPanel investigationData={activeData} rawQuery={query} />
+      </div>
+
+      {/* 6. TWO-INVESTIGATION TRIAL LIMIT MODAL (SECTION 1 & 23) */}
       {showTrialLimitModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
           <div className="bg-white rounded-3xl border border-[#E5E7EB] p-7 max-w-md w-full shadow-2xl text-center space-y-4 animate-in fade-in zoom-in-95">

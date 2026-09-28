@@ -22,6 +22,7 @@ import { TryModal } from '../components/TryModal';
 import { EvidenceSource } from '../types';
 import { DynamicGraphData } from '../types/evidenceGraph';
 import { ProbeLogo } from '../components/ProbeLogo';
+import { roomCodeFromIdea } from '../lib/collaboration/useInvestigationRoom';
 
 export const WorkspacePage: React.FC = () => {
   const location = useLocation();
@@ -39,6 +40,7 @@ export const WorkspacePage: React.FC = () => {
   const [selectedSource, setSelectedSource] = useState<EvidenceSource | null>(null);
   const [isTryModalOpen, setIsTryModalOpen] = useState<boolean>(false);
   const [activeGraphData, setActiveGraphData] = useState<DynamicGraphData | null>(null);
+  const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
   
   // Idea initialized from localStorage or default
   const [investigationIdea, setInvestigationIdea] = useState<string>(() => {
@@ -281,6 +283,9 @@ export const WorkspacePage: React.FC = () => {
             <EvidenceGraph
               onSelectSource={(source) => handleOpenSourceDetail(source)}
               externalGraphData={activeGraphData}
+              roomId={roomCodeFromIdea(investigationIdea)}
+              focusNodeId={focusNodeId}
+              onNavigateToCalendar={() => navigate('/app/calendar')}
             />
           </div>
         )}
@@ -294,7 +299,18 @@ export const WorkspacePage: React.FC = () => {
               </div>
               <span className="text-[#868C98]">12-Month Sprints & Verification Milestones</span>
             </div>
-            <EvidenceTimeline />
+            <EvidenceTimeline 
+              roomId={roomCodeFromIdea(investigationIdea)}
+              onNavigateToGraphNode={(nodeId) => {
+                setFocusNodeId(nodeId);
+                navigate('/app/evidence');
+              }}
+              onTestCompletedAsEvidence={(evidence) => {
+                handleProductTestSync(evidence);
+                setFocusNodeId(evidence.id);
+                navigate('/app/evidence');
+              }}
+            />
           </div>
         )}
       </main>

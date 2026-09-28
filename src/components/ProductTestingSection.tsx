@@ -154,7 +154,7 @@ export const ProductTestingSection: React.FC = () => {
   };
 
   return (
-    <section id="section-testing" className="py-20 sm:py-28 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto border-t border-[#EAEAEA]">
+    <section id="section-testing" className="py-20 sm:py-28 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
       {/* Editorial Headline */}
       <div className="max-w-3xl mb-12 sm:mb-16">
         <span className="font-mono text-xs uppercase tracking-wider text-[#8C919D] block mb-3">
