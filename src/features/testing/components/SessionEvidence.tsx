@@ -33,7 +33,7 @@ export const SessionEvidence: React.FC<SessionEvidenceProps> = ({ evidence, onSy
 
       <div className="bg-white border border-[#C7D2FE] rounded-2xl p-4 space-y-2">
         <h4 className="text-sm sm:text-base font-bold text-[#0A0D14] leading-snug">
-          "{evidence.title}"
+          "{evidence.title || evidence.summary}"
         </h4>
         <p className="text-xs text-[#334155] leading-relaxed">
           "{evidence.excerpt}"

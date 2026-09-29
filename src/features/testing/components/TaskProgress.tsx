@@ -63,25 +63,25 @@ export const TaskProgress: React.FC<TaskProgressProps> = ({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-[#F1F3F5] text-xs font-mono">
           <div className="p-2 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
             <span className="text-[10px] text-[#868C98] block">Completion</span>
-            <strong className={`text-sm ${metrics.completion === 'Completed' ? 'text-[#059669]' : 'text-[#D97706]'}`}>
-              {metrics.completion}
+            <strong className={`text-sm ${(metrics.completion === 'Completed' || metrics.taskCompleted) ? 'text-[#059669]' : 'text-[#D97706]'}`}>
+              {metrics.completion || (metrics.taskCompleted ? 'Completed' : 'Incomplete')}
             </strong>
           </div>
 
           <div className="p-2 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
             <span className="text-[10px] text-[#868C98] block">Time Elapsed</span>
-            <strong className="text-sm text-[#0A0D14]">{metrics.timeSeconds}s</strong>
+            <strong className="text-sm text-[#0A0D14]">{metrics.timeSeconds ?? Math.round(metrics.durationMs / 1000)}s</strong>
           </div>
 
           <div className="p-2 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
             <span className="text-[10px] text-[#868C98] block">Total Steps</span>
-            <strong className="text-sm text-[#0F52BA]">{metrics.steps} actions</strong>
+            <strong className="text-sm text-[#0F52BA]">{metrics.steps ?? metrics.stepsTaken} actions</strong>
           </div>
 
           <div className="p-2 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
             <span className="text-[10px] text-[#868C98] block">Friction Events</span>
-            <strong className={`text-sm ${metrics.frictionPoints > 0 ? 'text-[#E11D48]' : 'text-[#059669]'}`}>
-              {metrics.frictionPoints} points
+            <strong className={`text-sm ${(metrics.frictionPoints ?? metrics.failedActionsCount) > 0 ? 'text-[#E11D48]' : 'text-[#059669]'}`}>
+              {metrics.frictionPoints ?? metrics.failedActionsCount} points
             </strong>
           </div>
         </div>

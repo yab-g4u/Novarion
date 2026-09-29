@@ -29,6 +29,7 @@ import {
 } from '../lib/research/types';
 import { DynamicGraphData, DynamicEvidenceSource } from '../types/evidenceGraph';
 import { BuildBriefPanel } from './buildBrief/BuildBriefPanel';
+import { buildClientPressureTestFallback } from '../lib/research/dynamicInvestigationResolver';
 
 interface PressureTestWorkspaceProps {
   initialIdea?: string;
@@ -49,6 +50,8 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
   const [isInvestigating, setIsInvestigating] = useState(false);
   const [testResult, setTestResult] = useState<PressureTestResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [generationCycle, setGenerationCycle] = useState(0);
+  const [expandedEvidenceId, setExpandedEvidenceId] = useState<string | null>(null);
 
   // Filter & interaction state
   const [activeRepoTab, setActiveRepoTab] = useState<'verified' | 'unverified' | 'rejected'>('verified');
@@ -64,21 +67,28 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
 
     setIsInvestigating(true);
     setErrorMessage(null);
+    setExpandedEvidenceId(null);
 
     try {
-      const res = await fetch('/api/pressure-test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idea: target })
-      });
+      let data: PressureTestResponse;
+      try {
+        const res = await fetch('/api/pressure-test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idea: target })
+        });
 
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error || errJson.message || `Investigation error: ${res.status}`);
+        const contentType = res.headers.get('content-type') || '';
+        if (!res.ok || !contentType.includes('application/json')) {
+          throw new Error(`Static fallback (${res.status})`);
+        }
+        data = await res.json();
+      } catch {
+        data = buildClientPressureTestFallback(target);
       }
 
-      const data: PressureTestResponse = await res.json();
       setTestResult(data);
+      setGenerationCycle((prev) => prev + 1);
 
       // Automatically update Living Evidence Graph with verified evidence
       if (onPressureTestUpdated && data.allEvidence.length > 0) {
@@ -591,15 +601,21 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
                 </button>
               </div>
             ) : (
-              filteredEvidence.map((ev) => {
+              filteredEvidence.map((ev, idx) => {
                 const isSupport = ev.stance === 'SUPPORTS';
                 const isChallenge = ev.stance === 'CHALLENGES';
+                const isExpanded = expandedEvidenceId === ev.id;
 
                 return (
                   <div
-                    key={ev.id}
-                    onClick={() => onOpenSourceModal && onOpenSourceModal(ev)}
-                    className="bg-white border border-[#E5E7EB] hover:border-[#CBD5E1] rounded-2xl p-4 sm:p-5 transition-all shadow-xs hover:shadow-sm cursor-pointer space-y-3 group text-left"
+                    key={`${generationCycle}-${ev.id}`}
+                    onClick={() => setExpandedEvidenceId((prev) => (prev === ev.id ? null : ev.id))}
+                    style={{ animationDelay: `${idx * 65}ms` }}
+                    className={`bg-white border rounded-2xl p-4 sm:p-5 transition-all cursor-pointer space-y-3 group text-left animate-in fade-in slide-in-from-bottom-2 duration-300 ${
+                      isExpanded
+                        ? 'border-[#0F52BA] shadow-md ring-2 ring-[#0F52BA]/10'
+                        : 'border-[#E5E7EB] hover:border-[#CBD5E1] shadow-xs hover:shadow-sm'
+                    }`}
                   >
                     {/* Top Bar: Relationship + Target Assumption + Source */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#F8FAFC] pb-2">
@@ -638,7 +654,12 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
                         <span title="Stance Confidence">
                           Conf: <strong className="text-[#0A0D14]">{Math.round(ev.confidence * 100)}%</strong>
                         </span>
-                        <ExternalLink size={12} className="opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
+                        <ChevronDown
+                          size={14}
+                          className={`text-[#64748B] transition-transform duration-200 ml-1 ${
+                            isExpanded ? 'rotate-180 text-[#0F52BA]' : ''
+                          }`}
+                        />
                       </div>
                     </div>
 
@@ -650,12 +671,12 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
                       <h4 className="text-sm font-bold text-[#0A0D14] group-hover:text-[#0F52BA] transition-colors leading-snug">
                         {ev.title}
                       </h4>
-                      <p className="text-xs text-[#525866] mt-1.5 leading-relaxed line-clamp-3">
+                      <p className={`text-xs text-[#525866] mt-1.5 leading-relaxed ${isExpanded ? '' : 'line-clamp-2'}`}>
                         "{ev.excerpt}"
                       </p>
                     </div>
 
-                    {/* WHY IT MATTERS & IMPLICATION */}
+                    {/* WHY IT MATTERS & IMPLICATION (Always visible or expanded with actions) */}
                     <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#EDF2F7] space-y-1.5 text-xs">
                       <div>
                         <span className="text-[10px] font-mono uppercase font-bold text-[#64748B]">WHY IT MATTERS: </span>
@@ -667,10 +688,45 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
                       </div>
                     </div>
 
+                    {isExpanded && (
+                      <div
+                        className="pt-2 border-t border-[#F1F5F9] flex flex-wrap items-center justify-between gap-2 text-xs font-mono animate-in fade-in duration-200"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center gap-3 text-[11px] text-[#64748B]">
+                          <span>Independence: <strong className="text-[#0A0D14]">{ev.independenceScore}/100</strong></span>
+                          <span>·</span>
+                          <span>Novelty: <strong className="text-[#0A0D14]">{ev.noveltyScore}/100</strong></span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {ev.url && (
+                            <a
+                              href={ev.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-2.5 py-1 rounded-lg bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#0A0D14] font-semibold inline-flex items-center gap-1"
+                            >
+                              <span>Open URL</span>
+                              <ExternalLink size={11} />
+                            </a>
+                          )}
+                          {onOpenSourceModal && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenSourceModal(ev)}
+                              className="px-2.5 py-1 rounded-lg bg-[#0A0D14] hover:bg-[#1E293B] text-white font-semibold cursor-pointer"
+                            >
+                              Full Citation Modal
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Footer Source Metadata */}
                     <div className="flex items-center justify-between text-[11px] font-mono text-[#94A3B8] pt-1">
                       <span>{ev.author || 'Verified Practitioner'}</span>
-                      <span>{ev.publishedAt || 'Recent'}</span>
+                      <span>{ev.publishedAt || 'Recent'} · {isExpanded ? 'Click to collapse' : 'Click to expand'}</span>
                     </div>
                   </div>
                 );

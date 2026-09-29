@@ -59,9 +59,9 @@ export const TestingSession: React.FC<TestingSessionProps> = ({
 
           if (streamEvt.type === 'screenshot.created') {
             const scr = streamEvt.data.screenshot as ScreenshotRecord;
-            setSessionData((prev) => {
+            setSessionData((prev: BrowserSessionData | null) => {
               if (!prev) return prev;
-              const exists = prev.screenshots.some((s) => s.id === scr.id);
+              const exists = prev.screenshots.some((s: ScreenshotRecord) => s.id === scr.id);
               return exists ? prev : { ...prev, screenshots: [...prev.screenshots, scr] };
             });
             return;
@@ -69,9 +69,9 @@ export const TestingSession: React.FC<TestingSessionProps> = ({
 
           if (streamEvt.type === 'action.completed') {
             const act = streamEvt.data.action as ActionRecord;
-            setSessionData((prev) => {
+            setSessionData((prev: BrowserSessionData | null) => {
               if (!prev) return prev;
-              const exists = prev.events.some((e) => e.id === act.id);
+              const exists = prev.events.some((e: ActionRecord) => e.id === act.id);
               return exists ? prev : { ...prev, events: [...prev.events, act], stepCount: prev.stepCount + 1 };
             });
             return;
@@ -79,7 +79,7 @@ export const TestingSession: React.FC<TestingSessionProps> = ({
 
           if (streamEvt.type === 'friction.detected') {
             const fric = streamEvt.data.friction as any;
-            setSessionData((prev) => {
+            setSessionData((prev: BrowserSessionData | null) => {
               if (!prev) return prev;
               return { ...prev, friction: [...prev.friction, fric] };
             });
@@ -87,7 +87,7 @@ export const TestingSession: React.FC<TestingSessionProps> = ({
           }
 
           if (streamEvt.type === 'task.progress') {
-            setSessionData((prev) => {
+            setSessionData((prev: BrowserSessionData | null) => {
               if (!prev) return prev;
               return { ...prev, stepCount: (streamEvt.data.stepCount as number) || prev.stepCount };
             });
@@ -95,7 +95,7 @@ export const TestingSession: React.FC<TestingSessionProps> = ({
           }
 
           if (streamEvt.type === 'session.finished') {
-            setSessionData((prev) => {
+            setSessionData((prev: BrowserSessionData | null) => {
               if (!prev) return prev;
               return { ...prev, status: streamEvt.data.status as any };
             });

@@ -50,12 +50,12 @@ export const FrictionPanel: React.FC<FrictionPanelProps> = ({ frictionEvents }) 
                     {fric.severity} SEVERITY
                   </span>
                   <span className="font-mono text-[10px] text-[#64748B] uppercase">
-                    {fric.category.replace('_', ' ')}
+                    {(fric.category || fric.type).replace(/_/g, ' ')}
                   </span>
                 </div>
 
                 <span className="text-[10px] font-mono text-[#868C98]">
-                  Confidence: {Math.round(fric.confidence * 100)}%
+                  Confidence: {Math.round((fric.confidence ?? 0.9) * 100)}%
                 </span>
               </div>
 
@@ -65,7 +65,7 @@ export const FrictionPanel: React.FC<FrictionPanelProps> = ({ frictionEvents }) 
               </p>
 
               {/* Concrete Evidence Line */}
-              {fric.evidence.length > 0 && (
+              {fric.evidence && fric.evidence.length > 0 && (
                 <div className="text-[11px] text-[#525866] bg-white/70 p-2 rounded-xl border border-[#FEE2E2] font-mono">
                   <span className="text-[#E11D48] font-bold">Evidence: </span>
                   <span>{fric.evidence.join('; ')}</span>
