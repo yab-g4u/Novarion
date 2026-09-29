@@ -8,7 +8,7 @@ import {
   Maximize2,
   AlertCircle
 } from 'lucide-react';
-import { ScreenshotRecord, SessionStatus } from '../../../../apps/api/src/modules/testing/testing.types';
+import { ScreenshotRecord, SessionStatus } from '../../../lib/testing/testing.types';
 
 interface BrowserViewportProps {
   currentUrl: string;

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Award, CheckCircle2, AlertTriangle, Layers } from 'lucide-react';
-import { UXFinding } from '../../../../apps/api/src/modules/testing/testing.types';
+import { UXFinding } from '../../../lib/testing/testing.types';
 
 interface UXFindingsProps {
   findings: UXFinding[];

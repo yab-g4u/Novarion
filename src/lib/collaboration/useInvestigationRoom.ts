@@ -49,15 +49,17 @@ export const roomCodeFromIdea = (idea: string): string => {
 };
 
 export const getShareableUrl = (roomId: string): string => {
+  const configuredBase =
+    typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_PUBLIC_APP_URL
+      ? String((import.meta as any).env.VITE_PUBLIC_APP_URL).replace(/\/+$/, '')
+      : '';
+
+  if (configuredBase) {
+    return `${configuredBase}/r/${roomId}`;
+  }
+
   if (typeof window !== 'undefined' && window.location?.origin) {
-    let origin = window.location.origin;
-    // CRITICAL FIX FOR GOOGLE CLOUD RUN / AI STUDIO:
-    // URLs with 'ais-dev-' are developer-restricted and return HTTP 403 Forbidden to external collaborators!
-    // The public pre-authenticated collaborator preview URL replaces 'ais-dev-' with 'ais-pre-'.
-    if (origin.includes('ais-dev-')) {
-      origin = origin.replace('ais-dev-', 'ais-pre-');
-    }
-    return `${origin}/r/${roomId}`;
+    return `${window.location.origin}/r/${roomId}`;
   }
   // Production fallback
   return `https://probe.pro.et/r/${roomId}`;

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { FileText, ArrowRight, Check, Share2, Compass, ShieldCheck } from 'lucide-react';
-import { ProductTestEvidence } from '../../../../apps/api/src/modules/testing/testing.types';
+import { ProductTestEvidence } from '../../../lib/testing/testing.types';
 
 interface SessionEvidenceProps {
   evidence?: ProductTestEvidence;

@@ -1,13 +1,13 @@
-import { CreateSessionInputSchema } from '../../apps/api/src/modules/testing/testing.schema';
-import { TaskPlanner } from '../../apps/api/src/modules/testing/agent/task.planner';
-import { FrictionDetector } from '../../apps/api/src/modules/testing/agent/friction.detector';
-import { CompletionDetector } from '../../apps/api/src/modules/testing/agent/completion.detector';
-import { SessionAnalyzer } from '../../apps/api/src/modules/testing/analysis/session.analyzer';
-import { UXAnalyzer } from '../../apps/api/src/modules/testing/analysis/ux.analyzer';
-import { browserService } from '../../apps/api/src/modules/testing/browser/browser.service';
-import { BrowserSession } from '../../apps/api/src/modules/testing/browser/browser.session';
-import { TestingAgent } from '../../apps/api/src/modules/testing/agent/testing.agent';
-import { ActionRecord, PageObservation } from '../../apps/api/src/modules/testing/testing.types';
+import { CreateSessionInputSchema } from '../../src/lib/testing/testing.schema';
+import { TaskPlanner } from '../../src/lib/testing/agent/task.planner';
+import { FrictionDetector } from '../../src/lib/testing/agent/friction.detector';
+import { CompletionDetector } from '../../src/lib/testing/agent/completion.detector';
+import { SessionAnalyzer } from '../../src/lib/testing/analysis/session.analyzer';
+import { UXAnalyzer } from '../../src/lib/testing/analysis/ux.analyzer';
+import { browserService } from '../../src/lib/testing/browser/browser.service';
+import { BrowserSession } from '../../src/lib/testing/browser/browser.session';
+import { TestingAgent } from '../../src/lib/testing/agent/testing.agent';
+import { ActionRecord, PageObservation } from '../../src/lib/testing/testing.types';
 
 export async function runProductTestingTests() {
   console.log('[TEST] Starting Probe Product Testing Subsystem test suite...');

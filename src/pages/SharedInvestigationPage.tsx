@@ -1,42 +1,41 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { 
   Layers, 
   Search, 
   Share2, 
-  Users, 
-  Sparkles, 
-  ArrowLeft, 
+  Calendar,
   Copy, 
-  Check, 
-  FlaskConical, 
-  CheckCircle2, 
-  ShieldCheck,
-  Scale
+  Check
 } from 'lucide-react';
 import { ProbeLogo } from '../components/ProbeLogo';
 import { EvidenceGraph } from '../components/EvidenceGraph';
+import { EvidenceTimeline } from '../components/EvidenceTimeline';
 import { PressureTestWorkspace } from '../components/PressureTestWorkspace';
 import { EvidenceModal } from '../components/EvidenceModal';
 import { EvidenceSource } from '../types';
 import { DynamicGraphData } from '../types/evidenceGraph';
 import { generateDynamicInvestigation } from '../lib/research/dynamicInvestigationResolver';
-import { useInvestigationRoom, getShareableUrl } from '../lib/collaboration/useInvestigationRoom';
+import { useInvestigationRoom } from '../lib/collaboration/useInvestigationRoom';
 import { ShareInvestigationModal } from '../components/collaboration/ShareInvestigationModal';
 
 export const SharedInvestigationPage: React.FC = () => {
   const { roomId = 'T4fTpH' } = useParams<{ roomId: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
   // Active tab inside shared workspace
-  const [activeTab, setActiveTab] = useState<'graph' | 'research'>('graph');
+  const [activeTab, setActiveTab] = useState<'graph' | 'calendar' | 'research'>('graph');
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [selectedSource, setSelectedSource] = useState<EvidenceSource | null>(null);
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
 
-  // Default query or recovered from localStorage
+  const urlIdea = searchParams.get('idea') || searchParams.get('q');
+
+  // Default query or recovered from URL / localStorage
   const [query, setQuery] = useState<string>(() => {
+    if (urlIdea && urlIdea.trim()) return urlIdea.trim();
     try {
       const stored = localStorage.getItem(`probe_room_state_${roomId}`);
       if (stored) {
@@ -48,6 +47,14 @@ export const SharedInvestigationPage: React.FC = () => {
       return 'AI tools will replace most productivity software';
     }
   });
+
+  useEffect(() => {
+    if (urlIdea && urlIdea.trim() && urlIdea.trim() !== query) {
+      const nextQ = urlIdea.trim();
+      setQuery(nextQ);
+      setGraphData(generateDynamicInvestigation(nextQ).graphData);
+    }
+  }, [urlIdea]);
 
   // Dynamic graph data generated for the room's idea
   const [graphData, setGraphData] = useState<DynamicGraphData>(() => {
@@ -143,6 +150,19 @@ export const SharedInvestigationPage: React.FC = () => {
 
           <button
             type="button"
+            onClick={() => setActiveTab('calendar')}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full font-medium transition-all cursor-pointer ${
+              activeTab === 'calendar'
+                ? 'bg-white text-[#0A0D14] font-bold shadow-xs'
+                : 'text-[#525866] hover:text-[#0A0D14]'
+            }`}
+          >
+            <Calendar size={13} className={activeTab === 'calendar' ? 'text-[#0F52BA]' : 'text-[#868C98]'} />
+            <span>Calendar</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab('research')}
             className={`hidden sm:flex items-center gap-1.5 px-3.5 py-1.5 rounded-full font-medium transition-all cursor-pointer ${
               activeTab === 'research'
@@ -214,6 +234,19 @@ export const SharedInvestigationPage: React.FC = () => {
               externalGraphData={graphData}
               focusNodeId={focusNodeId}
               onSelectSource={handleOpenSourceDetail}
+              onNavigateToCalendar={() => setActiveTab('calendar')}
+            />
+          </div>
+        )}
+
+        {activeTab === 'calendar' && (
+          <div className="w-full bg-white">
+            <EvidenceTimeline
+              roomId={roomId}
+              onNavigateToGraphNode={(nodeId) => {
+                setFocusNodeId(nodeId);
+                setActiveTab('graph');
+              }}
             />
           </div>
         )}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { ShieldAlert, AlertTriangle, Info, CheckCircle2 } from 'lucide-react';
-import { FrictionEvent } from '../../../../apps/api/src/modules/testing/testing.types';
+import { FrictionEvent } from '../../../lib/testing/testing.types';
 
 interface FrictionPanelProps {
   frictionEvents: FrictionEvent[];

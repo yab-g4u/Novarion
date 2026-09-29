@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { X, Copy, Check, Users, Sparkles, Globe, ShieldCheck } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { X, Copy, Check, Users, Globe, ShieldCheck, ExternalLink } from 'lucide-react';
 import { CollaboratorPresence } from '../../types/collaboration';
 import { getShareableUrl } from '../../lib/collaboration/useInvestigationRoom';
 
@@ -19,7 +20,11 @@ export const ShareInvestigationModal: React.FC<ShareInvestigationModalProps> = (
   collaborators,
 }) => {
   const [copied, setCopied] = useState(false);
-  const shareableUrl = getShareableUrl(roomId);
+  const navigate = useNavigate();
+  const baseShareableUrl = getShareableUrl(roomId);
+  const shareableUrl = query
+    ? `${baseShareableUrl}?idea=${encodeURIComponent(query)}`
+    : baseShareableUrl;
 
   if (!isOpen) return null;
 
@@ -27,6 +32,18 @@ export const ShareInvestigationModal: React.FC<ShareInvestigationModalProps> = (
     navigator.clipboard.writeText(shareableUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
+  };
+
+  const handleOpenRoom = () => {
+    if (query) {
+      try {
+        localStorage.setItem('probe_active_idea', query);
+      } catch {
+        // ignore
+      }
+    }
+    onClose();
+    navigate(query ? `/r/${roomId}?idea=${encodeURIComponent(query)}` : `/r/${roomId}`);
   };
 
   return (
@@ -127,16 +144,27 @@ export const ShareInvestigationModal: React.FC<ShareInvestigationModalProps> = (
 
         {/* Footer info */}
         <div className="flex items-center justify-between text-[11px] font-mono text-[#868C98] pt-2 border-t border-[#F1F3F5]">
-          <span className="flex items-center gap-1">
-            <Globe size={12} className="text-[#0F52BA]" />
-            <span className="truncate max-w-[260px]">{shareableUrl.replace(/^https?:\/\//, '')}</span>
+          <span className="flex items-center gap-1 min-w-0">
+            <Globe size={12} className="text-[#0F52BA] shrink-0" />
+            <span className="truncate max-w-[180px]">{baseShareableUrl.replace(/^https?:\/\//, '')}</span>
           </span>
-          <button
-            onClick={onClose}
-            className="text-[#0A0D14] font-bold hover:underline cursor-pointer"
-          >
-            Done
-          </button>
+          <div className="flex items-center gap-3 shrink-0">
+            <button
+              type="button"
+              onClick={handleOpenRoom}
+              className="text-[#0F52BA] font-bold hover:underline flex items-center gap-1 cursor-pointer"
+            >
+              <span>Open Room</span>
+              <ExternalLink size={11} />
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-[#0A0D14] font-bold hover:underline cursor-pointer"
+            >
+              Done
+            </button>
+          </div>
         </div>
 
       </div>

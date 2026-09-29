@@ -1,6 +1,6 @@
 import React from 'react';
 import { Target, CheckCircle2, Clock, Activity, AlertCircle } from 'lucide-react';
-import { UXMetrics, SessionStatus } from '../../../../apps/api/src/modules/testing/testing.types';
+import { UXMetrics, SessionStatus } from '../../../lib/testing/testing.types';
 
 interface TaskProgressProps {
   task: string;

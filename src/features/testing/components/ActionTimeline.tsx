@@ -11,7 +11,7 @@ import {
   Sliders,
   AlertTriangle
 } from 'lucide-react';
-import { ActionRecord, ScreenshotRecord } from '../../../../apps/api/src/modules/testing/testing.types';
+import { ActionRecord, ScreenshotRecord } from '../../../lib/testing/testing.types';
 
 interface ActionTimelineProps {
   events: ActionRecord[];

@@ -20,5 +20,5 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src", "server.ts", "packages/shared/src", "packages/schemas/src", "packages/ui/src"]
+  "include": ["src", "server.ts"]
 }

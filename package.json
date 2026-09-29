@@ -1,16 +1,13 @@
 {
-  "name": "novarion",
+  "name": "probe",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
   "scripts": {
     "dev": "tsx server.ts",
     "build": "tsc && vite build",
     "lint": "tsc --noEmit",
+    "test": "tsx tests/integration/shared-workspace.test.ts && tsx tests/integration/build-brief.test.ts && tsx tests/integration/domain-isolation.test.ts && tsx tests/integration/pressure-test.test.ts && tsx tests/integration/product-testing.test.ts",
     "start": "tsx server.ts",
     "preview": "vite preview --host 0.0.0.0 --port 3000"
   },

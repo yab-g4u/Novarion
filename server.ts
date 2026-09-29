@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { createServer as createViteServer } from 'vite';
 import { searchService } from './src/lib/search/search-service';
 import { pressureTestPipeline } from './src/lib/research/pipeline';
-import { testingRouter } from './apps/api/src/modules/testing/testing.controller';
+import { testingRouter } from './src/lib/testing/testing.controller';
 
 const SearchRequestSchema = z.object({
   query: z
@@ -177,7 +177,7 @@ async function main() {
   } else {
     const distPath = path.resolve('dist');
     app.use(express.static(distPath));
-    app.get('*', (_req, res) => {
+    app.get('*all', (_req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

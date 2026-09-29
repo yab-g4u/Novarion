@@ -14,7 +14,7 @@ import {
   ActionRecord,
   ScreenshotRecord,
   StreamEvent
-} from '../../../../apps/api/src/modules/testing/testing.types';
+} from '../../../lib/testing/testing.types';
 import { BrowserViewport } from './BrowserViewport';
 import { TaskProgress } from './TaskProgress';
 import { ActionTimeline } from './ActionTimeline';
