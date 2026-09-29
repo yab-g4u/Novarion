@@ -1,5 +1,6 @@
 [variables]
 PLAYWRIGHT_BROWSERS_PATH = "0"
+NODE_ENV = "production"
 
 [phases.setup]
 nixPkgs = ["nodejs_22", "pnpm_9", "chromium"]
@@ -11,4 +12,4 @@ cmds = ["pnpm install"]
 cmds = ["pnpm run build", "npx playwright install --only-shell chromium"]
 
 [start]
-cmd = "pnpm run start"
+cmd = "NODE_ENV=production node --max-old-space-size=160 dist/server.cjs"

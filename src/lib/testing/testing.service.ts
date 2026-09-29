@@ -1,15 +1,59 @@
 import { Response } from 'express';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { BrowserSession } from './browser/browser.session';
 import { browserService } from './browser/browser.service';
 import { TestingAgent } from './agent/testing.agent';
 import { BrowserSessionData, StreamEvent } from './testing.types';
 import { CreateSessionRequest, normalizeAndValidateProductUrl } from './testing.schema';
 
+const SESSION_STORAGE_DIR = path.join(os.tmpdir(), 'probe-testing-sessions');
+
 export class TestingService {
   private sessions = new Map<string, BrowserSession>();
   private agent = new TestingAgent();
   private activeSessionCount = 0;
-  private readonly MAX_CONCURRENT_SESSIONS = 2;
+  private readonly MAX_CONCURRENT_SESSIONS = 1;
+
+  constructor() {
+    this.ensureStorageDir();
+  }
+
+  private ensureStorageDir(): void {
+    try {
+      if (!fs.existsSync(SESSION_STORAGE_DIR)) {
+        fs.mkdirSync(SESSION_STORAGE_DIR, { recursive: true });
+      }
+    } catch (err) {
+      console.warn('[Probe Testing] Could not create session storage directory:', err);
+    }
+  }
+
+  private persistSessionSnapshot(data: BrowserSessionData): void {
+    try {
+      this.ensureStorageDir();
+      const filePath = path.join(SESSION_STORAGE_DIR, `${data.sessionId}.json`);
+      const tempPath = `${filePath}.tmp`;
+      fs.writeFileSync(tempPath, JSON.stringify(data), 'utf-8');
+      fs.renameSync(tempPath, filePath);
+    } catch {
+      // Ignore disk persistence errors
+    }
+  }
+
+  private readPersistedSessionSnapshot(sessionId: string): BrowserSessionData | undefined {
+    try {
+      const safeId = path.basename(sessionId);
+      const filePath = path.join(SESSION_STORAGE_DIR, `${safeId}.json`);
+      if (!fs.existsSync(filePath)) return undefined;
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      const parsed = JSON.parse(raw) as BrowserSessionData;
+      return parsed;
+    } catch {
+      return undefined;
+    }
+  }
 
   public async createSession(req: CreateSessionRequest): Promise<BrowserSessionData> {
     const validation = normalizeAndValidateProductUrl(req.productUrl);
@@ -19,26 +63,39 @@ export class TestingService {
 
     if (this.activeSessionCount >= this.MAX_CONCURRENT_SESSIONS) {
       throw new Error(
-        'Maximum concurrent browser testing sessions reached. Please wait for the active session to finish.'
+        'A Playwright browser session is currently active. Please wait a few seconds for it to finish before starting another test.'
       );
     }
 
     // Use a clean, short opaque sessionId (never embed encoded target URLs in the route path)
     const sessionId = `test_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
+    console.log(
+      `[Probe Testing] Creating session ${sessionId} (targetUrl=${validation.normalizedUrl}, maxSteps=${Math.min(
+        req.maxSteps || 8,
+        10
+      )}, timeoutMs=${Math.min(req.timeoutMs || 45000, 60000)})`
+    );
+
     const session = new BrowserSession({
       sessionId,
       productUrl: validation.normalizedUrl,
       task: req.task,
       authEmail: req.authEmail,
-      maxSteps: Math.min(req.maxSteps || 8, 12),
+      maxSteps: Math.min(req.maxSteps || 8, 10),
       timeoutMs: Math.min(req.timeoutMs || 45000, 60000)
     });
 
-    this.sessions.set(sessionId, session);
+    // Persist snapshot on every stream update so session state survives disk lookups
+    session.on('stream', () => {
+      this.persistSessionSnapshot(session.getData());
+    });
 
-    // Prune old sessions if map grows over 25
-    if (this.sessions.size > 25) {
+    this.sessions.set(sessionId, session);
+    this.persistSessionSnapshot(session.getData());
+
+    // Prune old sessions if map grows over 20
+    if (this.sessions.size > 20) {
       const oldestKey = this.sessions.keys().next().value;
       if (oldestKey) this.sessions.delete(oldestKey);
     }
@@ -47,12 +104,14 @@ export class TestingService {
 
     if (req.waitForCompletion || isServerless) {
       await this.executeSessionLifecycle(session);
-      return session.getData();
+      const finalData = session.getData();
+      this.persistSessionSnapshot(finalData);
+      return finalData;
     } else {
       // Schedule asynchronously on next tick so HTTP 201 response flushes immediately before Playwright launches
       setImmediate(() => {
         this.executeSessionLifecycle(session).catch((err) => {
-          console.error(`[TestingService] Unhandled error in session ${sessionId}:`, err);
+          console.error(`[Probe Testing] Unhandled error in session ${sessionId}:`, err);
         });
       });
       return session.getData();
@@ -63,7 +122,11 @@ export class TestingService {
     this.activeSessionCount++;
     try {
       await session.initialize();
+      this.persistSessionSnapshot(session.getData());
+
       const navSuccess = await session.navigateToInitialUrl();
+      this.persistSessionSnapshot(session.getData());
+
       if (navSuccess && session.getStatus() === 'RUNNING') {
         await this.agent.runSession(session);
       } else {
@@ -76,11 +139,12 @@ export class TestingService {
       }
     } catch (err: any) {
       console.error(
-        `[TestingService] Session lifecycle error (${session.sessionId}):`,
+        `[Probe Testing] Session lifecycle error (sessionId=${session.sessionId}, targetUrl=${session.productUrl}):`,
         err?.message || err
       );
       await this.agent.finalizeSessionAnalysis(session, 'FAILED');
     } finally {
+      this.persistSessionSnapshot(session.getData());
       this.activeSessionCount = Math.max(0, this.activeSessionCount - 1);
       // Free Chromium memory immediately when no sessions are actively running
       if (this.activeSessionCount === 0) {
@@ -98,13 +162,43 @@ export class TestingService {
   }
 
   /**
-   * Read-only lookup of session state. Never launches a new Playwright browser on a GET request.
+   * Read-only lookup of session state (memory + disk fallback).
+   * Never launches a new Playwright browser on a GET request.
    */
   public async getOrRehydrateSessionData(sessionId: string): Promise<BrowserSessionData | undefined> {
     const existing = this.sessions.get(sessionId);
     if (existing) {
       return existing.getData();
     }
+
+    const persisted = this.readPersistedSessionSnapshot(sessionId);
+    if (persisted) {
+      // If a persisted session is not in this.sessions but still marked as non-terminal,
+      // the container process restarted while the session was running.
+      if (
+        persisted.status === 'QUEUED' ||
+        persisted.status === 'STARTING' ||
+        persisted.status === 'RUNNING'
+      ) {
+        const interruptedMsg = `Browser testing process was interrupted while testing ${persisted.productUrl}.`;
+        const updated: BrowserSessionData = {
+          ...persisted,
+          status: 'FAILED',
+          finishedAt: new Date().toISOString(),
+          errors: [...(persisted.errors || []), interruptedMsg],
+          completion: {
+            status: 'FAILED',
+            confidence: 1.0,
+            evidence: [interruptedMsg],
+            explanation: interruptedMsg
+          }
+        };
+        this.persistSessionSnapshot(updated);
+        return updated;
+      }
+      return persisted;
+    }
+
     return undefined;
   }
 
@@ -128,6 +222,7 @@ export class TestingService {
       return false;
     }
     await session.finish('STOPPED');
+    this.persistSessionSnapshot(session.getData());
     return true;
   }
 
@@ -135,6 +230,24 @@ export class TestingService {
     const session = this.sessions.get(sessionId);
 
     if (!session) {
+      const persisted = await this.getOrRehydrateSessionData(sessionId);
+      if (persisted) {
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.flushHeaders?.();
+        res.write(
+          `data: ${JSON.stringify({
+            type: 'session.snapshot',
+            sessionId: persisted.sessionId,
+            timestamp: new Date().toISOString(),
+            data: persisted
+          })}\n\n`
+        );
+        res.end();
+        return;
+      }
+
       res.status(404).json({
         error: 'Testing session not found',
         message: 'Session expired or server restarted.'

@@ -105,6 +105,12 @@ export class BrowserSession extends EventEmitter {
     try {
       this.context = await browserService.createIsolatedContext();
       this.page = await this.context.newPage();
+      this.page.setDefaultTimeout(15000);
+      this.page.setDefaultNavigationTimeout(25000);
+
+      console.log(
+        `[Probe Testing] Session ${this.sessionId} initialized isolated page (executablePath=${browserService.getActiveExecutablePath()}, targetUrl=${this.productUrl})`
+      );
 
       this.attachPageDiagnostics(this.page);
 
@@ -113,7 +119,7 @@ export class BrowserSession extends EventEmitter {
       });
     } catch (err: any) {
       const errMsg = `Playwright browser failed to launch: ${err?.message || String(err)}`;
-      console.error(`[BrowserSession] ${errMsg}`);
+      console.error(`[Probe Testing] Session ${this.sessionId} browser launch error: ${errMsg}`);
       this.errors.push(errMsg);
       this.setCompletion({
         status: 'FAILED',
@@ -243,10 +249,20 @@ export class BrowserSession extends EventEmitter {
     const actionMeta = this.actionRecorder.startAction('NAVIGATE', this.productUrl, undefined, this.productUrl);
     this.emitStream('action.started', { action: 'NAVIGATE', target: this.productUrl });
 
+    console.log(
+      `[Probe Testing] Navigation started (sessionId=${this.sessionId}, targetUrl=${this.productUrl})`
+    );
     const result = await this.actionExecutor.navigate(this.page, this.productUrl);
     if (result.navigationTiming) {
       this.navigationTiming = result.navigationTiming;
     }
+    console.log(
+      `[Probe Testing] Navigation finished (sessionId=${this.sessionId}, success=${result.success}, finalUrl=${this.page.url()}, httpStatus=${
+        result.httpStatus ?? 'n/a'
+      }, loadTimeMs=${result.navigationTiming?.loadTimeMs ?? 'n/a'}${
+        result.error ? `, error=${result.error}` : ''
+      })`
+    );
 
     const initialScr = await this.screenshotManager.capture(this.page, 'initial', actionMeta.id);
     if (initialScr) {
@@ -426,6 +442,9 @@ export class BrowserSession extends EventEmitter {
     this.emitStream('action.completed', { action: actionRecord });
 
     if (!executionResult.success && executionResult.error) {
+      console.warn(
+        `[Probe Testing] Playwright action error (sessionId=${this.sessionId}, step=${this.stepCount}, type=${type}, target=${targetName}): ${executionResult.error}`
+      );
       this.errors.push(executionResult.error);
     }
 
@@ -618,6 +637,10 @@ export class BrowserSession extends EventEmitter {
       this.context = null;
       this.page = null;
     }
+
+    console.log(
+      `[Probe Testing] Session cleanup completed (sessionId=${this.sessionId}, status=${this.status}, steps=${this.stepCount}, screenshots=${this.screenshots.length}, errors=${this.errors.length})`
+    );
 
     this.emitStream('session.finished', {
       sessionId: this.sessionId,
