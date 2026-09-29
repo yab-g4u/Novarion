@@ -25,7 +25,7 @@ const PRESET_TEST_CASES = [
   {
     name: 'links.et/signup (Google Auth Detection)',
     url: 'https://links.et/signup',
-    task: 'Detect authentication requirements and test Continue with Google sign-in with g4uforlife@gmail.com.',
+    task: 'Detect authentication requirements and test Continue with Google sign-in.',
     useGoogleAuth: true
   },
   {
@@ -67,29 +67,44 @@ export const TestingWorkspace: React.FC<TestingWorkspaceProps> = ({ onSyncToGrap
     setIsLaunching(true);
     setErrorMessage(null);
 
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20000);
+
     try {
       const res = await fetch('/api/testing/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           productUrl: targetUrl,
           task: targetTask,
           authEmail: shouldUseGoogle ? ALLOWED_GOOGLE_TEST_EMAIL : undefined,
-          maxSteps: 15,
-          timeoutMs: 90000
+          maxSteps: 8,
+          timeoutMs: 45000
         })
       });
 
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error || errJson.message || `Failed to start session (${res.status})`);
+        throw new Error(
+          errJson.error ||
+            errJson.message ||
+            (res.status === 502 || res.status === 503
+              ? `Playwright testing service is temporarily unavailable (HTTP ${res.status}). Please retry in a moment.`
+              : `Failed to start session (HTTP ${res.status})`)
+        );
       }
 
       const data = await res.json();
       setActiveSessionId(data.sessionId);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to initialize Playwright browser session');
+      const msg =
+        err?.name === 'AbortError'
+          ? 'Request timed out after 20s while starting Playwright session.'
+          : err.message || 'Failed to initialize Playwright browser session';
+      setErrorMessage(msg);
     } finally {
+      clearTimeout(timer);
       setIsLaunching(false);
     }
   };
@@ -191,7 +206,7 @@ export const TestingWorkspace: React.FC<TestingWorkspaceProps> = ({ onSyncToGrap
             />
             <Lock size={12} className="text-[#0F52BA]" />
             <span>
-              Support Google/Gmail Auth (<strong>{ALLOWED_GOOGLE_TEST_EMAIL}</strong> — no stored passwords)
+              Use Google/Gmail Auth where site supports Google Sign-In (never stores passwords)
             </span>
           </label>
 

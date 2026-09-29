@@ -28,32 +28,47 @@ testingRouter.post('/session', async (req: Request, res: Response) => {
 
 // GET /api/testing/session/:id - Inspect full session state, metrics, findings
 testingRouter.get('/session/:id', async (req: Request, res: Response) => {
-  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = decodeURIComponent(String(rawId || '')).trim();
   const sessionData = await testingService.getOrRehydrateSessionData(id);
   if (!sessionData) {
-    return res.status(404).json({ error: 'Session not found' });
+    return res.status(404).json({
+      error: 'Session not found',
+      message: 'The testing session was not found or has expired.'
+    });
   }
   return res.json(sessionData);
 });
 
 // GET /api/testing/session/:id/stream - Server-Sent Events live stream
 testingRouter.get('/session/:id/stream', async (req: Request, res: Response) => {
-  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = decodeURIComponent(String(rawId || '')).trim();
   await testingService.subscribeToStream(id, res);
+});
+
+// POST /api/testing/session/:id/stop - Cancel/stop running session
+testingRouter.post('/session/:id/stop', async (req: Request, res: Response) => {
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = decodeURIComponent(String(rawId || '')).trim();
+  const success = await testingService.stopSession(id);
+  if (!success) {
+    return res.status(404).json({ error: 'Session not found or already terminated' });
+  }
+  return res.json({ status: 'stopped' });
+});
+
+// Fallback for any legacy/encoded multi-segment /session/* path (e.g. /api/testing/session/links.et/...)
+testingRouter.use('/session', (req: Request, res: Response) => {
+  return res.status(404).json({
+    error: 'Session not found',
+    message: 'Invalid or expired testing session identifier.',
+    path: req.originalUrl
+  });
 });
 
 // GET /api/testing/sessions - List recent sessions
 testingRouter.get('/sessions', (_req: Request, res: Response) => {
   const sessions = testingService.getAllSessions();
   return res.json({ sessions });
-});
-
-// POST /api/testing/session/:id/stop - Cancel/stop running session
-testingRouter.post('/session/:id/stop', async (req: Request, res: Response) => {
-  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const success = await testingService.stopSession(id);
-  if (!success) {
-    return res.status(404).json({ error: 'Session not found or already terminated' });
-  }
-  return res.json({ status: 'stopped' });
 });

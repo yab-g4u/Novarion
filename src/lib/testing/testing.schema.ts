@@ -44,6 +44,18 @@ export function normalizeAndValidateProductUrl(rawUrl: string): {
     return { valid: false, error: 'Product URL is required' };
   }
 
+  // Safely decode URL-encoded target URLs (e.g. https%3A%2F%2Flinks.et%2F... or links.et%2F...)
+  if (trimmed.includes('%3A') || trimmed.includes('%3a') || trimmed.includes('%2F') || trimmed.includes('%2f')) {
+    try {
+      const decoded = decodeURIComponent(trimmed).trim();
+      if (decoded) {
+        trimmed = decoded;
+      }
+    } catch {
+      // Keep original trimmed string if malformed URI component
+    }
+  }
+
   if (!/^https?:\/\//i.test(trimmed)) {
     trimmed = `https://${trimmed}`;
   }

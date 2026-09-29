@@ -165,6 +165,18 @@ export class BrowserSession extends EventEmitter {
       }
     });
 
+    page.on('crash', () => {
+      const crashMsg = 'Browser page renderer crashed while loading or interacting with the target website.';
+      this.errors.push(crashMsg);
+      this.setCompletion({
+        status: 'FAILED',
+        confidence: 1.0,
+        evidence: [crashMsg],
+        explanation: crashMsg
+      });
+      this.setStatus('FAILED');
+    });
+
     page.on('requestfailed', (req) => {
       const url = req.url();
       const failureText = req.failure()?.errorText || 'Network request failed';

@@ -32,7 +32,7 @@ const PRESET_PRODUCTS = [
   {
     name: 'links.et/signup (Google Auth)',
     url: 'https://links.et/signup',
-    task: 'Detect authentication requirements and test Continue with Google sign-in using g4uforlife@gmail.com',
+    task: 'Detect authentication requirements and test Continue with Google sign-in',
     useGoogleAuth: true,
     tag: 'Google Auth Test'
   },
@@ -65,7 +65,8 @@ export const ProductTestingSection: React.FC = () => {
   const [activeStepDescription, setActiveStepDescription] = useState<string>('');
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const pollingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activePollRunIdRef = useRef<number>(0);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -75,6 +76,13 @@ export const ProductTestingSection: React.FC = () => {
   const normalizeUrl = (raw: string) => {
     let clean = raw.trim();
     if (!clean) return '';
+    if (clean.includes('%3A') || clean.includes('%3a') || clean.includes('%2F') || clean.includes('%2f')) {
+      try {
+        clean = decodeURIComponent(clean).trim();
+      } catch {
+        // Ignore malformed encoding
+      }
+    }
     if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
       clean = `https://${clean}`;
     }
@@ -89,6 +97,29 @@ export const ProductTestingSection: React.FC = () => {
     status === 'TIMEOUT' ||
     status === 'STOPPED';
 
+  const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = 15000) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  const stopPolling = () => {
+    activePollRunIdRef.current += 1;
+    if (pollingTimerRef.current) {
+      clearTimeout(pollingTimerRef.current);
+      pollingTimerRef.current = null;
+    }
+  };
+
   const handleLaunchPlaywrightStudy = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const finalUrl = normalizeUrl(inputUrl);
@@ -97,43 +128,52 @@ export const ProductTestingSection: React.FC = () => {
       return;
     }
 
+    stopPolling();
+    const currentRunId = activePollRunIdRef.current;
+
     setIsLaunchingPlaywright(true);
-    setPlaywrightStatus('RUNNING');
+    setPlaywrightStatus('STARTING');
     setLaunchError(null);
     setSessionData(null);
     setCurrentScreenshot(null);
     setActiveStepDescription(`Launching real Playwright Chromium browser and opening ${finalUrl}...`);
 
-    if (pollingTimerRef.current) {
-      clearInterval(pollingTimerRef.current);
-      pollingTimerRef.current = null;
-    }
-
     try {
-      const res = await fetch('/api/testing/session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          productUrl: finalUrl,
-          task: inputTask || 'Explore landing page, test primary navigation, and evaluate UX friction',
-          authEmail: enableGoogleAuth ? ALLOWED_GOOGLE_TEST_EMAIL : undefined,
-          maxSteps: 10,
-          timeoutMs: 90000
-        })
-      });
+      const res = await fetchWithTimeout(
+        '/api/testing/session',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            productUrl: finalUrl,
+            task: inputTask || 'Explore landing page, test primary navigation, and evaluate UX friction',
+            authEmail: enableGoogleAuth ? ALLOWED_GOOGLE_TEST_EMAIL : undefined,
+            maxSteps: 8,
+            timeoutMs: 45000
+          })
+        },
+        20000
+      );
 
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
         const errMsg =
           payload?.message ||
           payload?.error ||
-          `Failed to start Playwright browser session (HTTP ${res.status})`;
+          (res.status === 502 || res.status === 503
+            ? `Playwright testing service is temporarily unavailable (HTTP ${res.status}). Please retry in a few seconds.`
+            : `Failed to start Playwright browser session (HTTP ${res.status})`);
         throw new Error(errMsg);
       }
 
       const newSessionId = payload.sessionId;
+      if (!newSessionId) {
+        throw new Error('Server did not return a valid testing session ID.');
+      }
 
-      const applySessionSnapshot = (sess: BrowserSessionData) => {
+      const applySessionSnapshot = (sess: BrowserSessionData): boolean => {
+        if (activePollRunIdRef.current !== currentRunId) return true;
+
         setSessionData(sess);
         setPlaywrightStatus(sess.status);
 
@@ -146,6 +186,8 @@ export const ProductTestingSection: React.FC = () => {
           );
         } else if (sess.errors && sess.errors.length > 0) {
           setActiveStepDescription(sess.errors[0]);
+        } else if (sess.status === 'QUEUED' || sess.status === 'STARTING') {
+          setActiveStepDescription(`Starting headless Chromium and opening ${finalUrl}...`);
         }
 
         if (sess.screenshots && sess.screenshots.length > 0) {
@@ -157,13 +199,13 @@ export const ProductTestingSection: React.FC = () => {
         }
 
         if (isTerminalStatus(sess.status)) {
-          if (pollingTimerRef.current) {
-            clearInterval(pollingTimerRef.current);
-            pollingTimerRef.current = null;
-          }
+          stopPolling();
           setIsLaunchingPlaywright(false);
           if (sess.screenshots && sess.screenshots.length > 0) {
             setCurrentScreenshot(sess.screenshots[sess.screenshots.length - 1].dataUrl);
+          }
+          if (sess.status === 'FAILED' && sess.errors && sess.errors.length > 0) {
+            setLaunchError(sess.errors[0]);
           }
           return true;
         }
@@ -174,18 +216,110 @@ export const ProductTestingSection: React.FC = () => {
         return;
       }
 
-      pollingTimerRef.current = setInterval(async () => {
-        try {
-          const checkRes = await fetch(`/api/testing/session/${newSessionId}`);
-          if (checkRes.ok) {
-            const sess: BrowserSessionData = await checkRes.json();
-            applySessionSnapshot(sess);
-          }
-        } catch (err: any) {
-          console.warn('[Playwright Polling Error]:', err);
+      const pollStartedAt = Date.now();
+      const MAX_POLL_DURATION_MS = 75000;
+      const MAX_CONSECUTIVE_ERRORS = 4;
+      const BASE_POLL_INTERVAL_MS = 1200;
+      let consecutiveErrors = 0;
+
+      const pollOnce = async () => {
+        if (activePollRunIdRef.current !== currentRunId) return;
+
+        if (Date.now() - pollStartedAt > MAX_POLL_DURATION_MS) {
+          stopPolling();
+          setIsLaunchingPlaywright(false);
+          setPlaywrightStatus('TIMEOUT');
+          const timeoutMsg =
+            'Playwright session timed out after 75 seconds while testing the target URL.';
+          setLaunchError(timeoutMsg);
+          setActiveStepDescription(`Timeout: ${timeoutMsg}`);
+          return;
         }
-      }, 800);
+
+        try {
+          const checkRes = await fetchWithTimeout(
+            `/api/testing/session/${encodeURIComponent(newSessionId)}`,
+            { method: 'GET' },
+            10000
+          );
+
+          if (activePollRunIdRef.current !== currentRunId) return;
+
+          if (checkRes.ok) {
+            consecutiveErrors = 0;
+            const sess: BrowserSessionData = await checkRes.json();
+            const done = applySessionSnapshot(sess);
+            if (!done && activePollRunIdRef.current === currentRunId) {
+              pollingTimerRef.current = setTimeout(pollOnce, BASE_POLL_INTERVAL_MS);
+            }
+            return;
+          }
+
+          const errBody = await checkRes.json().catch(() => ({}));
+          if (checkRes.status === 404) {
+            consecutiveErrors += 1;
+            if (consecutiveErrors >= 2) {
+              stopPolling();
+              setIsLaunchingPlaywright(false);
+              setPlaywrightStatus('FAILED');
+              const notFoundMsg =
+                errBody?.message ||
+                'Testing session expired or the server restarted while loading the target page.';
+              setLaunchError(notFoundMsg);
+              setActiveStepDescription(`Error: ${notFoundMsg}`);
+              return;
+            }
+          } else {
+            consecutiveErrors += 1;
+          }
+
+          if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+            stopPolling();
+            setIsLaunchingPlaywright(false);
+            setPlaywrightStatus('FAILED');
+            const failMsg =
+              errBody?.message ||
+              errBody?.error ||
+              `Playwright session failed after ${MAX_CONSECUTIVE_ERRORS} retries (HTTP ${checkRes.status}). The target site may be unreachable or exceeded container memory limits.`;
+            setLaunchError(failMsg);
+            setActiveStepDescription(`Error: ${failMsg}`);
+            return;
+          }
+
+          const backoffMs = Math.min(1500 * Math.pow(2, consecutiveErrors - 1), 10000);
+          setActiveStepDescription(
+            `Waiting for browser session response (HTTP ${checkRes.status}, retry ${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS})...`
+          );
+          if (activePollRunIdRef.current === currentRunId) {
+            pollingTimerRef.current = setTimeout(pollOnce, backoffMs);
+          }
+        } catch (pollErr: any) {
+          if (activePollRunIdRef.current !== currentRunId) return;
+          consecutiveErrors += 1;
+
+          if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+            stopPolling();
+            setIsLaunchingPlaywright(false);
+            setPlaywrightStatus('FAILED');
+            const netMsg =
+              pollErr?.message ||
+              'Lost connection to Playwright testing backend after multiple retries.';
+            setLaunchError(netMsg);
+            setActiveStepDescription(`Error: ${netMsg}`);
+            return;
+          }
+
+          const backoffMs = Math.min(1500 * Math.pow(2, consecutiveErrors - 1), 10000);
+          setActiveStepDescription(
+            `Reconnecting to browser session (retry ${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS})...`
+          );
+          pollingTimerRef.current = setTimeout(pollOnce, backoffMs);
+        }
+      };
+
+      pollingTimerRef.current = setTimeout(pollOnce, BASE_POLL_INTERVAL_MS);
     } catch (err: any) {
+      stopPolling();
       setIsLaunchingPlaywright(false);
       setPlaywrightStatus('FAILED');
       const msg = err?.message || 'Unable to launch Playwright browser session';
@@ -196,9 +330,7 @@ export const ProductTestingSection: React.FC = () => {
 
   useEffect(() => {
     return () => {
-      if (pollingTimerRef.current) {
-        clearInterval(pollingTimerRef.current);
-      }
+      stopPolling();
     };
   }, []);
 
@@ -314,7 +446,7 @@ export const ProductTestingSection: React.FC = () => {
                 />
                 <Lock size={12} className="text-[#0F52BA]" />
                 <span>
-                  Use Google/Gmail Auth (<strong className="text-[#0A0D14]">{ALLOWED_GOOGLE_TEST_EMAIL}</strong>) where site supports Google Sign-In (never stores passwords)
+                  Use Google/Gmail Auth where site supports Google Sign-In (never stores passwords)
                 </span>
               </label>
 

@@ -34,6 +34,18 @@ export async function runProductTestingTests() {
   });
   assert(validResult.success, 'Valid public product URL, task, and g4uforlife@gmail.com pass validation');
 
+  const encodedUrlResult = CreateSessionInputSchema.safeParse({
+    productUrl: 'https%3A%2F%2Flinks.et%2Fsignup',
+    task: 'Detect authentication requirements'
+  });
+  assert(encodedUrlResult.success, 'URL-encoded target URLs (https%3A%2F%2Flinks.et%2Fsignup) pass validation');
+
+  const encodedBareDomainResult = CreateSessionInputSchema.safeParse({
+    productUrl: 'links.et%2Fsignup',
+    task: 'Detect authentication requirements'
+  });
+  assert(encodedBareDomainResult.success, 'URL-encoded bare domain paths (links.et%2Fsignup) pass validation');
+
   const invalidAuthEmail = CreateSessionInputSchema.safeParse({
     productUrl: 'https://links.et/',
     task: 'Test auth',

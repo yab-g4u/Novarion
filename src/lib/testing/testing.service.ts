@@ -1,44 +1,15 @@
 import { Response } from 'express';
 import { BrowserSession } from './browser/browser.session';
+import { browserService } from './browser/browser.service';
 import { TestingAgent } from './agent/testing.agent';
 import { BrowserSessionData, StreamEvent } from './testing.types';
 import { CreateSessionRequest, normalizeAndValidateProductUrl } from './testing.schema';
-
-const encodeSessionToken = (payload: { u: string; t: string; m?: number; a?: string }): string => {
-  try {
-    return Buffer.from(JSON.stringify(payload), 'utf-8')
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
-  } catch {
-    return '';
-  }
-};
-
-const decodeSessionToken = (
-  sessionId: string
-): { u: string; t: string; m?: number; a?: string } | null => {
-  const match = /^test_\d+_[a-z0-9]+_([A-Za-z0-9_-]+)$/.exec(sessionId);
-  if (!match) return null;
-  try {
-    const b64 = match[1].replace(/-/g, '+').replace(/_/g, '/');
-    const padded = b64 + '==='.slice((b64.length + 3) % 4);
-    const parsed = JSON.parse(Buffer.from(padded, 'base64').toString('utf-8'));
-    if (parsed && typeof parsed.u === 'string' && typeof parsed.t === 'string') {
-      return parsed;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-};
 
 export class TestingService {
   private sessions = new Map<string, BrowserSession>();
   private agent = new TestingAgent();
   private activeSessionCount = 0;
-  private readonly MAX_CONCURRENT_SESSIONS = 3;
+  private readonly MAX_CONCURRENT_SESSIONS = 2;
 
   public async createSession(req: CreateSessionRequest): Promise<BrowserSessionData> {
     const validation = normalizeAndValidateProductUrl(req.productUrl);
@@ -47,31 +18,27 @@ export class TestingService {
     }
 
     if (this.activeSessionCount >= this.MAX_CONCURRENT_SESSIONS) {
-      throw new Error('Maximum concurrent browser testing sessions reached. Please wait a moment.');
+      throw new Error(
+        'Maximum concurrent browser testing sessions reached. Please wait for the active session to finish.'
+      );
     }
 
-    const token = encodeSessionToken({
-      u: validation.normalizedUrl,
-      t: req.task,
-      m: req.maxSteps,
-      a: req.authEmail
-    });
-    const baseId = `test_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const sessionId = token ? `${baseId}_${token}` : baseId;
+    // Use a clean, short opaque sessionId (never embed encoded target URLs in the route path)
+    const sessionId = `test_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
     const session = new BrowserSession({
       sessionId,
       productUrl: validation.normalizedUrl,
       task: req.task,
       authEmail: req.authEmail,
-      maxSteps: req.maxSteps,
-      timeoutMs: req.timeoutMs
+      maxSteps: Math.min(req.maxSteps || 8, 12),
+      timeoutMs: Math.min(req.timeoutMs || 45000, 60000)
     });
 
     this.sessions.set(sessionId, session);
 
-    // Prune old sessions if map grows over 30
-    if (this.sessions.size > 30) {
+    // Prune old sessions if map grows over 25
+    if (this.sessions.size > 25) {
       const oldestKey = this.sessions.keys().next().value;
       if (oldestKey) this.sessions.delete(oldestKey);
     }
@@ -82,9 +49,11 @@ export class TestingService {
       await this.executeSessionLifecycle(session);
       return session.getData();
     } else {
-      // Run asynchronously in background so client can stream SSE events or poll
-      this.executeSessionLifecycle(session).catch((err) => {
-        console.error(`[TestingService] Unhandled error in session ${sessionId}:`, err);
+      // Schedule asynchronously on next tick so HTTP 201 response flushes immediately before Playwright launches
+      setImmediate(() => {
+        this.executeSessionLifecycle(session).catch((err) => {
+          console.error(`[TestingService] Unhandled error in session ${sessionId}:`, err);
+        });
       });
       return session.getData();
     }
@@ -106,10 +75,17 @@ export class TestingService {
         await this.agent.finalizeSessionAnalysis(session, finalStatus);
       }
     } catch (err: any) {
-      console.error(`[TestingService] Session lifecycle error (${session.sessionId}):`, err?.message || err);
+      console.error(
+        `[TestingService] Session lifecycle error (${session.sessionId}):`,
+        err?.message || err
+      );
       await this.agent.finalizeSessionAnalysis(session, 'FAILED');
     } finally {
       this.activeSessionCount = Math.max(0, this.activeSessionCount - 1);
+      // Free Chromium memory immediately when no sessions are actively running
+      if (this.activeSessionCount === 0) {
+        await browserService.closeBrowser().catch(() => {});
+      }
     }
   }
 
@@ -121,28 +97,15 @@ export class TestingService {
     return this.sessions.get(sessionId)?.getData();
   }
 
+  /**
+   * Read-only lookup of session state. Never launches a new Playwright browser on a GET request.
+   */
   public async getOrRehydrateSessionData(sessionId: string): Promise<BrowserSessionData | undefined> {
     const existing = this.sessions.get(sessionId);
     if (existing) {
       return existing.getData();
     }
-
-    const decoded = decodeSessionToken(sessionId);
-    if (!decoded) {
-      return undefined;
-    }
-
-    const rehydrated = new BrowserSession({
-      sessionId,
-      productUrl: decoded.u,
-      task: decoded.t,
-      authEmail: decoded.a,
-      maxSteps: decoded.m || 8,
-      timeoutMs: 45000
-    });
-    this.sessions.set(sessionId, rehydrated);
-    await this.executeSessionLifecycle(rehydrated);
-    return rehydrated.getData();
+    return undefined;
   }
 
   public listSessions(): Omit<BrowserSessionData, 'screenshots' | 'pages'>[] {
@@ -162,33 +125,20 @@ export class TestingService {
   public async stopSession(sessionId: string): Promise<boolean> {
     const session = this.sessions.get(sessionId);
     if (!session) {
-      const decoded = decodeSessionToken(sessionId);
-      return Boolean(decoded);
+      return false;
     }
     await session.finish('STOPPED');
     return true;
   }
 
   public async subscribeToStream(sessionId: string, res: Response): Promise<void> {
-    let session = this.sessions.get(sessionId);
-    if (!session) {
-      const decoded = decodeSessionToken(sessionId);
-      if (decoded) {
-        session = new BrowserSession({
-          sessionId,
-          productUrl: decoded.u,
-          task: decoded.t,
-          authEmail: decoded.a,
-          maxSteps: decoded.m || 8,
-          timeoutMs: 45000
-        });
-        this.sessions.set(sessionId, session);
-        await this.executeSessionLifecycle(session);
-      }
-    }
+    const session = this.sessions.get(sessionId);
 
     if (!session) {
-      res.status(404).json({ error: 'Testing session not found' });
+      res.status(404).json({
+        error: 'Testing session not found',
+        message: 'Session expired or server restarted.'
+      });
       return;
     }
 
@@ -211,6 +161,7 @@ export class TestingService {
       currentSnapshot.status === 'FAILED' ||
       currentSnapshot.status === 'BLOCKED' ||
       currentSnapshot.status === 'AUTHENTICATION_REQUIRED' ||
+      currentSnapshot.status === 'TIMEOUT' ||
       currentSnapshot.status === 'STOPPED'
     ) {
       res.write(
@@ -221,10 +172,8 @@ export class TestingService {
           data: { status: currentSnapshot.status, finalSession: currentSnapshot }
         })}\n\n`
       );
-      if (process.env.VERCEL) {
-        res.end();
-        return;
-      }
+      res.end();
+      return;
     }
 
     const activeSession = session;
@@ -239,6 +188,7 @@ export class TestingService {
             data: { status: activeSession.getStatus(), finalSession: activeSession.getData() }
           })}\n\n`
         );
+        res.end();
       }
     };
 

@@ -1,11 +1,14 @@
+[variables]
+PLAYWRIGHT_BROWSERS_PATH = "0"
+
 [phases.setup]
-nixPkgs = ["nodejs_22", "pnpm_9"]
+nixPkgs = ["nodejs_22", "pnpm_9", "chromium"]
 
 [phases.install]
 cmds = ["pnpm install"]
 
 [phases.build]
-cmds = ["pnpm run build"]
+cmds = ["pnpm run build", "npx playwright install --only-shell chromium"]
 
 [start]
 cmd = "pnpm run start"

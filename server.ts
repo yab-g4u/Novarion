@@ -3,6 +3,15 @@ import fs from 'fs';
 import path from 'path';
 import { createApiApp } from './src/lib/server/apiApp';
 
+// Prevent background Playwright / stream rejections from crashing the production HTTP process
+process.on('unhandledRejection', (reason) => {
+  console.error('[Probe] Unhandled Promise Rejection:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[Probe] Uncaught Exception:', err);
+});
+
 async function main() {
   const PORT = Number(process.env.PORT) || 3000;
   const isProduction = process.env.NODE_ENV === 'production';
@@ -45,10 +54,15 @@ async function main() {
 
   // Bind HTTP server to 0.0.0.0:$PORT immediately so container health checks succeed right away
   await new Promise<void>((resolve) => {
-    app.listen(PORT, '0.0.0.0', () => {
+    const httpServer = app.listen(PORT, '0.0.0.0', () => {
       console.log(`[Probe] Server listening on 0.0.0.0:${PORT}`);
       resolve();
     });
+
+    // Configure timeouts for reverse-proxy / gateway stability during long-running requests
+    httpServer.keepAliveTimeout = 65000;
+    httpServer.headersTimeout = 66000;
+    httpServer.requestTimeout = 120000;
   });
 
   // In development only, dynamically attach Vite dev middleware after HTTP server is listening

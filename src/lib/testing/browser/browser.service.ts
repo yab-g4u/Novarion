@@ -1,6 +1,7 @@
 import { chromium, type Browser, type BrowserContext } from 'playwright';
-import { execFile } from 'child_process';
+import { execFile, execFileSync } from 'child_process';
 import fs from 'fs';
+import os from 'os';
 import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
@@ -8,6 +9,8 @@ const execFileAsync = promisify(execFile);
 const CANDIDATE_CHROMIUM_PATHS = [
   process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
   process.env.CHROMIUM_PATH,
+  '/root/.nix-profile/bin/chromium',
+  '/nix/var/nix/profiles/default/bin/chromium',
   '/usr/bin/chromium',
   '/usr/bin/chromium-browser',
   '/usr/bin/google-chrome-stable',
@@ -38,6 +41,21 @@ export class BrowserService {
         // Ignore
       }
     }
+
+    for (const binName of ['chromium', 'chromium-browser', 'google-chrome-stable', 'google-chrome']) {
+      try {
+        const resolved = execFileSync('which', [binName], {
+          encoding: 'utf-8',
+          stdio: ['ignore', 'pipe', 'ignore']
+        }).trim();
+        if (resolved && fs.existsSync(resolved)) {
+          return resolved;
+        }
+      } catch {
+        // Not in PATH
+      }
+    }
+
     return undefined;
   }
 
@@ -49,7 +67,15 @@ export class BrowserService {
       '--disable-accelerated-2d-canvas',
       '--no-first-run',
       '--no-zygote',
-      '--disable-gpu'
+      '--disable-gpu',
+      '--disable-extensions',
+      '--disable-background-networking',
+      '--disable-default-apps',
+      '--disable-sync',
+      '--disable-translate',
+      '--mute-audio',
+      '--renderer-process-limit=1',
+      '--js-flags=--max-old-space-size=256'
     ];
 
     const systemExec = this.resolveSystemChromiumPath();
@@ -58,31 +84,51 @@ export class BrowserService {
         return await chromium.launch({
           headless: true,
           executablePath: systemExec,
-          args
+          args,
+          timeout: 20000
         });
       } catch (err) {
-        console.warn(`[BrowserService] Failed launching system chromium at ${systemExec}, trying Playwright managed binary...`, err);
+        console.warn(
+          `[BrowserService] Failed launching system chromium at ${systemExec}, trying Playwright managed binary...`,
+          err
+        );
       }
     }
 
     try {
       return await chromium.launch({
         headless: true,
-        args
+        args,
+        timeout: 20000
       });
     } catch (err: any) {
       const msg = String(err?.message || err);
-      if (msg.includes("Executable doesn't exist") || msg.includes('playwright install')) {
-        console.log('[BrowserService] Playwright Chromium binary missing; installing chromium on-demand...');
-        await execFileAsync('npx', ['playwright', 'install', 'chromium'], {
-          timeout: 180000
+      const freeMemMb = Math.round(os.freemem() / 1024 / 1024);
+
+      // Only attempt on-demand download if not in production and container has >600MB free RAM
+      // so we NEVER trigger an OOM crash (502/503) inside a memory-constrained production container.
+      if (
+        (msg.includes("Executable doesn't exist") || msg.includes('playwright install')) &&
+        process.env.NODE_ENV !== 'production' &&
+        freeMemMb > 600
+      ) {
+        console.log(
+          `[BrowserService] Playwright Chromium binary missing (${freeMemMb}MB free); installing headless shell...`
+        );
+        await execFileAsync('npx', ['playwright', 'install', '--only-shell', 'chromium'], {
+          timeout: 120000
         });
         return await chromium.launch({
           headless: true,
-          args
+          args,
+          timeout: 20000
         });
       }
-      throw err;
+      throw new Error(
+        msg.includes("Executable doesn't exist")
+          ? 'Playwright Chromium executable is not installed in this container environment. Ensure the build phase runs `npx playwright install --only-shell chromium` or provides system `chromium`.'
+          : msg
+      );
     }
   }
 
@@ -92,8 +138,10 @@ export class BrowserService {
     }
 
     if (this.isLaunching) {
-      while (this.isLaunching) {
+      let waited = 0;
+      while (this.isLaunching && waited < 20000) {
         await new Promise((resolve) => setTimeout(resolve, 100));
+        waited += 100;
       }
       if (this.browser && this.browser.isConnected()) {
         return this.browser;

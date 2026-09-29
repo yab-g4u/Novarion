@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   RotateCcw,
   StopCircle,
@@ -9,9 +9,7 @@ import {
 } from 'lucide-react';
 import {
   BrowserSessionData,
-  ActionRecord,
-  ScreenshotRecord,
-  StreamEvent
+  ScreenshotRecord
 } from '../../../lib/testing/testing.types';
 import { BrowserViewport } from './BrowserViewport';
 import { TaskProgress } from './TaskProgress';
@@ -26,6 +24,14 @@ interface TestingSessionProps {
   onNewTest?: () => void;
 }
 
+const isTerminalSessionStatus = (status?: string) =>
+  status === 'COMPLETED' ||
+  status === 'FAILED' ||
+  status === 'BLOCKED' ||
+  status === 'AUTHENTICATION_REQUIRED' ||
+  status === 'TIMEOUT' ||
+  status === 'STOPPED';
+
 export const TestingSession: React.FC<TestingSessionProps> = ({
   sessionId,
   onSyncToGraph,
@@ -33,94 +39,129 @@ export const TestingSession: React.FC<TestingSessionProps> = ({
 }) => {
   const [sessionData, setSessionData] = useState<BrowserSessionData | null>(null);
   const [inspectedScreenshot, setInspectedScreenshot] = useState<ScreenshotRecord | null>(null);
+  const [pollingError, setPollingError] = useState<string | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    let eventSource: EventSource | null = null;
+    let cancelled = false;
+    let consecutiveErrors = 0;
+    const startedAt = Date.now();
+    const MAX_POLL_DURATION_MS = 75000;
+    const MAX_CONSECUTIVE_ERRORS = 4;
+    const BASE_INTERVAL_MS = 1200;
 
-    const fetchFinalSnapshot = async () => {
-      try {
-        const res = await fetch(`/api/testing/session/${sessionId}`);
-        if (res.ok) {
-          const data = await res.json();
-          setSessionData(data);
-        }
-      } catch {
-        // Ignore
+    const clearTimer = () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
       }
     };
 
-    const connectSSE = () => {
-      eventSource = new EventSource(`/api/testing/session/${sessionId}/stream`);
+    const pollSnapshot = async () => {
+      if (cancelled) return;
 
-      eventSource.onmessage = (event) => {
-        try {
-          const streamEvt: StreamEvent = JSON.parse(event.data);
+      if (Date.now() - startedAt > MAX_POLL_DURATION_MS) {
+        setPollingError('Playwright testing session timed out after 75 seconds.');
+        setSessionData((prev) =>
+          prev && !isTerminalSessionStatus(prev.status)
+            ? { ...prev, status: 'TIMEOUT', errors: [...prev.errors, 'Session polling timed out after 75s.'] }
+            : prev
+        );
+        return;
+      }
 
-          if (streamEvt.type === 'session.snapshot') {
-            setSessionData(streamEvt.data as unknown as BrowserSessionData);
-            return;
+      const controller = new AbortController();
+      const reqTimeout = setTimeout(() => controller.abort(), 10000);
+
+      try {
+        const res = await fetch(`/api/testing/session/${encodeURIComponent(sessionId)}`, {
+          signal: controller.signal
+        });
+        clearTimeout(reqTimeout);
+
+        if (cancelled) return;
+
+        if (res.ok) {
+          consecutiveErrors = 0;
+          setPollingError(null);
+          const data: BrowserSessionData = await res.json();
+          setSessionData(data);
+
+          if (!isTerminalSessionStatus(data.status) && !cancelled) {
+            timerRef.current = setTimeout(pollSnapshot, BASE_INTERVAL_MS);
           }
-
-          if (streamEvt.type === 'screenshot.created') {
-            const scr = streamEvt.data.screenshot as ScreenshotRecord;
-            setSessionData((prev) => {
-              if (!prev) return prev;
-              const exists = prev.screenshots.some((s) => s.id === scr.id);
-              return exists ? prev : { ...prev, screenshots: [...prev.screenshots, scr] };
-            });
-            return;
-          }
-
-          if (streamEvt.type === 'action.completed') {
-            const act = streamEvt.data.action as ActionRecord;
-            setSessionData((prev) => {
-              if (!prev) return prev;
-              const exists = prev.events.some((e) => e.id === act.id);
-              return exists
-                ? prev
-                : { ...prev, events: [...prev.events, act], stepCount: prev.stepCount + 1 };
-            });
-            return;
-          }
-
-          if (streamEvt.type === 'friction.detected') {
-            const fric = streamEvt.data.friction as any;
-            setSessionData((prev) => {
-              if (!prev) return prev;
-              return { ...prev, friction: [...prev.friction, fric] };
-            });
-            return;
-          }
-
-          if (streamEvt.type === 'session.finished') {
-            fetchFinalSnapshot();
-          }
-        } catch {
-          // Ignore
+          return;
         }
-      };
 
-      eventSource.onerror = () => {
-        fetchFinalSnapshot();
-      };
+        const errJson = await res.json().catch(() => ({}));
+        consecutiveErrors += 1;
+
+        if (res.status === 404 && consecutiveErrors >= 2) {
+          const msg =
+            errJson?.message ||
+            'Testing session not found (HTTP 404). The server container may have restarted.';
+          setPollingError(msg);
+          setSessionData((prev) =>
+            prev
+              ? { ...prev, status: 'FAILED', errors: [...prev.errors, msg] }
+              : null
+          );
+          return;
+        }
+
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          const msg =
+            errJson?.message ||
+            errJson?.error ||
+            `Testing session failed after ${MAX_CONSECUTIVE_ERRORS} retries (HTTP ${res.status}).`;
+          setPollingError(msg);
+          setSessionData((prev) =>
+            prev
+              ? { ...prev, status: 'FAILED', errors: [...prev.errors, msg] }
+              : null
+          );
+          return;
+        }
+
+        const backoffMs = Math.min(1500 * Math.pow(2, consecutiveErrors - 1), 10000);
+        if (!cancelled) {
+          timerRef.current = setTimeout(pollSnapshot, backoffMs);
+        }
+      } catch (err: any) {
+        clearTimeout(reqTimeout);
+        if (cancelled) return;
+
+        consecutiveErrors += 1;
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          const msg =
+            err?.name === 'AbortError'
+              ? 'Request timed out while polling Playwright session.'
+              : err?.message || 'Lost connection to Playwright testing server.';
+          setPollingError(msg);
+          setSessionData((prev) =>
+            prev
+              ? { ...prev, status: 'FAILED', errors: [...prev.errors, msg] }
+              : null
+          );
+          return;
+        }
+
+        const backoffMs = Math.min(1500 * Math.pow(2, consecutiveErrors - 1), 10000);
+        timerRef.current = setTimeout(pollSnapshot, backoffMs);
+      }
     };
 
-    connectSSE();
-    fetchFinalSnapshot();
-
-    const interval = setInterval(() => {
-      fetchFinalSnapshot();
-    }, 1500);
+    pollSnapshot();
 
     return () => {
-      if (eventSource) eventSource.close();
-      clearInterval(interval);
+      cancelled = true;
+      clearTimer();
     };
   }, [sessionId]);
 
   const handleStop = async () => {
     try {
-      await fetch(`/api/testing/session/${sessionId}/stop`, { method: 'POST' });
+      await fetch(`/api/testing/session/${encodeURIComponent(sessionId)}/stop`, { method: 'POST' });
     } catch {
       // Ignore
     }
@@ -129,9 +170,28 @@ export const TestingSession: React.FC<TestingSessionProps> = ({
   if (!sessionData) {
     return (
       <div className="p-12 text-center text-xs font-mono text-[#868C98] space-y-3 bg-white border border-[#E5E7EB] rounded-3xl">
-        <RotateCcw size={24} className="animate-spin mx-auto text-[#0F52BA]" />
-        <p className="text-sm font-semibold text-[#0A0D14]">Launching Playwright browser session...</p>
-        <p className="text-[11px] text-[#64748B]">Session ID: {sessionId}</p>
+        {pollingError ? (
+          <>
+            <AlertTriangle size={24} className="mx-auto text-[#E11D48]" />
+            <p className="text-sm font-semibold text-[#E11D48]">Playwright Session Error</p>
+            <p className="text-xs text-[#64748B] max-w-md mx-auto">{pollingError}</p>
+            {onNewTest && (
+              <button
+                type="button"
+                onClick={onNewTest}
+                className="mt-2 px-4 py-2 rounded-xl bg-[#0A0D14] text-white text-xs font-bold cursor-pointer"
+              >
+                Start New Test
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <RotateCcw size={24} className="animate-spin mx-auto text-[#0F52BA]" />
+            <p className="text-sm font-semibold text-[#0A0D14]">Launching Playwright browser session...</p>
+            <p className="text-[11px] text-[#64748B]">Session ID: {sessionId}</p>
+          </>
+        )}
       </div>
     );
   }
@@ -158,7 +218,7 @@ export const TestingSession: React.FC<TestingSessionProps> = ({
         <div className="flex items-center gap-2 flex-wrap">
           <span
             className={`w-2.5 h-2.5 rounded-full ${
-              sessionData.status === 'RUNNING'
+              sessionData.status === 'RUNNING' || sessionData.status === 'STARTING' || sessionData.status === 'QUEUED'
                 ? 'bg-[#3B82F6] animate-ping'
                 : sessionData.status === 'COMPLETED'
                 ? 'bg-[#10B981]'
@@ -186,7 +246,7 @@ export const TestingSession: React.FC<TestingSessionProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
-          {sessionData.status === 'RUNNING' && (
+          {!isTerminalSessionStatus(sessionData.status) && (
             <button
               type="button"
               onClick={handleStop}
@@ -211,7 +271,7 @@ export const TestingSession: React.FC<TestingSessionProps> = ({
       </div>
 
       {/* Real Errors or Auth Status Banner */}
-      {(sessionData.errors.length > 0 || sessionData.authDetection?.authRequired) && (
+      {(pollingError || sessionData.errors.length > 0 || sessionData.authDetection?.authRequired) && (
         <div className="p-4 rounded-2xl bg-[#FFFBEB] border border-[#FDE68A] text-[#92400E] text-xs font-mono space-y-1.5">
           {sessionData.authDetection?.authRequired && (
             <div className="flex items-center gap-2 font-bold">
@@ -223,6 +283,12 @@ export const TestingSession: React.FC<TestingSessionProps> = ({
                     ? 'Google Sign-In supported on page'
                     : 'Login credentials required')}
               </span>
+            </div>
+          )}
+          {pollingError && (
+            <div className="flex items-start gap-2 text-[#B91C1C]">
+              <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+              <span>{pollingError}</span>
             </div>
           )}
           {sessionData.errors.map((err, idx) => (
@@ -245,7 +311,7 @@ export const TestingSession: React.FC<TestingSessionProps> = ({
             maxSteps={sessionData.maxSteps}
             latestScreenshot={latestScr}
             lastActionDescription={lastAction}
-            isLoading={sessionData.status === 'RUNNING'}
+            isLoading={!isTerminalSessionStatus(sessionData.status)}
           />
 
           {inspectedScreenshot && (
