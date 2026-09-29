@@ -1,6 +1,6 @@
 import { DynamicGraphData } from './evidenceGraph';
 
-export type NodeCategory = 
+export type NodeCategory =
   | 'IDEA'
   | 'ASSUMPTION'
   | 'PROBLEM'
@@ -45,11 +45,17 @@ export interface ValidationTest {
   originatingNodeId: string;
   originatingNodeLabel: string;
   question: string;
-  method: 'landing_page_smoke' | 'user_interviews' | 'preorder_test' | 'prototype_test' | 'data_scrape' | 'live_telemetry';
+  method:
+    | 'landing_page_smoke'
+    | 'user_interviews'
+    | 'preorder_test'
+    | 'prototype_test'
+    | 'data_scrape'
+    | 'live_telemetry';
   methodLabel: string;
   target: string;
   successSignal: string;
-  scheduledDate: string; // YYYY-MM-DD or readable
+  scheduledDate: string;
   monthIndex?: number;
   day?: number;
   status: 'PLANNED' | 'RUNNING' | 'COMPLETED';
@@ -108,9 +114,19 @@ export interface InvestigationUnknownItem {
   riskLevel: 'HIGH' | 'MEDIUM';
 }
 
+export interface InvestigationShareRecord {
+  share_id: string;
+  investigation_id: string;
+  enabled: boolean;
+  created_at: string;
+  expires_at?: string | null;
+  revoked_at?: string | null;
+}
+
 export interface PersistedInvestigation {
   id: string;
   roomId: string;
+  shareId: string;
   query: string;
   coreAssumption: string;
   productName: string;
@@ -130,47 +146,89 @@ export interface PersistedInvestigation {
 }
 
 export interface SharedInvestigationState {
-  roomId: string;
+  investigationId: string;
+  shareId: string;
   query: string;
   coreAssumption: string;
   graphData?: DynamicGraphData;
-  comments: Record<string, NodeComment[]>; // keyed by nodeId
-  decisions: Record<string, NodeDecision>; // keyed by nodeId
+  comments: Record<string, NodeComment[]>;
+  decisions: Record<string, NodeDecision>;
   tests: ValidationTest[];
-  challenges: Record<string, EvidenceChallenge>; // keyed by nodeId
+  challenges: Record<string, EvidenceChallenge>;
   lastUpdated: number;
 }
 
 export type WorkspaceLoadState =
   | 'LOADING'
   | 'READY'
-  | 'NOT_FOUND'
   | 'INVALID_LINK'
-  | 'ACCESS_DENIED'
+  | 'REVOKED'
   | 'LOAD_ERROR'
   | 'UNEXPECTED_ERROR';
 
-export type RoomLookupStatus =
-  | 'LOADING'
-  | 'FOUND'
-  | 'NOT_FOUND'
-  | 'INVALID_ROOM'
-  | 'UNAUTHORIZED'
-  | 'NETWORK_ERROR';
-
 export interface RoomDiagnosticContext {
-  roomId: string;
-  decodedIdea: string | null;
-  rawIdeaParam: string | null;
-  lookupSource: 'database_api' | 'supabase_db' | 'url_param' | 'deterministic_registry' | 'realtime_peer' | 'local_cache' | 'none';
+  shareId: string;
+  investigationId: string | null;
   realtimeChannel: string;
-  supabaseConfigured: boolean;
+  supabaseUrl: string;
+  migrationMissing?: boolean;
   errorCode?: string | number;
   errorMessage?: string;
   timestamp: string;
 }
 
-// Typed events for Supabase Broadcast
+export interface InvestigationRoomController {
+  roomId: string;
+  shareId: string;
+  setRoomId: (id: string) => void;
+  loadState: WorkspaceLoadState;
+  investigation: PersistedInvestigation | null;
+  shareRecord: InvestigationShareRecord | null;
+  diagnostics: RoomDiagnosticContext | null;
+  shareableUrl: string;
+  currentUser: CollaboratorPresence;
+  collaborators: CollaboratorPresence[];
+  collaboratorCount: number;
+  connectionStatus: 'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR';
+  comments: Record<string, NodeComment[]>;
+  decisions: Record<string, NodeDecision>;
+  tests: ValidationTest[];
+  challenges: Record<string, EvidenceChallenge>;
+  addComment: (
+    nodeId: string,
+    text: string,
+    stance?: 'challenge' | 'support' | 'neutral'
+  ) => Promise<void>;
+  toggleChallengeEvidence: (nodeId: string, reason?: string) => Promise<void>;
+  recordDecision: (
+    nodeId: string,
+    conclusion: string,
+    rationale: string,
+    confidence?: 'HIGH' | 'MEDIUM' | 'LOW',
+    status?: 'CONFIRMED' | 'ABANDONED' | 'NEEDS_VERIFICATION'
+  ) => Promise<void>;
+  createNextTest: (testData: {
+    originatingNodeId: string;
+    originatingNodeLabel: string;
+    question: string;
+    method: ValidationTest['method'];
+    methodLabel: string;
+    target: string;
+    successSignal: string;
+    scheduledDate: string;
+    monthIndex?: number;
+    day?: number;
+  }) => Promise<ValidationTest>;
+  updateTestStatus: (
+    testId: string,
+    status: 'PLANNED' | 'RUNNING' | 'COMPLETED',
+    resultSummary?: string,
+    verdict?: 'SUPPORTS' | 'CHALLENGES' | 'INCONCLUSIVE'
+  ) => Promise<void>;
+  persistWorkspaceNow: () => Promise<{ ok: boolean; shareId: string; error?: string }>;
+  retryLoad: () => void;
+}
+
 export type ProbeRealtimeEvent =
   | {
       type: 'comment_added';
@@ -210,7 +268,7 @@ export type ProbeRealtimeEvent =
       type: 'room_state_request';
       payload: {
         id: string;
-        roomId: string;
+        investigationId: string;
         requesterId: string;
       };
     }

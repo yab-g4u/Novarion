@@ -294,6 +294,7 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
   // Realtime collaborative room hook
   const {
     roomId,
+    shareId,
     investigation,
     shareableUrl,
     currentUser,
@@ -1100,8 +1101,10 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}
         roomId={roomId}
+        shareId={shareId}
         query={externalGraphData?.query || investigation?.query || currentLabel}
         collaborators={collaborators}
+        onPersistShare={persistWorkspaceNow}
       />
 
       {/* NODE CONTEXTUAL DETAIL DRAWER */}

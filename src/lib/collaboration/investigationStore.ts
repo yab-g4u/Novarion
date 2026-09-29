@@ -1,141 +1,180 @@
 import {
   PersistedInvestigation,
-  NodeComment,
-  NodeDecision,
-  ValidationTest,
-  EvidenceChallenge,
+  InvestigationShareRecord,
   WorkspaceLoadState,
   RoomDiagnosticContext,
 } from '../../types/collaboration';
-import { DynamicGraphData, DynamicEvidenceSource } from '../../types/evidenceGraph';
+import { DynamicGraphData } from '../../types/evidenceGraph';
 import { generateDynamicInvestigation } from '../research/dynamicInvestigationResolver';
 import { getSupabaseClient, resolveSupabaseConfig } from '../supabase';
 
-// Generate simple 6-character room code (e.g. "T4fTpH")
-export const generateRoomCode = (): string => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
-  let result = '';
-  for (let i = 0; i < 6; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
+const randomHex = (byteLength: number): string => {
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const bytes = new Uint8Array(byteLength);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
   }
-  return result;
+  let out = '';
+  const chars = '0123456789abcdef';
+  for (let i = 0; i < byteLength * 2; i++) {
+    out += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return out;
 };
 
-// Deterministic short room code from an idea string
-export const roomCodeFromIdea = (idea: string): string => {
-  if (!idea || !idea.trim()) return 'T4fTpH';
-  const normalized = idea.trim();
-  let hash = 0;
-  for (let i = 0; i < normalized.length; i++) {
-    hash = ((hash << 5) - hash) + normalized.charCodeAt(i);
-    hash |= 0;
-  }
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
-  let code = '';
-  let positiveHash = Math.abs(hash);
-  for (let i = 0; i < 6; i++) {
-    code += chars.charAt(positiveHash % chars.length);
-    positiveHash = Math.floor(positiveHash / chars.length) + (i * 7);
-  }
-  return code;
-};
-
-// Pre-seeded deterministic lookup table mapping known room IDs to their ideas
-const SEED_IDEAS: string[] = [
-  'AI tools will replace most productivity software',
-  'I want to build a cooking app',
-  'cooking recipe app',
-  'student housing platform',
-  'verified campus roommate matching',
-  'Linear keyboard-first issue tracker',
-  'autonomous browser testing agent for founders',
-  'B2B SaaS billing automation',
-  'AI copilot for logistics',
-  'developer productivity tools',
-];
-
-const DETERMINISTIC_ROOM_MAP: Record<string, string> = {
-  T4fTpH: 'AI tools will replace most productivity software',
-  pnPWbh: 'cooking recipe app',
-};
-
-for (const idea of SEED_IDEAS) {
-  const code = roomCodeFromIdea(idea);
-  if (!DETERMINISTIC_ROOM_MAP[code]) {
-    DETERMINISTIC_ROOM_MAP[code] = idea;
-  }
-  const lowerCode = roomCodeFromIdea(idea.toLowerCase());
-  if (!DETERMINISTIC_ROOM_MAP[lowerCode]) {
-    DETERMINISTIC_ROOM_MAP[lowerCode] = idea;
-  }
-}
-
-export const registerDeterministicRoomIdea = (roomId: string, idea: string) => {
-  if (roomId && idea && idea.trim()) {
-    DETERMINISTIC_ROOM_MAP[roomId] = idea.trim();
-  }
-};
-
-export const getDeterministicIdeaForRoom = (roomId: string): string | null => {
-  if (!roomId) return null;
-  if (DETERMINISTIC_ROOM_MAP[roomId]) return DETERMINISTIC_ROOM_MAP[roomId];
-  // Case-insensitive match fallback
-  const lower = roomId.toLowerCase();
-  for (const [k, v] of Object.entries(DETERMINISTIC_ROOM_MAP)) {
-    if (k.toLowerCase() === lower) return v;
-  }
-  return null;
-};
-
-export const validateRoomId = (
-  rawRoomId?: string | null
-): { valid: boolean; normalized: string; reason?: string } => {
-  if (!rawRoomId || typeof rawRoomId !== 'string') {
-    return { valid: false, normalized: '', reason: 'Missing workspace identifier in share link.' };
-  }
-  const trimmed = rawRoomId.trim();
-  if (trimmed.length < 2 || trimmed.length > 64) {
-    return { valid: false, normalized: trimmed, reason: 'Workspace identifier must be between 2 and 64 characters.' };
-  }
-  if (!/^[a-zA-Z0-9_-]+$/.test(trimmed)) {
-    return { valid: false, normalized: trimmed, reason: 'Workspace identifier contains invalid characters.' };
-  }
-  if (trimmed.toLowerCase() === 'invalid' || trimmed.toLowerCase() === 'expired') {
-    return { valid: false, normalized: trimmed, reason: 'This share link is invalid or has expired.' };
-  }
-  return { valid: true, normalized: trimmed };
-};
-
-export const decodeIdeaParam = (rawIdea?: string | null): string | null => {
-  if (!rawIdea || typeof rawIdea !== 'string') return null;
-  let cleaned = rawIdea.trim();
-  if (!cleaned) return null;
+const toBase64Url = (str: string): string => {
   try {
-    // Handle '+' encoded spaces and multi-pass percent encoding
-    const plusDecoded = cleaned.replace(/\+/g, ' ');
-    cleaned = decodeURIComponent(plusDecoded).trim();
-    if (cleaned.includes('%20') || cleaned.includes('%3A') || cleaned.includes('%2F')) {
-      cleaned = decodeURIComponent(cleaned).trim();
+    const utf8Bytes = new TextEncoder().encode(str);
+    let binary = '';
+    for (let i = 0; i < utf8Bytes.length; i++) {
+      binary += String.fromCharCode(utf8Bytes[i]);
     }
+    const b64 =
+      typeof btoa !== 'undefined'
+        ? btoa(binary)
+        : Buffer.from(str, 'utf-8').toString('base64');
+    return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   } catch {
-    // Keep best-effort string if malformed percent sequence
+    return '';
   }
-  return cleaned || null;
+};
+
+const fromBase64Url = (b64url: string): string | null => {
+  try {
+    const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '==='.slice((b64.length + 3) % 4);
+    if (typeof atob !== 'undefined') {
+      const binary = atob(padded);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return new TextDecoder().decode(bytes);
+    }
+    return Buffer.from(padded, 'base64').toString('utf-8');
+  } catch {
+    return null;
+  }
 };
 
 /**
- * Builds a complete, structured PersistedInvestigation object containing:
- * Idea, Assumptions, Problems, Users, Evidence, Competitors/products,
- * Unknowns, Next Tests, graph relationships, comments, challenges, decisions, and validation tests.
+ * Generates an opaque share ID (`share_<16-hex>` or `share_<16-hex>_<token>`).
  */
-export const buildPersistedInvestigationFromIdea = (
-  roomId: string,
-  ideaQuery: string,
-  existing?: Partial<PersistedInvestigation>
-): PersistedInvestigation => {
-  const cleanQuery = (ideaQuery || existing?.query || 'AI tools will replace most productivity software').trim();
-  registerDeterministicRoomIdea(roomId, cleanQuery);
+export const generateOpaqueShareId = (queryHint?: string, hexSeed?: string): string => {
+  const hex =
+    hexSeed && /^[0-9a-f]{12,16}$/i.test(hexSeed) ? hexSeed.toLowerCase() : randomHex(8);
+  const cleanQuery = queryHint?.trim();
+  if (cleanQuery && cleanQuery.length <= 160) {
+    const encoded = toBase64Url(cleanQuery);
+    if (encoded) {
+      return `share_${hex}_${encoded}`;
+    }
+  }
+  return `share_${hex}`;
+};
 
+/**
+ * Generates a random investigation ID: `inv_<12-hex>`
+ */
+export const generateInvestigationId = (hexSeed?: string): string => {
+  const hex =
+    hexSeed && /^[0-9a-f]{12,16}$/i.test(hexSeed)
+      ? hexSeed.slice(0, 12).toLowerCase()
+      : randomHex(6);
+  return `inv_${hex}`;
+};
+
+/**
+ * Parses a share ID into its hex core and optional encoded query payload.
+ */
+export const parseOpaqueShareId = (
+  rawShareId?: string | null
+): {
+  valid: boolean;
+  normalized: string;
+  hexId: string;
+  investigationId: string;
+  embeddedQuery: string | null;
+  isRevoked?: boolean;
+} => {
+  if (!rawShareId || typeof rawShareId !== 'string') {
+    return {
+      valid: false,
+      normalized: '',
+      hexId: '',
+      investigationId: '',
+      embeddedQuery: null,
+    };
+  }
+
+  const trimmed = rawShareId.trim();
+  if (trimmed.toLowerCase() === 'revoked' || trimmed.toLowerCase() === 'expired') {
+    return {
+      valid: false,
+      normalized: trimmed,
+      hexId: '',
+      investigationId: '',
+      embeddedQuery: null,
+      isRevoked: true,
+    };
+  }
+
+  const match = /^share_([0-9a-f]{12,16})(?:_([a-zA-Z0-9_-]+))?$/i.exec(trimmed);
+  if (!match) {
+    return {
+      valid: false,
+      normalized: trimmed,
+      hexId: '',
+      investigationId: '',
+      embeddedQuery: null,
+    };
+  }
+
+  const hexId = match[1].toLowerCase();
+  const encodedPart = match[2] || '';
+  const embeddedQuery = encodedPart ? fromBase64Url(encodedPart) : null;
+
+  return {
+    valid: true,
+    normalized: trimmed,
+    hexId,
+    investigationId: `inv_${hexId.slice(0, 12)}`,
+    embeddedQuery: embeddedQuery ? embeddedQuery.trim() : null,
+  };
+};
+
+/**
+ * Validates that a share ID is a properly formatted opaque share identifier.
+ */
+export const validateShareId = (
+  rawShareId?: string | null
+): {
+  valid: boolean;
+  normalized: string;
+  isRevoked?: boolean;
+} => {
+  const parsed = parseOpaqueShareId(rawShareId);
+  return {
+    valid: parsed.valid,
+    normalized: parsed.normalized,
+    isRevoked: parsed.isRevoked,
+  };
+};
+
+/**
+ * Builds a structured PersistedInvestigation object for an investigation.
+ */
+export const buildInvestigationPayload = (params: {
+  investigationId: string;
+  shareId: string;
+  query: string;
+  coreAssumption?: string;
+  graphData?: DynamicGraphData;
+  existing?: Partial<PersistedInvestigation>;
+}): PersistedInvestigation => {
+  const cleanQuery = params.query.trim();
   const dynamic = generateDynamicInvestigation(cleanQuery);
   const qLower = cleanQuery.toLowerCase();
   const isCooking =
@@ -151,12 +190,14 @@ export const buildPersistedInvestigationFromIdea = (
     qLower.includes('dorm') ||
     qLower.includes('rent');
 
-  const assumptions = existing?.assumptions?.length
-    ? existing.assumptions
+  const prior = params.existing;
+
+  const assumptions = prior?.assumptions?.length
+    ? prior.assumptions
     : [
         {
           id: 'assumption_core_1',
-          text: dynamic.coreAssumption,
+          text: params.coreAssumption || dynamic.coreAssumption,
           category: 'problem' as const,
           riskLevel: 'HIGH' as const,
           status: 'MIXED' as const,
@@ -177,20 +218,22 @@ export const buildPersistedInvestigationFromIdea = (
         },
       ];
 
-  const problems = existing?.problems?.length
-    ? existing.problems
+  const problems = prior?.problems?.length
+    ? prior.problems
     : isCooking
     ? [
         {
           id: 'prob_1',
           title: 'Weeknight decision fatigue',
-          description: '80% of household dinner stress comes from deciding what to cook with existing fridge ingredients.',
+          description:
+            '80% of household dinner stress comes from deciding what to cook with existing fridge ingredients.',
           severity: 'CRITICAL' as const,
         },
         {
           id: 'prob_2',
           title: 'Manual pantry logging churn',
-          description: '88% of users abandon apps that require barcode scanning or manual inventory entry.',
+          description:
+            '88% of users abandon apps that require barcode scanning or manual inventory entry.',
           severity: 'HIGH' as const,
         },
       ]
@@ -199,13 +242,15 @@ export const buildPersistedInvestigationFromIdea = (
         {
           id: 'prob_1',
           title: 'Unverified listings & scam bots',
-          description: 'Public social groups for student housing are overrun by fraudulent lease posts.',
+          description:
+            'Public social groups for student housing are overrun by fraudulent lease posts.',
           severity: 'CRITICAL' as const,
         },
         {
           id: 'prob_2',
           title: 'Subscription paywall resistance',
-          description: 'Students bypass paid roommate messaging paywalls in favor of free social DMs.',
+          description:
+            'Students bypass paid roommate messaging paywalls in favor of free social DMs.',
           severity: 'HIGH' as const,
         },
       ]
@@ -219,19 +264,21 @@ export const buildPersistedInvestigationFromIdea = (
         {
           id: 'prob_2',
           title: 'Verification & switching overhead',
-          description: 'Teams hesitate to replace deterministic workflows when setup or verification adds cognitive load.',
+          description:
+            'Teams hesitate to replace deterministic workflows when setup or verification adds cognitive load.',
           severity: 'HIGH' as const,
         },
       ];
 
-  const users = existing?.users?.length
-    ? existing.users
+  const users = prior?.users?.length
+    ? prior.users
     : isCooking
     ? [
         {
           id: 'user_1',
           segment: 'Busy Weeknight Home Cooks',
-          painPoint: 'Needs 15-minute meal decisions using current fridge items without manual data entry.',
+          painPoint:
+            'Needs 15-minute meal decisions using current fridge items without manual data entry.',
           willingnessToPay: '$5–$9/mo only if paired with automated grocery/receipt capture',
         },
       ]
@@ -248,13 +295,14 @@ export const buildPersistedInvestigationFromIdea = (
         {
           id: 'user_1',
           segment: `Operators & Teams adopting ${cleanQuery}`,
-          painPoint: 'Needs immediate time-to-first-value without migrating legacy systems manually.',
+          painPoint:
+            'Needs immediate time-to-first-value without migrating legacy systems manually.',
           willingnessToPay: '$20–$49/seat/mo when tied to measurable workflow speedups',
         },
       ];
 
-  const competitors = existing?.competitors?.length
-    ? existing.competitors
+  const competitors = prior?.competitors?.length
+    ? prior.competitors
     : isCooking
     ? [
         {
@@ -306,461 +354,376 @@ export const buildPersistedInvestigationFromIdea = (
         },
       ];
 
-  const unknowns = existing?.unknowns?.length
-    ? existing.unknowns
+  const unknowns = prior?.unknowns?.length
+    ? prior.unknowns
     : [
         {
           id: 'unk_1',
-          topic: dynamic.graphData.sources.find((s) => s.relationship === 'Unknown')?.topic || 'Willingness to Pay',
+          topic:
+            dynamic.graphData.sources.find((s) => s.relationship === 'Unknown')?.topic ||
+            'Willingness to Pay',
           question: dynamic.unknownItem.excerpt,
           riskLevel: 'HIGH' as const,
         },
       ];
 
-  const mergedGraphData: DynamicGraphData = existing?.graphData?.sources?.length
+  const mergedGraphData: DynamicGraphData = params.graphData?.sources?.length
     ? {
-        ...existing.graphData,
+        ...params.graphData,
         query: cleanQuery,
-        coreAssumption: existing.coreAssumption || dynamic.graphData.coreAssumption,
+        coreAssumption: params.coreAssumption || params.graphData.coreAssumption,
+      }
+    : prior?.graphData?.sources?.length
+    ? {
+        ...prior.graphData,
+        query: cleanQuery,
       }
     : dynamic.graphData;
 
   return {
-    id: roomId,
-    roomId,
+    id: params.investigationId,
+    roomId: params.investigationId,
+    shareId: params.shareId,
     query: cleanQuery,
-    coreAssumption: existing?.coreAssumption || mergedGraphData.coreAssumption || dynamic.coreAssumption,
-    productName: existing?.productName || mergedGraphData.productName || 'Probe Investigation',
-    domain: existing?.domain || dynamic.domain,
+    coreAssumption:
+      params.coreAssumption ||
+      prior?.coreAssumption ||
+      mergedGraphData.coreAssumption ||
+      dynamic.coreAssumption,
+    productName: prior?.productName || mergedGraphData.productName || 'Probe Investigation',
+    domain: prior?.domain || dynamic.domain,
     assumptions,
     problems,
     users,
     competitors,
     unknowns,
     graphData: mergedGraphData,
-    comments: existing?.comments || {},
-    decisions: existing?.decisions || {},
-    tests: existing?.tests || [],
-    challenges: existing?.challenges || {},
-    createdAt: existing?.createdAt || new Date().toISOString(),
-    updatedAt: existing?.updatedAt || Date.now(),
-  };
-};
-
-// In-memory client-side cache of resolved investigations (mirrors DB)
-const memoryStore = new Map<string, PersistedInvestigation>();
-
-// Pre-seed memoryStore with default rooms
-for (const [rId, idea] of Object.entries(DETERMINISTIC_ROOM_MAP)) {
-  memoryStore.set(rId, buildPersistedInvestigationFromIdea(rId, idea));
-}
-
-const getLocalCacheKey = (roomId: string) => `probe_persisted_inv_${roomId}`;
-const getLegacyLocalKey = (roomId: string) => `probe_room_state_${roomId}`;
-
-const writeLocalMirror = (inv: PersistedInvestigation) => {
-  memoryStore.set(inv.roomId, inv);
-  registerDeterministicRoomIdea(inv.roomId, inv.query);
-  if (typeof localStorage !== 'undefined') {
-    try {
-      localStorage.setItem(getLocalCacheKey(inv.roomId), JSON.stringify(inv));
-      localStorage.setItem(
-        getLegacyLocalKey(inv.roomId),
-        JSON.stringify({
-          roomId: inv.roomId,
-          query: inv.query,
-          coreAssumption: inv.coreAssumption,
-          graphData: inv.graphData,
-          comments: inv.comments,
-          decisions: inv.decisions,
-          tests: inv.tests,
-          challenges: inv.challenges,
-          lastUpdated: inv.updatedAt,
-        })
-      );
-    } catch {
-      // ignore storage quota errors
-    }
-  }
-};
-
-const readLocalMirror = (roomId: string): PersistedInvestigation | null => {
-  if (typeof localStorage === 'undefined') return null;
-  try {
-    const raw = localStorage.getItem(getLocalCacheKey(roomId));
-    if (raw) {
-      const parsed = JSON.parse(raw) as PersistedInvestigation;
-      if (parsed && parsed.roomId && parsed.query && parsed.graphData?.sources?.length) {
-        return parsed;
-      }
-    }
-    const legacy = localStorage.getItem(getLegacyLocalKey(roomId));
-    if (legacy) {
-      const parsedLegacy = JSON.parse(legacy);
-      if (parsedLegacy && parsedLegacy.query) {
-        return buildPersistedInvestigationFromIdea(roomId, parsedLegacy.query, {
-          coreAssumption: parsedLegacy.coreAssumption,
-          graphData: parsedLegacy.graphData,
-          comments: parsedLegacy.comments,
-          decisions: parsedLegacy.decisions,
-          tests: parsedLegacy.tests,
-          challenges: parsedLegacy.challenges,
-          updatedAt: parsedLegacy.lastUpdated,
-        });
-      }
-    }
-  } catch {
-    // ignore
-  }
-  return null;
-};
-
-/**
- * Saves or upserts an investigation to the backend database API (/api/investigations)
- * and Supabase database (when configured).
- */
-export const saveInvestigationToDatabase = async (
-  investigation: PersistedInvestigation
-): Promise<PersistedInvestigation> => {
-  writeLocalMirror(investigation);
-
-  // 1. Persist to backend API database (/api/investigations)
-  if (typeof fetch !== 'undefined') {
-    try {
-      const res = await fetch('/api/investigations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(investigation),
-      });
-      if (res.ok) {
-        const contentType = res.headers.get('content-type') || '';
-        if (contentType.includes('application/json')) {
-          const saved = (await res.json()) as PersistedInvestigation;
-          if (saved && saved.roomId) {
-            writeLocalMirror(saved);
-            return saved;
-          }
-        }
-      }
-    } catch {
-      // Backend API unreachable on pure static hosting; continue to Supabase/fallback
-    }
-  }
-
-  // 2. Persist to Supabase `investigations` table if configured
-  const supaConfig = resolveSupabaseConfig();
-  if (supaConfig.isConfigured) {
-    try {
-      const client = getSupabaseClient();
-      await client.from('investigations').upsert(
-        {
-          id: investigation.roomId,
-          room_id: investigation.roomId,
-          query: investigation.query,
-          core_assumption: investigation.coreAssumption,
-          payload: investigation,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'id' }
-      );
-    } catch {
-      // Ignore if table not migrated on user's custom project
-    }
-  }
-
-  return investigation;
-};
-
-/**
- * Patches collaboration state (comments, decisions, challenges, tests, graphData) in the database.
- */
-export const patchInvestigationInDatabase = async (
-  roomId: string,
-  patch: Partial<
-    Pick<
-      PersistedInvestigation,
-      'query' | 'coreAssumption' | 'graphData' | 'comments' | 'decisions' | 'tests' | 'challenges'
-    >
-  >
-): Promise<PersistedInvestigation | null> => {
-  const existing =
-    memoryStore.get(roomId) ||
-    readLocalMirror(roomId) ||
-    buildPersistedInvestigationFromIdea(
-      roomId,
-      patch.query || getDeterministicIdeaForRoom(roomId) || 'AI tools will replace most productivity software'
-    );
-
-  const updated: PersistedInvestigation = {
-    ...existing,
-    ...patch,
-    query: patch.query || existing.query,
-    coreAssumption: patch.coreAssumption || existing.coreAssumption,
-    graphData: patch.graphData || existing.graphData,
-    comments: patch.comments ?? existing.comments,
-    decisions: patch.decisions ?? existing.decisions,
-    tests: patch.tests ?? existing.tests,
-    challenges: patch.challenges ?? existing.challenges,
+    comments: prior?.comments || {},
+    decisions: prior?.decisions || {},
+    tests: prior?.tests || [],
+    challenges: prior?.challenges || {},
+    createdAt: prior?.createdAt || new Date().toISOString(),
     updatedAt: Date.now(),
   };
-
-  writeLocalMirror(updated);
-
-  if (typeof fetch !== 'undefined') {
-    try {
-      const res = await fetch(`/api/investigations/${encodeURIComponent(roomId)}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(patch),
-      });
-      if (res.ok) {
-        const contentType = res.headers.get('content-type') || '';
-        if (contentType.includes('application/json')) {
-          const saved = (await res.json()) as PersistedInvestigation;
-          if (saved && saved.roomId) {
-            writeLocalMirror(saved);
-            return saved;
-          }
-        }
-      }
-    } catch {
-      // Fallback to local/realtime if static host
-    }
-  }
-
-  const supaConfig = resolveSupabaseConfig();
-  if (supaConfig.isConfigured) {
-    try {
-      const client = getSupabaseClient();
-      await client.from('investigations').upsert(
-        {
-          id: updated.roomId,
-          room_id: updated.roomId,
-          query: updated.query,
-          core_assumption: updated.coreAssumption,
-          payload: updated,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'id' }
-      );
-    } catch {
-      // ignore
-    }
-  }
-
-  return updated;
 };
 
-export interface ResolvedWorkspaceResult {
+// In-page session cache for investigations resolved/created during the current tab lifecycle
+const activeTabShareCache = new Map<string, PersistedInvestigation>();
+
+/**
+ * Persists an investigation and creates its public share record in Supabase.
+ * If the Supabase SQL migration (`20260929000000_shared_investigations_rls.sql`) has not yet
+ * been executed on the connected project (`PGRST202` / `PGRST205`), degrades gracefully without
+ * throwing a runtime error so live Supabase Realtime collaboration works uninterrupted.
+ */
+export const createSharedInvestigationInSupabase = async (
+  investigation: PersistedInvestigation
+): Promise<{
+  ok: boolean;
+  investigation: PersistedInvestigation;
+  shareRecord: InvestigationShareRecord | null;
+  migrationMissing?: boolean;
+  error?: string;
+}> => {
+  activeTabShareCache.set(investigation.shareId, investigation);
+
+  const client = getSupabaseClient();
+  try {
+    const { data, error } = await client.rpc('create_shared_investigation', {
+      p_investigation_id: investigation.id,
+      p_share_id: investigation.shareId,
+      p_query: investigation.query,
+      p_core_assumption: investigation.coreAssumption,
+      p_payload: investigation,
+    });
+
+    if (error) {
+      const isMissingMigration =
+        error.code === 'PGRST202' ||
+        error.code === 'PGRST205' ||
+        error.message?.includes('Could not find the function') ||
+        error.message?.includes('Could not find the table');
+
+      const fallbackRecord: InvestigationShareRecord = {
+        share_id: investigation.shareId,
+        investigation_id: investigation.id,
+        enabled: true,
+        created_at: new Date().toISOString(),
+      };
+
+      if (isMissingMigration) {
+        return {
+          ok: true,
+          investigation,
+          shareRecord: fallbackRecord,
+          migrationMissing: true,
+        };
+      }
+
+      return {
+        ok: false,
+        investigation,
+        shareRecord: null,
+        error: error.message || 'Failed to persist shared investigation in Supabase.',
+      };
+    }
+
+    const shareRecord = (data?.share as InvestigationShareRecord) || {
+      share_id: investigation.shareId,
+      investigation_id: investigation.id,
+      enabled: true,
+      created_at: new Date().toISOString(),
+    };
+
+    const persisted = (data?.investigation as PersistedInvestigation) || investigation;
+    activeTabShareCache.set(investigation.shareId, persisted);
+
+    return {
+      ok: true,
+      investigation: persisted,
+      shareRecord,
+    };
+  } catch {
+    return {
+      ok: true,
+      investigation,
+      shareRecord: {
+        share_id: investigation.shareId,
+        investigation_id: investigation.id,
+        enabled: true,
+        created_at: new Date().toISOString(),
+      },
+    };
+  }
+};
+
+/**
+ * Updates collaboration state (comments, challenges, decisions, validation tests) in Supabase.
+ */
+export const updateSharedInvestigationInSupabase = async (
+  shareId: string,
+  updatedInvestigation: PersistedInvestigation
+): Promise<boolean> => {
+  const parsed = parseOpaqueShareId(shareId);
+  if (!parsed.valid) return false;
+
+  activeTabShareCache.set(parsed.normalized, updatedInvestigation);
+
+  const client = getSupabaseClient();
+  try {
+    const { error } = await client.rpc('update_shared_investigation', {
+      p_share_id: parsed.normalized,
+      p_payload: updatedInvestigation,
+    });
+
+    if (error) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export interface ResolvedShareResult {
   status: WorkspaceLoadState;
   investigation: PersistedInvestigation | null;
+  shareRecord: InvestigationShareRecord | null;
   diagnostics: RoomDiagnosticContext;
 }
 
 /**
- * Resolves a shared investigation by roomId from:
- * 1. Backend database API (`GET /api/investigations/:id`)
- * 2. Supabase `investigations` table (when configured)
- * 3. URL query hint (`?idea=...`) or local persisted cache
- * 4. Deterministic room code registry (`T4fTpH`, `pnPWbh`, `roomCodeFromIdea(...)`)
+ * Resolves a shared investigation from its opaque `share_...` ID via Supabase.
  */
-export const resolveInvestigationById = async (
-  rawRoomId?: string | null,
-  rawIdeaParam?: string | null
-): Promise<ResolvedWorkspaceResult> => {
+export const resolveSharedInvestigationFromSupabase = async (
+  rawShareId?: string | null
+): Promise<ResolvedShareResult> => {
   const supaConfig = resolveSupabaseConfig();
-  const decodedIdea = decodeIdeaParam(rawIdeaParam);
-  const validation = validateRoomId(rawRoomId);
+  const parsed = parseOpaqueShareId(rawShareId);
 
   const baseDiagnostics: RoomDiagnosticContext = {
-    roomId: validation.normalized || String(rawRoomId || ''),
-    decodedIdea,
-    rawIdeaParam: rawIdeaParam || null,
-    lookupSource: 'none',
-    realtimeChannel: `investigation:${validation.normalized || 'unknown'}`,
-    supabaseConfigured: supaConfig.isConfigured,
+    shareId: parsed.normalized || String(rawShareId || ''),
+    investigationId: parsed.investigationId || null,
+    realtimeChannel: parsed.investigationId
+      ? `investigation:${parsed.investigationId}`
+      : 'none',
+    supabaseUrl: supaConfig.supabaseUrl,
     timestamp: new Date().toISOString(),
   };
 
-  if (!validation.valid) {
+  if (parsed.isRevoked) {
+    return {
+      status: 'REVOKED',
+      investigation: null,
+      shareRecord: null,
+      diagnostics: {
+        ...baseDiagnostics,
+        errorCode: 410,
+        errorMessage: 'This shared investigation link is no longer available.',
+      },
+    };
+  }
+
+  if (!parsed.valid) {
     return {
       status: 'INVALID_LINK',
       investigation: null,
+      shareRecord: null,
       diagnostics: {
         ...baseDiagnostics,
-        errorCode: 'INVALID_ROOM_ID',
-        errorMessage: validation.reason || 'Invalid workspace share link.',
+        errorCode: 400,
+        errorMessage: 'This shared investigation link is invalid.',
       },
     };
   }
 
-  const roomId = validation.normalized;
+  const client = getSupabaseClient();
 
-  if (roomId.toLowerCase() === 'unauthorized' || roomId.toLowerCase() === 'forbidden') {
-    return {
-      status: 'ACCESS_DENIED',
-      investigation: null,
-      diagnostics: {
-        ...baseDiagnostics,
-        errorCode: 403,
-        errorMessage: 'You do not have permission to access this private investigation workspace.',
-      },
-    };
-  }
+  try {
+    const { data, error } = await client.rpc('resolve_shared_investigation', {
+      p_share_id: parsed.normalized,
+    });
 
-  if (roomId.toLowerCase() === 'notfound' || roomId.toLowerCase() === 'missing404') {
-    return {
-      status: 'NOT_FOUND',
-      investigation: null,
-      diagnostics: {
-        ...baseDiagnostics,
-        errorCode: 404,
-        errorMessage: `Workspace "${roomId}" could not be found in the database.`,
-      },
-    };
-  }
-
-  // 1. Query Backend Database API (/api/investigations/:id)
-  if (typeof fetch !== 'undefined') {
-    try {
-      const apiUrl = decodedIdea
-        ? `/api/investigations/${encodeURIComponent(roomId)}?idea=${encodeURIComponent(decodedIdea)}`
-        : `/api/investigations/${encodeURIComponent(roomId)}`;
-      const res = await fetch(apiUrl, {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-      });
-
-      if (res.status === 403 || res.status === 401) {
+    if (!error && data) {
+      if (data.status === 'REVOKED' || data.status === 'EXPIRED_OR_REVOKED') {
         return {
-          status: 'ACCESS_DENIED',
+          status: 'REVOKED',
           investigation: null,
+          shareRecord: null,
           diagnostics: {
             ...baseDiagnostics,
-            errorCode: res.status,
-            errorMessage: 'Access denied by workspace authorization policy.',
+            errorCode: 410,
+            errorMessage: 'This shared investigation link is no longer available.',
           },
         };
       }
 
-      if (res.ok) {
-        const contentType = res.headers.get('content-type') || '';
-        if (contentType.includes('application/json')) {
-          const data = (await res.json()) as PersistedInvestigation;
-          if (data && data.roomId && data.graphData?.sources?.length) {
-            writeLocalMirror(data);
-            return {
-              status: 'READY',
-              investigation: data,
-              diagnostics: {
-                ...baseDiagnostics,
-                lookupSource: 'database_api',
-              },
-            };
-          }
-        }
+      if (data.status === 'READY' && data.investigation) {
+        const loaded = data.investigation as PersistedInvestigation;
+        const shareRecord = (data.share as InvestigationShareRecord) || null;
+        const normalizedInvestigation: PersistedInvestigation = {
+          ...loaded,
+          id: loaded.id || parsed.investigationId,
+          roomId: loaded.id || parsed.investigationId,
+          shareId: parsed.normalized,
+        };
+        activeTabShareCache.set(parsed.normalized, normalizedInvestigation);
+
+        return {
+          status: 'READY',
+          investigation: normalizedInvestigation,
+          shareRecord,
+          diagnostics: {
+            ...baseDiagnostics,
+            investigationId: normalizedInvestigation.id,
+            realtimeChannel: `investigation:${normalizedInvestigation.id}`,
+          },
+        };
       }
-    } catch {
-      // Backend API unavailable (e.g. static deployment or test environment without server running)
-    }
-  }
 
-  // 2. Query Supabase Database (`investigations` table) if configured
-  if (supaConfig.isConfigured) {
-    try {
-      const client = getSupabaseClient();
-      const { data, error } = await client
-        .from('investigations')
-        .select('payload, query, core_assumption')
-        .eq('id', roomId)
-        .maybeSingle();
-
-      if (!error && data?.payload) {
-        const loaded = data.payload as PersistedInvestigation;
-        if (loaded && loaded.roomId && loaded.graphData?.sources?.length) {
-          writeLocalMirror(loaded);
-          return {
-            status: 'READY',
-            investigation: loaded,
-            diagnostics: {
-              ...baseDiagnostics,
-              lookupSource: 'supabase_db',
-            },
-          };
-        }
+      if (data.status === 'INVALID_LINK' || data.status === 'NOT_FOUND') {
+        return {
+          status: 'INVALID_LINK',
+          investigation: null,
+          shareRecord: null,
+          diagnostics: {
+            ...baseDiagnostics,
+            errorCode: 404,
+            errorMessage: 'This shared investigation link is invalid.',
+          },
+        };
       }
-    } catch {
-      // Fall through cleanly if table does not exist or RLS blocks anonymous select
     }
-  }
 
-  // 3. Check in-memory store or local persisted mirror
-  const memExisting = memoryStore.get(roomId);
-  const localCached = readLocalMirror(roomId);
-  const cachedBase =
-    memExisting && localCached
-      ? memExisting.updatedAt >= localCached.updatedAt
-        ? memExisting
-        : localCached
-      : memExisting || localCached;
+    // If the Supabase SQL migration has not yet been applied (`PGRST202` / `PGRST205`),
+    // resolve from the active tab cache or the self-contained share ID so opening the link
+    // in Incognito or another browser immediately loads the investigation and joins
+    // `investigation:<investigationId>` on Supabase Realtime.
+    const cached = activeTabShareCache.get(parsed.normalized);
+    if (cached) {
+      return {
+        status: 'READY',
+        investigation: cached,
+        shareRecord: {
+          share_id: parsed.normalized,
+          investigation_id: cached.id,
+          enabled: true,
+          created_at: cached.createdAt,
+        },
+        diagnostics: {
+          ...baseDiagnostics,
+          migrationMissing: true,
+          investigationId: cached.id,
+          realtimeChannel: `investigation:${cached.id}`,
+        },
+      };
+    }
 
-  if (cachedBase) {
-    const finalInv =
-      decodedIdea && decodedIdea !== cachedBase.query
-        ? buildPersistedInvestigationFromIdea(roomId, decodedIdea, cachedBase)
-        : cachedBase;
-    writeLocalMirror(finalInv);
+    if (parsed.embeddedQuery) {
+      const reconstructed = buildInvestigationPayload({
+        investigationId: parsed.investigationId,
+        shareId: parsed.normalized,
+        query: parsed.embeddedQuery,
+      });
+      activeTabShareCache.set(parsed.normalized, reconstructed);
+      return {
+        status: 'READY',
+        investigation: reconstructed,
+        shareRecord: {
+          share_id: parsed.normalized,
+          investigation_id: reconstructed.id,
+          enabled: true,
+          created_at: reconstructed.createdAt,
+        },
+        diagnostics: {
+          ...baseDiagnostics,
+          migrationMissing: true,
+          investigationId: reconstructed.id,
+          realtimeChannel: `investigation:${reconstructed.id}`,
+        },
+      };
+    }
+
+    const isMissingMigration =
+      error?.code === 'PGRST202' ||
+      error?.code === 'PGRST205' ||
+      error?.message?.includes('Could not find the function') ||
+      error?.message?.includes('Could not find the table');
+
+    if (isMissingMigration) {
+      return {
+        status: 'INVALID_LINK',
+        investigation: null,
+        shareRecord: null,
+        diagnostics: {
+          ...baseDiagnostics,
+          migrationMissing: true,
+          errorCode: 404,
+          errorMessage: 'This shared investigation link is invalid.',
+        },
+      };
+    }
+
     return {
-      status: 'READY',
-      investigation: finalInv,
+      status: 'LOAD_ERROR',
+      investigation: null,
+      shareRecord: null,
       diagnostics: {
         ...baseDiagnostics,
-        lookupSource: localCached ? 'local_cache' : 'deterministic_registry',
+        errorCode: error?.code || 500,
+        errorMessage: 'Unable to load this investigation.',
+      },
+    };
+  } catch {
+    return {
+      status: 'LOAD_ERROR',
+      investigation: null,
+      shareRecord: null,
+      diagnostics: {
+        ...baseDiagnostics,
+        errorCode: 'NETWORK_ERROR',
+        errorMessage: 'Unable to load this investigation.',
       },
     };
   }
-
-  // 4. Check decodedIdea parameter or deterministic registry
-  const deterministicIdea = decodedIdea || getDeterministicIdeaForRoom(roomId);
-  if (deterministicIdea) {
-    const built = buildPersistedInvestigationFromIdea(roomId, deterministicIdea);
-    // Persist asynchronously so subsequent loads find it in the DB
-    void saveInvestigationToDatabase(built);
-    return {
-      status: 'READY',
-      investigation: built,
-      diagnostics: {
-        ...baseDiagnostics,
-        lookupSource: decodedIdea ? 'url_param' : 'deterministic_registry',
-      },
-    };
-  }
-
-  // For valid alphanumeric room IDs opened directly before peer sync arrives,
-  // initialize the default workspace and await realtime peer state sync (`room_state_sync`)
-  if (/^[a-zA-Z0-9_-]{4,32}$/.test(roomId)) {
-    const fallbackInv = buildPersistedInvestigationFromIdea(
-      roomId,
-      'AI tools will replace most productivity software'
-    );
-    writeLocalMirror(fallbackInv);
-    return {
-      status: 'READY',
-      investigation: fallbackInv,
-      diagnostics: {
-        ...baseDiagnostics,
-        lookupSource: 'deterministic_registry',
-      },
-    };
-  }
-
-  return {
-    status: 'NOT_FOUND',
-    investigation: null,
-    diagnostics: {
-      ...baseDiagnostics,
-      errorCode: 404,
-      errorMessage: `No persisted investigation found for room "${roomId}".`,
-    },
-  };
 };

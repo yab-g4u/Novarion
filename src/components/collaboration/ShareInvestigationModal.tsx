@@ -1,44 +1,83 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Copy, Check, Users, Globe, ShieldCheck, ExternalLink } from 'lucide-react';
+import {
+  X,
+  Copy,
+  Check,
+  Users,
+  Globe,
+  ShieldCheck,
+  ExternalLink,
+  AlertCircle,
+} from 'lucide-react';
 import { CollaboratorPresence } from '../../types/collaboration';
 import { getShareableUrl } from '../../lib/collaboration/useInvestigationRoom';
-import {
-  buildPersistedInvestigationFromIdea,
-  saveInvestigationToDatabase,
-} from '../../lib/collaboration/investigationStore';
 
 interface ShareInvestigationModalProps {
   isOpen: boolean;
   onClose: () => void;
   roomId: string;
+  shareId?: string;
   query?: string;
   collaborators: CollaboratorPresence[];
+  onPersistShare?: () => Promise<{ ok: boolean; shareId: string; error?: string }>;
 }
 
 export const ShareInvestigationModal: React.FC<ShareInvestigationModalProps> = ({
   isOpen,
   onClose,
   roomId,
+  shareId: propShareId,
   query,
   collaborators,
+  onPersistShare,
 }) => {
   const [copied, setCopied] = useState(false);
+  const [persistState, setPersistState] = useState<'SAVING' | 'SAVED' | 'ERROR'>('SAVING');
+  const [persistError, setPersistError] = useState<string | null>(null);
+  const [activeShareId, setActiveShareId] = useState<string>(propShareId || roomId);
   const navigate = useNavigate();
-  const shareableUrl = getShareableUrl(roomId, query);
 
-  // Persist the workspace to the database as soon as the Share modal opens
   useEffect(() => {
-    if (isOpen && roomId) {
-      const inv = buildPersistedInvestigationFromIdea(
-        roomId,
-        query || 'AI tools will replace most productivity software'
-      );
-      void saveInvestigationToDatabase(inv);
+    if (propShareId) {
+      setActiveShareId(propShareId);
     }
-  }, [isOpen, roomId, query]);
+  }, [propShareId]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+
+    const persistToSupabase = async () => {
+      if (!onPersistShare) {
+        setPersistState('SAVED');
+        return;
+      }
+      setPersistState('SAVING');
+      setPersistError(null);
+      const res = await onPersistShare();
+      if (cancelled) return;
+      if (res.shareId) {
+        setActiveShareId(res.shareId);
+      }
+      if (res.ok) {
+        setPersistState('SAVED');
+      } else {
+        setPersistState('ERROR');
+        setPersistError(res.error || 'Unable to persist share link in Supabase.');
+      }
+    };
+
+    void persistToSupabase();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, onPersistShare]);
 
   if (!isOpen) return null;
+
+  const shareableUrl = getShareableUrl(activeShareId);
 
   const handleCopy = () => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
@@ -48,18 +87,9 @@ export const ShareInvestigationModal: React.FC<ShareInvestigationModalProps> = (
     setTimeout(() => setCopied(false), 2500);
   };
 
-  const handleOpenRoom = () => {
-    if (query) {
-      try {
-        localStorage.setItem('probe_active_idea', query);
-      } catch {
-        // ignore
-      }
-    }
+  const handleOpenSharedWorkspace = () => {
     onClose();
-    navigate(
-      query ? `/r/${roomId}?idea=${encodeURIComponent(query)}` : `/r/${roomId}`
-    );
+    navigate(`/?share=${encodeURIComponent(activeShareId)}`);
   };
 
   return (
@@ -76,7 +106,7 @@ export const ShareInvestigationModal: React.FC<ShareInvestigationModalProps> = (
                 Share Investigation Workspace
               </h3>
               <p className="text-[11px] font-mono text-[#868C98]">
-                Room Code: {roomId}
+                Share ID: {activeShareId}
               </p>
             </div>
           </div>
@@ -105,10 +135,23 @@ export const ShareInvestigationModal: React.FC<ShareInvestigationModalProps> = (
             <label className="text-xs font-bold text-[#0A0D14] block">
               Public Collaborator Link
             </label>
-            <span className="text-[10px] font-mono text-[#059669] bg-[#ECFDF5] px-2 py-0.5 rounded-full border border-[#A7F3D0] flex items-center gap-1 font-semibold">
-              <ShieldCheck size={11} />
-              Persisted &amp; Live Synced
-            </span>
+            {persistState === 'SAVED' && (
+              <span className="text-[10px] font-mono text-[#059669] bg-[#ECFDF5] px-2 py-0.5 rounded-full border border-[#A7F3D0] flex items-center gap-1 font-semibold">
+                <ShieldCheck size={11} />
+                Saved in Supabase
+              </span>
+            )}
+            {persistState === 'SAVING' && (
+              <span className="text-[10px] font-mono text-[#475467] bg-[#F1F5F9] px-2 py-0.5 rounded-full border border-[#CBD5E1] font-semibold">
+                Saving to Supabase...
+              </span>
+            )}
+            {persistState === 'ERROR' && (
+              <span className="text-[10px] font-mono text-[#B91C1C] bg-[#FEF2F2] px-2 py-0.5 rounded-full border border-[#FECACA] flex items-center gap-1 font-semibold">
+                <AlertCircle size={11} />
+                Supabase Sync Error
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-[#FAFAFA] border border-[#CBD5E1] focus-within:border-[#0A0D14]">
@@ -132,12 +175,17 @@ export const ShareInvestigationModal: React.FC<ShareInvestigationModalProps> = (
               <span>{copied ? 'Copied!' : 'Copy Link'}</span>
             </button>
           </div>
+
+          {persistError && (
+            <p className="text-[11px] font-mono text-[#B91C1C] bg-[#FEF2F2] border border-[#FECACA] rounded-xl p-2.5 leading-snug">
+              {persistError}
+            </p>
+          )}
+
           <p className="text-[11px] text-[#64748B] leading-relaxed">
-            Anyone with this link can open Room{' '}
-            <strong className="font-mono text-[#0A0D14]">{roomId}</strong> in any
-            browser or incognito window to view the persisted Evidence Graph,
-            challenge evidence, add comments, and run validation tests together in
-            real time.
+            Anyone with this link can open the Evidence Graph anonymously in any browser or
+            incognito window and collaborate in real time on channel{' '}
+            <strong className="font-mono text-[#0A0D14]">investigation:{roomId}</strong>.
           </p>
         </div>
 
@@ -180,10 +228,10 @@ export const ShareInvestigationModal: React.FC<ShareInvestigationModalProps> = (
           <div className="flex items-center gap-3 shrink-0">
             <button
               type="button"
-              onClick={handleOpenRoom}
+              onClick={handleOpenSharedWorkspace}
               className="text-[#0F52BA] font-bold hover:underline flex items-center gap-1 cursor-pointer"
             >
-              <span>Open Room</span>
+              <span>Open Shared View</span>
               <ExternalLink size={11} />
             </button>
             <button

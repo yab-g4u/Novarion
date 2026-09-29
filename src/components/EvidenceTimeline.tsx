@@ -27,12 +27,14 @@ import { ValidationTest } from '../types/collaboration';
 
 interface EvidenceTimelineProps {
   roomId?: string;
+  ideaQuery?: string;
   onNavigateToGraphNode?: (nodeId: string) => void;
   onTestCompletedAsEvidence?: (evidence: any) => void;
 }
 
 export const EvidenceTimeline: React.FC<EvidenceTimelineProps> = ({
   roomId,
+  ideaQuery,
   onNavigateToGraphNode,
   onTestCompletedAsEvidence,
 }) => {
@@ -42,7 +44,7 @@ export const EvidenceTimeline: React.FC<EvidenceTimelineProps> = ({
   const [inspectModalEvent, setInspectModalEvent] = useState<any | null>(null);
 
   // Hook into realtime room tests
-  const { tests, updateTestStatus } = useInvestigationRoom(roomId);
+  const { tests, updateTestStatus } = useInvestigationRoom(roomId, ideaQuery);
 
   // Completion modal state
   const [completingTest, setCompletingTest] = useState<ValidationTest | null>(null);

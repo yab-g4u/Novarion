@@ -8,7 +8,6 @@ import { FinalCTARefined } from '../components/landing/FinalCTARefined';
 import { ShapeWavesFooter } from '../components/landing/ShapeWavesFooter';
 import { safeRefreshScrollTrigger } from '../motion/gsapConfig';
 import { InvestigationResultData, generateDynamicInvestigation } from '../lib/research/dynamicInvestigationResolver';
-import { roomCodeFromIdea } from '../lib/collaboration/useInvestigationRoom';
 
 export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -68,7 +67,6 @@ export const LandingPage: React.FC = () => {
       {/* EXPERIENCE C: LIVING EVIDENCE GRAPH (MATCHES evidence-graph.png WITH ELK.JS & REACT FLOW) */}
       <div id="section-evidence-graph" className="w-full bg-white py-12 sm:py-16">
         <EvidenceGraph
-          roomId={roomCodeFromIdea(currentInvestigation.query)}
           externalGraphData={currentInvestigation.graphData}
         />
       </div>

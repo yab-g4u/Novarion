@@ -6,24 +6,25 @@ import {
   ValidationTest,
   EvidenceChallenge,
   ProbeRealtimeEvent,
-  SharedInvestigationState,
   PersistedInvestigation,
+  InvestigationShareRecord,
   WorkspaceLoadState,
   RoomDiagnosticContext,
+  InvestigationRoomController,
 } from '../../types/collaboration';
 import { DynamicGraphData } from '../../types/evidenceGraph';
 import { joinInvestigationRoom, InvestigationRoomChannel } from '../supabase';
 import {
-  generateRoomCode,
-  roomCodeFromIdea,
-  buildPersistedInvestigationFromIdea,
-  saveInvestigationToDatabase,
-  patchInvestigationInDatabase,
-  resolveInvestigationById,
-  registerDeterministicRoomIdea,
+  generateOpaqueShareId,
+  generateInvestigationId,
+  validateShareId,
+  buildInvestigationPayload,
+  createSharedInvestigationInSupabase,
+  updateSharedInvestigationInSupabase,
+  resolveSharedInvestigationFromSupabase,
 } from './investigationStore';
 
-export { generateRoomCode, roomCodeFromIdea };
+export { generateOpaqueShareId, generateInvestigationId, validateShareId };
 
 const COLLABORATOR_COLORS = [
   '#0F52BA', // Probe Blue
@@ -35,8 +36,16 @@ const COLLABORATOR_COLORS = [
   '#F43F5E', // Rose
 ];
 
-export const getShareableUrl = (roomId: string, ideaHint?: string): string => {
-  const cleanRoomId = (roomId || 'T4fTpH').trim();
+/**
+ * Generates the canonical root-level share URL:
+ * `https://probe.pro.et/?share=share_<opaque-id>`
+ *
+ * Uses `/` with `?share=` so any static deployment (Vercel, CDN, Cloud Run)
+ * always serves `index.html` at `/` without nested-route 404s.
+ */
+export const getShareableUrl = (shareId: string): string => {
+  const cleanShareId = shareId.trim();
+
   const configuredBase =
     typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_PUBLIC_APP_URL
       ? String((import.meta as any).env.VITE_PUBLIC_APP_URL).replace(/\/+$/, '')
@@ -49,61 +58,100 @@ export const getShareableUrl = (roomId: string, ideaHint?: string): string => {
     baseOrigin = window.location.origin;
   }
 
-  const baseUrl = `${baseOrigin}/r/${cleanRoomId}`;
-  if (ideaHint && ideaHint.trim()) {
-    return `${baseUrl}?idea=${encodeURIComponent(ideaHint.trim())}`;
+  if (baseOrigin.startsWith('https://ais-dev-')) {
+    baseOrigin = baseOrigin.replace('https://ais-dev-', 'https://ais-pre-');
   }
-  return baseUrl;
+
+  return `${baseOrigin}/?share=${encodeURIComponent(cleanShareId)}`;
+};
+
+/**
+ * Session-scoped workspace registry for the active creator tab only
+ * (so switching between Evidence Graph and Calendar tabs in `/app/*` keeps the same
+ * `investigationId` and `shareId` for the creator's active investigation).
+ * Shared links (`/?share=share_...`) NEVER read this map; they resolve exclusively from Supabase.
+ */
+const creatorDraftSessions = new Map<
+  string,
+  { investigationId: string; shareId: string }
+>();
+
+const getOrCreateCreatorIds = (ideaKey: string): { investigationId: string; shareId: string } => {
+  const key = (ideaKey || 'default').trim().toLowerCase();
+  let existing = creatorDraftSessions.get(key);
+  if (!existing) {
+    const rawShare = generateOpaqueShareId(ideaKey);
+    const hexMatch = /^share_([0-9a-f]{12,16})/i.exec(rawShare);
+    const hexSeed = hexMatch ? hexMatch[1] : undefined;
+    existing = {
+      investigationId: generateInvestigationId(hexSeed),
+      shareId: rawShare,
+    };
+    creatorDraftSessions.set(key, existing);
+  }
+  return existing;
 };
 
 export const useInvestigationRoom = (
-  initialRoomId?: string,
+  initialIdentifier?: string,
   initialQuery?: string,
   initialCoreAssumption?: string,
   initialGraphData?: DynamicGraphData | null
-) => {
-  const computedRoomId =
-    initialRoomId?.trim() ||
-    (initialQuery?.trim() ? roomCodeFromIdea(initialQuery.trim()) : 'T4fTpH');
+): InvestigationRoomController => {
+  // Determine whether this hook is resolving a shared link (`share_...`) vs creator's local `/app/*` workspace
+  const isSharedLinkMode = Boolean(
+    initialIdentifier !== undefined &&
+      (initialIdentifier.trim().startsWith('share_') || (!initialQuery && !initialGraphData))
+  );
 
-  const [roomId, setRoomId] = useState<string>(computedRoomId);
-  const [loadState, setLoadState] = useState<WorkspaceLoadState>('LOADING');
+  const creatorIds = getOrCreateCreatorIds(initialQuery || initialIdentifier || 'default');
+
+  const [shareId, setShareId] = useState<string>(() => {
+    if (initialIdentifier && initialIdentifier.startsWith('share_')) {
+      return initialIdentifier.trim();
+    }
+    if (isSharedLinkMode && initialIdentifier) {
+      return initialIdentifier.trim();
+    }
+    return creatorIds.shareId;
+  });
+
+  const [roomId, setRoomId] = useState<string>(() => {
+    if (initialIdentifier && initialIdentifier.startsWith('inv_')) {
+      return initialIdentifier.trim();
+    }
+    return creatorIds.investigationId;
+  });
+
+  const [loadAttempt, setLoadAttempt] = useState<number>(0);
+  const [loadState, setLoadState] = useState<WorkspaceLoadState>(
+    isSharedLinkMode ? 'LOADING' : 'READY'
+  );
+  const [shareRecord, setShareRecord] = useState<InvestigationShareRecord | null>(null);
+  const [diagnostics, setDiagnostics] = useState<RoomDiagnosticContext | null>(null);
+
   const [investigation, setInvestigation] = useState<PersistedInvestigation | null>(() => {
+    if (isSharedLinkMode) {
+      return null;
+    }
     if (initialQuery?.trim()) {
-      return buildPersistedInvestigationFromIdea(computedRoomId, initialQuery.trim(), {
+      return buildInvestigationPayload({
+        investigationId: creatorIds.investigationId,
+        shareId: creatorIds.shareId,
+        query: initialQuery.trim(),
         coreAssumption: initialCoreAssumption,
         graphData: initialGraphData || undefined,
       });
     }
     return null;
   });
-  const [diagnostics, setDiagnostics] = useState<RoomDiagnosticContext | null>(null);
 
-  // Sync roomId if initialRoomId or initialQuery prop changes dynamically
-  useEffect(() => {
-    const nextId =
-      initialRoomId?.trim() ||
-      (initialQuery?.trim() ? roomCodeFromIdea(initialQuery.trim()) : '');
-    if (nextId && nextId !== roomId) {
-      setRoomId(nextId);
-    }
-  }, [initialRoomId, initialQuery, roomId]);
-
-  // Local user presence
+  // Anonymous collaborator presence
   const [currentUser] = useState<CollaboratorPresence>(() => {
-    let authData: any = null;
-    if (typeof localStorage !== 'undefined') {
-      try {
-        const storedAuth = localStorage.getItem('probe_auth_user');
-        authData = storedAuth ? JSON.parse(storedAuth) : null;
-      } catch {
-        authData = null;
-      }
-    }
     const randomColor =
       COLLABORATOR_COLORS[Math.floor(Math.random() * COLLABORATOR_COLORS.length)];
     const randomId = `user_${Math.random().toString(36).substring(2, 9)}`;
-    const randomName = authData?.name || `Founder #${Math.floor(Math.random() * 900 + 100)}`;
+    const randomName = `Collaborator #${Math.floor(Math.random() * 900 + 100)}`;
 
     return {
       id: randomId,
@@ -114,13 +162,11 @@ export const useInvestigationRoom = (
     };
   });
 
-  // State
   const [collaborators, setCollaborators] = useState<CollaboratorPresence[]>([currentUser]);
   const [connectionStatus, setConnectionStatus] = useState<
     'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR'
   >('CONNECTING');
 
-  // Collaborative data structures
   const [comments, setComments] = useState<Record<string, NodeComment[]>>({});
   const [decisions, setDecisions] = useState<Record<string, NodeDecision>>({});
   const [tests, setTests] = useState<ValidationTest[]>([]);
@@ -128,128 +174,102 @@ export const useInvestigationRoom = (
 
   const channelRef = useRef<InvestigationRoomChannel | null>(null);
   const stateRef = useRef<{
-    roomId: string;
-    query: string;
-    coreAssumption: string;
-    graphData?: DynamicGraphData;
+    investigationId: string;
+    shareId: string;
+    investigation: PersistedInvestigation | null;
     comments: Record<string, NodeComment[]>;
     decisions: Record<string, NodeDecision>;
     tests: ValidationTest[];
     challenges: Record<string, EvidenceChallenge>;
   }>({
-    roomId,
-    query: initialQuery || '',
-    coreAssumption: initialCoreAssumption || '',
-    graphData: initialGraphData || undefined,
-    comments: {},
-    decisions: {},
-    tests: [],
-    challenges: {},
+    investigationId: roomId,
+    shareId,
+    investigation,
+    comments,
+    decisions,
+    tests,
+    challenges,
   });
 
   useEffect(() => {
     stateRef.current = {
-      roomId,
-      query: investigation?.query || initialQuery || '',
-      coreAssumption: investigation?.coreAssumption || initialCoreAssumption || '',
-      graphData: investigation?.graphData || initialGraphData || undefined,
+      investigationId: roomId,
+      shareId,
+      investigation,
       comments,
       decisions,
       tests,
       challenges,
     };
-  }, [
-    roomId,
-    investigation,
-    initialQuery,
-    initialCoreAssumption,
-    initialGraphData,
-    comments,
-    decisions,
-    tests,
-    challenges,
-  ]);
+  }, [roomId, shareId, investigation, comments, decisions, tests, challenges]);
 
-  // Resolve and load persisted investigation from Database / Store on roomId or initialQuery change
+  // Creator workspace mode: keep investigation payload synced when creator changes idea or graphData
   useEffect(() => {
+    if (isSharedLinkMode) return;
+    if (!initialQuery?.trim() && !initialGraphData?.sources?.length) return;
+
+    const queryText = initialGraphData?.query || initialQuery || '';
+    if (!queryText.trim()) return;
+
+    const nextCreatorIds = getOrCreateCreatorIds(queryText);
+    setRoomId(nextCreatorIds.investigationId);
+    setShareId(nextCreatorIds.shareId);
+
+    setInvestigation((prev) =>
+      buildInvestigationPayload({
+        investigationId: nextCreatorIds.investigationId,
+        shareId: nextCreatorIds.shareId,
+        query: queryText,
+        coreAssumption: initialGraphData?.coreAssumption || initialCoreAssumption,
+        graphData: initialGraphData || undefined,
+        existing: prev && prev.query === queryText ? prev : undefined,
+      })
+    );
+    setLoadState('READY');
+  }, [isSharedLinkMode, initialQuery, initialCoreAssumption, initialGraphData]);
+
+  // Shared link mode: resolve `?share=<share-id>` strictly from Supabase
+  useEffect(() => {
+    if (!isSharedLinkMode) return;
+
     let cancelled = false;
     setLoadState('LOADING');
 
-    const loadRoom = async () => {
-      try {
-        if (initialQuery?.trim()) {
-          registerDeterministicRoomIdea(roomId, initialQuery.trim());
-        }
+    const resolveFromSupabase = async () => {
+      const targetShareId = (initialIdentifier || '').trim();
+      setShareId(targetShareId);
 
-        const resolved = await resolveInvestigationById(roomId, initialQuery);
-        if (cancelled) return;
+      const resolved = await resolveSharedInvestigationFromSupabase(targetShareId);
+      if (cancelled) return;
 
-        setDiagnostics(resolved.diagnostics);
+      setDiagnostics(resolved.diagnostics);
+      setShareRecord(resolved.shareRecord);
 
-        if (resolved.status !== 'READY' || !resolved.investigation) {
-          setLoadState(resolved.status);
-          return;
-        }
-
-        const loadedInv = resolved.investigation;
-        // If caller explicitly passed live graphData with sources, merge it and persist
-        const mergedInv: PersistedInvestigation =
-          initialGraphData && initialGraphData.sources?.length
-            ? {
-                ...loadedInv,
-                query: initialGraphData.query || loadedInv.query,
-                coreAssumption: initialGraphData.coreAssumption || loadedInv.coreAssumption,
-                graphData: initialGraphData,
-                updatedAt: Date.now(),
-              }
-            : loadedInv;
-
-        setInvestigation(mergedInv);
-        setComments(mergedInv.comments || {});
-        setDecisions(mergedInv.decisions || {});
-        setTests(mergedInv.tests || []);
-        setChallenges(mergedInv.challenges || {});
-        setLoadState('READY');
-
-        // Ensure the resolved investigation is saved in the database so any share link recipient can load it
-        void saveInvestigationToDatabase(mergedInv);
-      } catch (err: any) {
-        if (cancelled) return;
-        console.error('[Probe Workspace Load Error]:', err);
-        setLoadState('LOAD_ERROR');
+      if (resolved.status !== 'READY' || !resolved.investigation) {
+        setInvestigation(null);
+        setLoadState(resolved.status);
+        return;
       }
+
+      const loaded = resolved.investigation;
+      setRoomId(loaded.id);
+      setShareId(loaded.shareId || targetShareId);
+      setInvestigation(loaded);
+      setComments(loaded.comments || {});
+      setDecisions(loaded.decisions || {});
+      setTests(loaded.tests || []);
+      setChallenges(loaded.challenges || {});
+      setLoadState('READY');
     };
 
-    void loadRoom();
+    void resolveFromSupabase();
 
     return () => {
       cancelled = true;
     };
-  }, [roomId, initialQuery]);
+  }, [isSharedLinkMode, initialIdentifier, loadAttempt]);
 
-  // If caller updates initialGraphData (e.g. after running a pressure test), persist it to DB
-  useEffect(() => {
-    if (!initialGraphData || !initialGraphData.sources?.length) return;
-    setInvestigation((prev) => {
-      const base =
-        prev ||
-        buildPersistedInvestigationFromIdea(
-          roomId,
-          initialGraphData.query || initialQuery || 'AI tools will replace most productivity software'
-        );
-      const updated: PersistedInvestigation = {
-        ...base,
-        query: initialGraphData.query || base.query,
-        coreAssumption: initialGraphData.coreAssumption || base.coreAssumption,
-        graphData: initialGraphData,
-        updatedAt: Date.now(),
-      };
-      void saveInvestigationToDatabase(updated);
-      return updated;
-    });
-  }, [initialGraphData, roomId, initialQuery]);
-
-  // Handle incoming realtime events
+  // Handle incoming Supabase Realtime broadcast events on `investigation:<investigationId>`
   const handleIncomingEvent = useCallback(
     (event: ProbeRealtimeEvent) => {
       switch (event.type) {
@@ -258,39 +278,29 @@ export const useInvestigationRoom = (
           setComments((prev) => {
             const existing = prev[newComment.nodeId] || [];
             if (existing.some((c) => c.id === newComment.id)) return prev;
-            const next = {
+            return {
               ...prev,
               [newComment.nodeId]: [...existing, newComment],
             };
-            void patchInvestigationInDatabase(stateRef.current.roomId, { comments: next });
-            return next;
           });
           break;
         }
 
         case 'evidence_challenged': {
           const challenge = event.payload;
-          setChallenges((prev) => {
-            const next = {
-              ...prev,
-              [challenge.nodeId]: challenge,
-            };
-            void patchInvestigationInDatabase(stateRef.current.roomId, { challenges: next });
-            return next;
-          });
+          setChallenges((prev) => ({
+            ...prev,
+            [challenge.nodeId]: challenge,
+          }));
           break;
         }
 
         case 'decision_created': {
           const decision = event.payload;
-          setDecisions((prev) => {
-            const next = {
-              ...prev,
-              [decision.nodeId]: decision,
-            };
-            void patchInvestigationInDatabase(stateRef.current.roomId, { decisions: next });
-            return next;
-          });
+          setDecisions((prev) => ({
+            ...prev,
+            [decision.nodeId]: decision,
+          }));
           break;
         }
 
@@ -298,38 +308,35 @@ export const useInvestigationRoom = (
           const test = event.payload;
           setTests((prev) => {
             if (prev.some((t) => t.id === test.id)) return prev;
-            const next = [test, ...prev];
-            void patchInvestigationInDatabase(stateRef.current.roomId, { tests: next });
-            return next;
+            return [test, ...prev];
           });
           break;
         }
 
         case 'test_status_changed': {
           const { testId, status, result } = event.payload;
-          setTests((prev) => {
-            const next = prev.map((t) =>
+          setTests((prev) =>
+            prev.map((t) =>
               t.id === testId ? { ...t, status, result: result || t.result } : t
-            );
-            void patchInvestigationInDatabase(stateRef.current.roomId, { tests: next });
-            return next;
-          });
+            )
+          );
           break;
         }
 
         case 'room_state_request': {
           if (event.payload.requesterId === currentUser.id) break;
           const curr = stateRef.current;
-          if (curr.query) {
+          if (curr.investigation) {
             void channelRef.current?.sendEvent({
               type: 'room_state_sync',
               payload: {
                 id: `sync_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
                 state: {
-                  roomId: curr.roomId,
-                  query: curr.query,
-                  coreAssumption: curr.coreAssumption,
-                  graphData: curr.graphData,
+                  investigationId: curr.investigationId,
+                  shareId: curr.shareId,
+                  query: curr.investigation.query,
+                  coreAssumption: curr.investigation.coreAssumption,
+                  graphData: curr.investigation.graphData,
                   comments: curr.comments,
                   decisions: curr.decisions,
                   tests: curr.tests,
@@ -344,17 +351,8 @@ export const useInvestigationRoom = (
 
         case 'room_state_sync': {
           const incoming = event.payload.state;
-          if (!incoming || incoming.roomId !== stateRef.current.roomId) break;
-
-          if (incoming.query) {
-            setInvestigation((prev) => {
-              const built = buildPersistedInvestigationFromIdea(incoming.roomId, incoming.query, {
-                ...prev,
-                coreAssumption: incoming.coreAssumption || prev?.coreAssumption,
-                graphData: incoming.graphData || prev?.graphData,
-              });
-              return built;
-            });
+          if (!incoming || incoming.investigationId !== stateRef.current.investigationId) {
+            break;
           }
 
           if (incoming.comments && Object.keys(incoming.comments).length > 0) {
@@ -406,9 +404,9 @@ export const useInvestigationRoom = (
     [currentUser.id]
   );
 
-  // Connect to Supabase Realtime channel `investigation:{roomId}`
+  // Join Supabase Realtime channel `investigation:<investigationId>` once investigation is READY
   useEffect(() => {
-    if (!roomId) return;
+    if (loadState !== 'READY' || !roomId) return;
 
     const channel = joinInvestigationRoom(roomId, currentUser, {
       onEvent: handleIncomingEvent,
@@ -423,13 +421,12 @@ export const useInvestigationRoom = (
 
     channelRef.current = channel;
 
-    // Request latest state from any active peers in the room
     const timer = setTimeout(() => {
       void channel.sendEvent({
         type: 'room_state_request',
         payload: {
           id: `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-          roomId,
+          investigationId: roomId,
           requesterId: currentUser.id,
         },
       });
@@ -439,29 +436,70 @@ export const useInvestigationRoom = (
       clearTimeout(timer);
       void channel.leave();
     };
-  }, [roomId, currentUser, handleIncomingEvent]);
+  }, [loadState, roomId, currentUser, handleIncomingEvent]);
 
-  // Action: Ensure current workspace is persisted to DB (e.g. when clicking Share)
+  const syncToSupabase = useCallback(
+    async (overrides: Partial<PersistedInvestigation>) => {
+      const curr = stateRef.current;
+      if (!curr.investigation) return;
+      const updated: PersistedInvestigation = {
+        ...curr.investigation,
+        comments: overrides.comments ?? curr.comments,
+        decisions: overrides.decisions ?? curr.decisions,
+        tests: overrides.tests ?? curr.tests,
+        challenges: overrides.challenges ?? curr.challenges,
+        updatedAt: Date.now(),
+      };
+      setInvestigation(updated);
+      await updateSharedInvestigationInSupabase(curr.shareId, updated);
+    },
+    []
+  );
+
+  /**
+   * Persists the investigation and its opaque share record (`share_...`) to Supabase
+   * when the user clicks Share.
+   */
   const persistWorkspaceNow = useCallback(async () => {
     const curr = stateRef.current;
-    const inv = buildPersistedInvestigationFromIdea(
-      curr.roomId,
-      curr.query || 'AI tools will replace most productivity software',
-      {
-        ...investigation,
-        coreAssumption: curr.coreAssumption,
-        graphData: curr.graphData,
-        comments: curr.comments,
-        decisions: curr.decisions,
-        tests: curr.tests,
-        challenges: curr.challenges,
-        updatedAt: Date.now(),
-      }
-    );
-    return saveInvestigationToDatabase(inv);
-  }, [investigation]);
+    const baseInv =
+      curr.investigation ||
+      buildInvestigationPayload({
+        investigationId: curr.investigationId,
+        shareId: curr.shareId,
+        query: initialQuery || 'Product investigation',
+        coreAssumption: initialCoreAssumption,
+        graphData: initialGraphData || undefined,
+      });
 
-  // Action: Add comment to a specific node
+    const fullInv: PersistedInvestigation = {
+      ...baseInv,
+      id: curr.investigationId,
+      roomId: curr.investigationId,
+      shareId: curr.shareId,
+      comments: curr.comments,
+      decisions: curr.decisions,
+      tests: curr.tests,
+      challenges: curr.challenges,
+      updatedAt: Date.now(),
+    };
+
+    setInvestigation(fullInv);
+    const res = await createSharedInvestigationInSupabase(fullInv);
+    if (res.shareRecord) {
+      setShareRecord(res.shareRecord);
+    }
+    return {
+      ok: res.ok,
+      shareId: curr.shareId,
+      error: res.error,
+    };
+  }, [initialQuery, initialCoreAssumption, initialGraphData]);
+
+  const retryLoad = useCallback(() => {
+    setLoadAttempt((prev) => prev + 1);
+  }, []);
+
   const addComment = useCallback(
     async (
       nodeId: string,
@@ -481,25 +519,21 @@ export const useInvestigationRoom = (
         stance,
       };
 
-      setComments((prev) => {
-        const existing = prev[nodeId] || [];
-        const next = {
-          ...prev,
-          [nodeId]: [...existing, newComment],
-        };
-        void patchInvestigationInDatabase(stateRef.current.roomId, { comments: next });
-        return next;
-      });
+      const nextComments = {
+        ...stateRef.current.comments,
+        [nodeId]: [...(stateRef.current.comments[nodeId] || []), newComment],
+      };
 
+      setComments(nextComments);
       await channelRef.current?.sendEvent({
         type: 'comment_added',
         payload: newComment,
       });
+      await syncToSupabase({ comments: nextComments });
     },
-    [currentUser]
+    [currentUser, syncToSupabase]
   );
 
-  // Action: Challenge evidence
   const toggleChallengeEvidence = useCallback(
     async (nodeId: string, reason?: string) => {
       const current = stateRef.current.challenges[nodeId];
@@ -515,24 +549,21 @@ export const useInvestigationRoom = (
         timestamp: 'Just now',
       };
 
-      setChallenges((prev) => {
-        const next = {
-          ...prev,
-          [nodeId]: challengeUpdate,
-        };
-        void patchInvestigationInDatabase(stateRef.current.roomId, { challenges: next });
-        return next;
-      });
+      const nextChallenges = {
+        ...stateRef.current.challenges,
+        [nodeId]: challengeUpdate,
+      };
 
+      setChallenges(nextChallenges);
       await channelRef.current?.sendEvent({
         type: 'evidence_challenged',
         payload: challengeUpdate,
       });
+      await syncToSupabase({ challenges: nextChallenges });
     },
-    [currentUser]
+    [currentUser, syncToSupabase]
   );
 
-  // Action: Record decision on assumption/unknown node
   const recordDecision = useCallback(
     async (
       nodeId: string,
@@ -552,24 +583,21 @@ export const useInvestigationRoom = (
         status,
       };
 
-      setDecisions((prev) => {
-        const next = {
-          ...prev,
-          [nodeId]: newDecision,
-        };
-        void patchInvestigationInDatabase(stateRef.current.roomId, { decisions: next });
-        return next;
-      });
+      const nextDecisions = {
+        ...stateRef.current.decisions,
+        [nodeId]: newDecision,
+      };
 
+      setDecisions(nextDecisions);
       await channelRef.current?.sendEvent({
         type: 'decision_created',
         payload: newDecision,
       });
+      await syncToSupabase({ decisions: nextDecisions });
     },
-    [currentUser]
+    [currentUser, syncToSupabase]
   );
 
-  // Action: Create Next Real-World Test (inheriting originating node context)
   const createNextTest = useCallback(
     async (testData: {
       originatingNodeId: string;
@@ -600,23 +628,19 @@ export const useInvestigationRoom = (
         createdAt: new Date().toISOString(),
       };
 
-      setTests((prev) => {
-        const next = [newTest, ...prev];
-        void patchInvestigationInDatabase(stateRef.current.roomId, { tests: next });
-        return next;
-      });
-
+      const nextTests = [newTest, ...stateRef.current.tests];
+      setTests(nextTests);
       await channelRef.current?.sendEvent({
         type: 'test_created',
         payload: newTest,
       });
+      await syncToSupabase({ tests: nextTests });
 
       return newTest;
     },
-    [currentUser]
+    [currentUser, syncToSupabase]
   );
 
-  // Action: Change test status and record result (converts completed test to new evidence)
   const updateTestStatus = useCallback(
     async (
       testId: string,
@@ -627,20 +651,18 @@ export const useInvestigationRoom = (
       const resultObj: ValidationTest['result'] =
         status === 'COMPLETED'
           ? {
-              summary: resultSummary || 'Empirical test completed with verified sample.',
+              summary:
+                resultSummary || 'Empirical test completed with verified sample.',
               verdict,
               completedAt: 'Just now',
             }
           : undefined;
 
-      setTests((prev) => {
-        const next = prev.map((t) =>
-          t.id === testId ? { ...t, status, result: resultObj } : t
-        );
-        void patchInvestigationInDatabase(stateRef.current.roomId, { tests: next });
-        return next;
-      });
+      const nextTests = stateRef.current.tests.map((t) =>
+        t.id === testId ? { ...t, status, result: resultObj } : t
+      );
 
+      setTests(nextTests);
       await channelRef.current?.sendEvent({
         type: 'test_status_changed',
         payload: {
@@ -650,19 +672,20 @@ export const useInvestigationRoom = (
           timestamp: new Date().toISOString(),
         },
       });
+      await syncToSupabase({ tests: nextTests });
     },
-    []
+    [syncToSupabase]
   );
-
-  const activeQuery = investigation?.query || initialQuery || '';
 
   return {
     roomId,
+    shareId,
     setRoomId,
     loadState,
     investigation,
+    shareRecord,
     diagnostics,
-    shareableUrl: getShareableUrl(roomId, activeQuery),
+    shareableUrl: getShareableUrl(shareId),
     currentUser,
     collaborators,
     collaboratorCount: collaborators.length,
@@ -677,5 +700,6 @@ export const useInvestigationRoom = (
     createNextTest,
     updateTestStatus,
     persistWorkspaceNow,
+    retryLoad,
   };
 };

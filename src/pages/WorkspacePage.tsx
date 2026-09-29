@@ -20,7 +20,6 @@ import { TryModal } from '../components/TryModal';
 import { EvidenceSource } from '../types';
 import { DynamicGraphData } from '../types/evidenceGraph';
 import { ProbeLogo } from '../components/ProbeLogo';
-import { roomCodeFromIdea } from '../lib/collaboration/useInvestigationRoom';
 import { generateDynamicInvestigation } from '../lib/research/dynamicInvestigationResolver';
 
 export const WorkspacePage: React.FC = () => {
@@ -292,7 +291,6 @@ export const WorkspacePage: React.FC = () => {
             <EvidenceGraph
               onSelectSource={(source) => handleOpenSourceDetail(source)}
               externalGraphData={activeGraphData}
-              roomId={roomCodeFromIdea(investigationIdea)}
               focusNodeId={focusNodeId}
               onNavigateToCalendar={() => navigate('/app/calendar')}
             />
@@ -309,7 +307,7 @@ export const WorkspacePage: React.FC = () => {
               <span className="text-[#868C98]">12-Month Signal Artifacts & Scheduled Tests</span>
             </div>
             <EvidenceTimeline
-              roomId={roomCodeFromIdea(investigationIdea)}
+              ideaQuery={investigationIdea}
               onNavigateToGraphNode={(nodeId) => {
                 setFocusNodeId(nodeId);
                 navigate('/app/evidence');

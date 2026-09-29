@@ -1,8 +1,0 @@
-[phases.setup]
-cmds = ["corepack enable || npm install -g pnpm || true"]
-
-[phases.build]
-cmds = [
-  "pnpm run build || npm run build",
-  "if [ -f /assets/Caddyfile ]; then printf ':80 {\\n  root * /app/dist\\n  encode gzip\\n  try_files {path} {path}/ /index.html\\n  file_server\\n}\\n' > /assets/Caddyfile; fi"
-]

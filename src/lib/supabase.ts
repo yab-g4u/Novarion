@@ -1,55 +1,48 @@
 import { createClient, SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
 import { ProbeRealtimeEvent, CollaboratorPresence } from '../types/collaboration';
 
-// Safe environment credential resolution
+/**
+ * Sanitizes a Supabase project URL so accidental path suffixes in deployment env vars
+ * (e.g. `https://xhxgbqwytmzwnzswelln.supabase.co/rest/v1/`) never cause `@supabase/supabase-js`
+ * to request `/rest/v1/rest/v1` (404) or `/rest/v1/realtime/v1` (404).
+ */
+export const sanitizeSupabaseProjectUrl = (rawUrl: string): string => {
+  const trimmed = (rawUrl || '').trim();
+  if (!trimmed) return '';
+  return trimmed
+    .replace(/\/+(rest|realtime|auth|storage)\/v1\/?$/i, '')
+    .replace(/\/+$/, '');
+};
+
 export const resolveSupabaseConfig = () => {
   const metaEnv = typeof import.meta !== 'undefined' ? (import.meta as any).env : undefined;
 
-  const localUrl =
-    typeof window !== 'undefined' && typeof localStorage !== 'undefined'
-      ? localStorage.getItem('probe_supabase_url')
-      : null;
-  const localKey =
-    typeof window !== 'undefined' && typeof localStorage !== 'undefined'
-      ? localStorage.getItem('probe_supabase_anon_key')
-      : null;
-
-  const envUrl =
-    localUrl ||
+  const rawEnvUrl =
     metaEnv?.VITE_SUPABASE_URL ||
-    (typeof process !== 'undefined' && (process.env?.VITE_SUPABASE_URL || process.env?.SUPABASE_URL)) ||
+    (typeof process !== 'undefined' &&
+      (process.env?.VITE_SUPABASE_URL || process.env?.SUPABASE_URL)) ||
     '';
 
-  const envKey =
-    localKey ||
+  const rawEnvKey =
     metaEnv?.VITE_SUPABASE_ANON_KEY ||
-    (typeof process !== 'undefined' && (process.env?.VITE_SUPABASE_ANON_KEY || process.env?.SUPABASE_ANON_KEY)) ||
+    (typeof process !== 'undefined' &&
+      (process.env?.VITE_SUPABASE_ANON_KEY || process.env?.SUPABASE_ANON_KEY)) ||
     '';
 
-  const supabaseUrl = envUrl || 'https://xuvbglgacdtpmsqchcce.supabase.co';
+  const cleanedEnvUrl = sanitizeSupabaseProjectUrl(rawEnvUrl);
+
+  // Connected production Supabase project for Probe
+  const supabaseUrl = cleanedEnvUrl || 'https://xhxgbqwytmzwnzswelln.supabase.co';
   const supabaseAnonKey =
-    envKey ||
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1dmJnbGdhY2R0cG1zcWNoY2NlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDk4Mzg4MDAsImV4cCI6MjAyNTQxNDgwMH0.demo-placeholder-token';
+    rawEnvKey.trim() || 'sb_publishable_ac2r1Xx3s62t68b6Bfnm9Q_vOofu63P';
 
   return {
     supabaseUrl,
     supabaseAnonKey,
-    isConfigured: Boolean(envUrl && envKey),
-    isCustom: Boolean(localUrl && localKey),
+    rawEnvUrl,
+    wasUrlSanitized: Boolean(rawEnvUrl && cleanedEnvUrl !== rawEnvUrl.replace(/\/+$/, '')),
+    isConfigured: Boolean(supabaseUrl && supabaseAnonKey),
   };
-};
-
-export const setCustomSupabaseCredentials = (url: string, key: string) => {
-  if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
-    if (url && key) {
-      localStorage.setItem('probe_supabase_url', url.trim());
-      localStorage.setItem('probe_supabase_anon_key', key.trim());
-    } else {
-      localStorage.removeItem('probe_supabase_url');
-      localStorage.removeItem('probe_supabase_anon_key');
-    }
-    supabaseInstance = null;
-  }
 };
 
 let supabaseInstance: SupabaseClient | null = null;
@@ -88,10 +81,8 @@ interface MultiplexedRoomEntry {
   investigationId: string;
   channelName: string;
   channel: RealtimeChannel;
-  localBc: BroadcastChannel | null;
   status: 'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR';
   subscribers: Map<string, { user: CollaboratorPresence; handlers: RoomConnectionHandlers }>;
-  peerPresences: Map<string, CollaboratorPresence>;
   processedEventIds: Set<string>;
 }
 
@@ -101,9 +92,6 @@ const computeMergedPresences = (entry: MultiplexedRoomEntry): CollaboratorPresen
   const map = new Map<string, CollaboratorPresence>();
   for (const sub of entry.subscribers.values()) {
     map.set(sub.user.id, sub.user);
-  }
-  for (const [id, p] of entry.peerPresences.entries()) {
-    map.set(id, p);
   }
   try {
     const state = entry.channel.presenceState();
@@ -121,7 +109,7 @@ const computeMergedPresences = (entry: MultiplexedRoomEntry): CollaboratorPresen
       });
     });
   } catch {
-    // ignore if channel not ready
+    // ignore if channel not yet subscribed
   }
   return Array.from(map.values());
 };
@@ -175,20 +163,14 @@ const dispatchEventToSubscribers = (
 };
 
 /**
- * Joins or attaches to the multiplexed Supabase Realtime channel:
- * `investigation:{investigationId}`
- *
- * Uses:
- * - Supabase Realtime Broadcast (`probe_event`)
- * - Supabase Realtime Presence (`sync`, `join`, `leave`)
- * - Local BroadcastChannel bridge (`probe_bc_investigation_{investigationId}`) for instant cross-tab sync
+ * Joins the Supabase Realtime channel: `investigation:<investigationId>`
  */
 export const joinInvestigationRoom = (
   investigationId: string,
   userPresence: CollaboratorPresence,
   handlers: RoomConnectionHandlers
 ): InvestigationRoomChannel => {
-  const cleanId = (investigationId || 'T4fTpH').trim();
+  const cleanId = investigationId.trim();
   const subscriberId = `sub_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
   let entry = activeRoomPool.get(cleanId);
@@ -196,18 +178,7 @@ export const joinInvestigationRoom = (
   if (!entry) {
     const client = getSupabaseClient();
     const channelName = `investigation:${cleanId}`;
-    const localBcName = `probe_bc_investigation_${cleanId}`;
 
-    let localBc: BroadcastChannel | null = null;
-    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-      try {
-        localBc = new BroadcastChannel(localBcName);
-      } catch {
-        localBc = null;
-      }
-    }
-
-    // Use public Broadcast/Presence channel (private: false) so anonymous/shared link recipients never hit a 403
     const channel: RealtimeChannel = client.channel(channelName, {
       config: {
         private: false,
@@ -220,46 +191,13 @@ export const joinInvestigationRoom = (
       investigationId: cleanId,
       channelName,
       channel,
-      localBc,
       status: 'CONNECTING',
       subscribers: new Map(),
-      peerPresences: new Map(),
       processedEventIds: new Set(),
     };
 
     activeRoomPool.set(cleanId, entry);
-
     const currentEntry = entry;
-
-    if (localBc) {
-      localBc.onmessage = (msg) => {
-        const data = msg.data;
-        if (!data) return;
-        if (data.type === 'probe_event' && data.payload) {
-          dispatchEventToSubscribers(currentEntry, data.payload as ProbeRealtimeEvent);
-        } else if (data.type === 'probe_presence_ping' && data.presence) {
-          currentEntry.peerPresences.set(data.presence.id, data.presence);
-          notifyAllPresence(currentEntry);
-          const firstSub = currentEntry.subscribers.values().next().value;
-          if (firstSub) {
-            try {
-              localBc?.postMessage({
-                type: 'probe_presence_pong',
-                presence: firstSub.user,
-              });
-            } catch {
-              // ignore
-            }
-          }
-        } else if (data.type === 'probe_presence_pong' && data.presence) {
-          currentEntry.peerPresences.set(data.presence.id, data.presence);
-          notifyAllPresence(currentEntry);
-        } else if (data.type === 'probe_presence_leave' && data.userId) {
-          currentEntry.peerPresences.delete(data.userId);
-          notifyAllPresence(currentEntry);
-        }
-      };
-    }
 
     channel
       .on('broadcast', { event: 'probe_event' }, ({ payload }) => {
@@ -285,61 +223,30 @@ export const joinInvestigationRoom = (
             // ignore track errors
           }
         } else if (status === 'CLOSED' || status === 'TIMED_OUT') {
-          // If BroadcastChannel is active locally, keep peer collaboration working smoothly
-          notifyAllStatus(currentEntry, localBc ? 'CONNECTED' : 'DISCONNECTED');
+          notifyAllStatus(currentEntry, 'DISCONNECTED');
         } else if (status === 'CHANNEL_ERROR') {
-          notifyAllStatus(currentEntry, localBc ? 'CONNECTED' : 'ERROR');
+          notifyAllStatus(currentEntry, 'ERROR');
         }
       });
   }
 
-  // Register this subscriber
   entry.subscribers.set(subscriberId, { user: userPresence, handlers });
   handlers.onStatusChange?.(entry.status);
   notifyAllPresence(entry);
-
-  // Announce presence on local BroadcastChannel
-  try {
-    entry.localBc?.postMessage({
-      type: 'probe_presence_ping',
-      presence: userPresence,
-    });
-    if (entry.status === 'CONNECTING' && entry.localBc) {
-      // Mark connected immediately for local/hybrid sync while Supabase websocket handshakes
-      notifyAllStatus(entry, 'CONNECTED');
-    }
-  } catch {
-    // ignore
-  }
 
   const currentEntry = entry;
 
   return {
     sendEvent: async (event: ProbeRealtimeEvent) => {
-      // 1. Dispatch to other subscribers in the same browser tab immediately
       dispatchEventToSubscribers(currentEntry, event, subscriberId);
-
-      // 2. Broadcast over Supabase Realtime channel
       try {
-        if (currentEntry.status === 'CONNECTED') {
-          await currentEntry.channel.send({
-            type: 'broadcast',
-            event: 'probe_event',
-            payload: event,
-          });
-        }
-      } catch {
-        // Fallback to BroadcastChannel + DB persistence
-      }
-
-      // 3. Broadcast over local BroadcastChannel for instant multi-tab sync
-      try {
-        currentEntry.localBc?.postMessage({
-          type: 'probe_event',
+        await currentEntry.channel.send({
+          type: 'broadcast',
+          event: 'probe_event',
           payload: event,
         });
       } catch {
-        // ignore
+        // ignore transient websocket send errors
       }
     },
 
@@ -365,15 +272,6 @@ export const joinInvestigationRoom = (
       currentEntry.subscribers.delete(subscriberId);
       if (currentEntry.subscribers.size === 0) {
         activeRoomPool.delete(cleanId);
-        try {
-          currentEntry.localBc?.postMessage({
-            type: 'probe_presence_leave',
-            userId: userPresence.id,
-          });
-          currentEntry.localBc?.close();
-        } catch {
-          // ignore
-        }
         try {
           await currentEntry.channel.unsubscribe();
         } catch {

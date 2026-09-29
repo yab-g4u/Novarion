@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from 'react';
-import { useParams, useSearchParams, Link, useNavigate } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import {
   Layers,
   Search,
@@ -26,9 +26,7 @@ import { PressureTestWorkspace } from '../components/PressureTestWorkspace';
 import { EvidenceModal } from '../components/EvidenceModal';
 import { EvidenceSource } from '../types';
 import { DynamicGraphData } from '../types/evidenceGraph';
-import { generateDynamicInvestigation } from '../lib/research/dynamicInvestigationResolver';
 import { useInvestigationRoom } from '../lib/collaboration/useInvestigationRoom';
-import { decodeIdeaParam } from '../lib/collaboration/investigationStore';
 import { ShareInvestigationModal } from '../components/collaboration/ShareInvestigationModal';
 
 interface ErrorBoundaryProps {
@@ -62,10 +60,9 @@ class SharedWorkspaceErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
             <div className="w-12 h-12 rounded-2xl bg-[#FEF2F2] border border-[#FECACA] text-[#DC2626] flex items-center justify-center mx-auto">
               <AlertTriangle size={22} />
             </div>
-            <h1 className="text-lg font-extrabold text-[#0A0D14]">Unexpected error</h1>
-            <p className="text-xs text-[#525866] leading-relaxed">
-              An unexpected error occurred while rendering this shared workspace.
-            </p>
+            <h1 className="text-lg font-extrabold text-[#0A0D14]">
+              Unable to load this investigation.
+            </h1>
             {this.state.error?.message && (
               <pre className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] text-[11px] font-mono text-[#B91C1C] text-left overflow-x-auto">
                 {this.state.error.message}
@@ -78,13 +75,13 @@ class SharedWorkspaceErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
                 className="px-4 py-2 rounded-xl bg-[#0A0D14] text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
               >
                 <RefreshCw size={13} />
-                <span>Reload Workspace</span>
+                <span>Retry</span>
               </button>
               <Link
                 to="/"
                 className="px-4 py-2 rounded-xl border border-[#CBD5E1] text-[#0A0D14] text-xs font-semibold"
               >
-                Back to Probe
+                Home
               </Link>
             </div>
           </div>
@@ -96,23 +93,14 @@ class SharedWorkspaceErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
 }
 
 const SharedInvestigationContent: React.FC = () => {
-  const params = useParams<{ roomId?: string; id?: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  const rawRoomId =
-    params.roomId ||
-    params.id ||
-    searchParams.get('workspace') ||
-    searchParams.get('room') ||
+  const rawShareId =
     searchParams.get('share') ||
-    searchParams.get('investigation') ||
+    searchParams.get('workspace') ||
     '';
 
-  const rawIdeaParam = searchParams.get('idea') || searchParams.get('q');
-  const decodedUrlIdea = decodeIdeaParam(rawIdeaParam);
-
-  // Active tab inside shared workspace
   const [activeTab, setActiveTab] = useState<'graph' | 'calendar' | 'research'>('graph');
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -120,9 +108,9 @@ const SharedInvestigationContent: React.FC = () => {
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
   const [showOverviewStrip, setShowOverviewStrip] = useState<boolean>(true);
 
-  // Persisted Investigation + Supabase Realtime Collaborative Room Hook
   const {
     roomId,
+    shareId,
     loadState,
     investigation,
     diagnostics,
@@ -135,40 +123,25 @@ const SharedInvestigationContent: React.FC = () => {
     decisions,
     challenges,
     persistWorkspaceNow,
-  } = useInvestigationRoom(rawRoomId, decodedUrlIdea || undefined);
+    retryLoad,
+  } = useInvestigationRoom(rawShareId);
 
-  const activeQuery =
-    investigation?.query ||
-    decodedUrlIdea ||
-    'AI tools will replace most productivity software';
-
-  const [graphData, setGraphData] = useState<DynamicGraphData>(() => {
-    return (
-      investigation?.graphData ||
-      generateDynamicInvestigation(activeQuery).graphData
-    );
-  });
+  const [graphData, setGraphData] = useState<DynamicGraphData | null>(
+    investigation?.graphData || null
+  );
 
   useEffect(() => {
     if (investigation?.graphData && investigation.graphData.sources?.length > 0) {
       setGraphData(investigation.graphData);
-    } else if (activeQuery) {
-      setGraphData(generateDynamicInvestigation(activeQuery).graphData);
     }
-  }, [investigation, activeQuery]);
+  }, [investigation]);
 
   const handleCopyLink = () => {
-    void persistWorkspaceNow();
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
       void navigator.clipboard.writeText(shareableUrl);
     }
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2200);
-  };
-
-  const handleOpenShareModal = () => {
-    void persistWorkspaceNow();
-    setIsShareModalOpen(true);
   };
 
   const handleOpenSourceDetail = (source: any) => {
@@ -194,8 +167,8 @@ const SharedInvestigationContent: React.FC = () => {
     setSelectedSource(formatted);
   };
 
-  // 1. EXPLICIT LOADING STATE
-  if (loadState === 'LOADING' && !investigation) {
+  // 1. LOADING STATE
+  if (loadState === 'LOADING') {
     return (
       <div className="min-h-screen bg-[#FAFAFA] text-[#0A0D14] flex flex-col items-center justify-center p-6 font-['Geist','Inter',sans-serif]">
         <div className="max-w-md w-full bg-white rounded-3xl border border-[#E5E7EB] p-8 shadow-xs text-center space-y-4">
@@ -203,54 +176,39 @@ const SharedInvestigationContent: React.FC = () => {
             <ProbeLogo className="w-6 h-6" inverted />
           </div>
           <h1 className="text-base font-extrabold text-[#0A0D14]">
-            Loading workspace...
+            Loading shared investigation...
           </h1>
           <p className="text-xs font-mono text-[#64748B]">
-            Resolving persisted investigation <strong className="text-[#0A0D14]">{rawRoomId || roomId}</strong> &amp; joining{' '}
-            <span className="text-[#0F52BA]">investigation:{rawRoomId || roomId}</span>
+            Resolving share ID <strong className="text-[#0A0D14]">{rawShareId}</strong> from Supabase
           </p>
         </div>
       </div>
     );
   }
 
-  // 2. EXPLICIT ERROR STATES (Invalid share link / Workspace not found / Access denied / Unable to load workspace)
+  // 2. EXPLICIT ERROR STATES (INVALID_LINK, REVOKED, LOAD_ERROR)
   if (
     loadState === 'INVALID_LINK' ||
-    loadState === 'NOT_FOUND' ||
-    loadState === 'ACCESS_DENIED' ||
-    loadState === 'LOAD_ERROR'
+    loadState === 'REVOKED' ||
+    loadState === 'LOAD_ERROR' ||
+    !investigation ||
+    !graphData
   ) {
-    const stateConfig = {
-      INVALID_LINK: {
-        title: 'Invalid share link',
-        subtitle:
-          diagnostics?.errorMessage ||
-          'The workspace link format is invalid or missing a valid room identifier.',
-        badge: '400 INVALID LINK',
-      },
-      NOT_FOUND: {
-        title: 'Workspace not found',
-        subtitle:
-          diagnostics?.errorMessage ||
-          `No persisted investigation was found for workspace "${rawRoomId}".`,
-        badge: '404 NOT FOUND',
-      },
-      ACCESS_DENIED: {
-        title: 'Access denied',
-        subtitle:
-          diagnostics?.errorMessage ||
-          'You do not have permission to view this shared investigation workspace.',
-        badge: '403 ACCESS DENIED',
-      },
-      LOAD_ERROR: {
-        title: 'Unable to load workspace',
-        subtitle:
-          diagnostics?.errorMessage ||
-          'Could not retrieve the investigation from the database. Please check your connection and try again.',
-        badge: '500 LOAD ERROR',
-      },
-    }[loadState];
+    const isInvalid = loadState === 'INVALID_LINK';
+    const isRevoked = loadState === 'REVOKED';
+
+    const title = isInvalid
+      ? 'This shared investigation link is invalid.'
+      : isRevoked
+      ? 'This shared investigation link is no longer available.'
+      : 'Unable to load this investigation.';
+
+    const subtitle = isInvalid
+      ? 'Check that the full ?share= link was copied accurately.'
+      : isRevoked
+      ? 'The owner has revoked or disabled access to this shared workspace.'
+      : diagnostics?.errorMessage ||
+        'Could not reach Supabase to load this shared investigation.';
 
     return (
       <div className="min-h-screen bg-[#FAFAFA] text-[#0A0D14] flex flex-col items-center justify-center p-6 font-['Geist','Inter',sans-serif]">
@@ -258,17 +216,30 @@ const SharedInvestigationContent: React.FC = () => {
           <div className="w-12 h-12 rounded-2xl bg-[#FFF1F2] border border-[#FECDD3] text-[#E11D48] flex items-center justify-center mx-auto">
             <ShieldAlert size={22} />
           </div>
-          <span className="inline-block px-2.5 py-0.5 rounded-full bg-[#F1F5F9] text-[#475467] font-mono text-[10px] font-bold">
-            {stateConfig.badge}
-          </span>
-          <h1 className="text-xl font-extrabold text-[#0A0D14]">{stateConfig.title}</h1>
-          <p className="text-xs text-[#525866] leading-relaxed">{stateConfig.subtitle}</p>
+          <h1
+            className="text-lg font-extrabold text-[#0A0D14]"
+            data-testid="shared-error-title"
+          >
+            {title}
+          </h1>
+          <p className="text-xs text-[#525866] leading-relaxed">{subtitle}</p>
 
-          <div className="flex items-center justify-center gap-3 pt-3">
+          <div className="flex flex-wrap items-center justify-center gap-2.5 pt-3">
+            {loadState === 'LOAD_ERROR' && (
+              <button
+                type="button"
+                onClick={retryLoad}
+                data-testid="shared-error-retry"
+                className="px-4 py-2 rounded-xl bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+              >
+                <RefreshCw size={12} />
+                <span>Retry</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => navigate('/app/research')}
-              className="px-4 py-2 rounded-xl bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-semibold cursor-pointer"
+              className="px-4 py-2 rounded-xl border border-[#CBD5E1] hover:bg-[#F8FAFC] text-[#0A0D14] text-xs font-semibold cursor-pointer"
             >
               Create New Investigation
             </button>
@@ -285,6 +256,7 @@ const SharedInvestigationContent: React.FC = () => {
     );
   }
 
+  const activeQuery = investigation.query;
   const totalComments = Object.values(comments).reduce((acc, list) => acc + list.length, 0);
   const totalChallenges = Object.values(challenges).filter((c) => c.challenged).length;
   const totalDecisions = Object.keys(decisions).length;
@@ -295,7 +267,6 @@ const SharedInvestigationContent: React.FC = () => {
     <div className="min-h-screen bg-[#FAFAFA] text-[#0A0D14] flex flex-col font-['Geist','Inter',-apple-system,sans-serif] selection:bg-[#0F52BA]/15 selection:text-[#0A0D14] select-none">
       {/* 1. PERSISTENT TOP COLLABORATIVE NAVIGATION BAR */}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#E5E7EB] px-4 sm:px-6 h-16 flex items-center justify-between shadow-2xs">
-        {/* Brand + Room Identity */}
         <div className="flex items-center gap-3">
           <Link to="/" className="flex items-center gap-2 group">
             <div className="w-8 h-8 rounded-xl bg-[#0A0D14] flex items-center justify-center text-white shadow-xs group-hover:scale-105 transition-transform p-1">
@@ -308,11 +279,10 @@ const SharedInvestigationContent: React.FC = () => {
 
           <span className="text-[#CBD5E1]">/</span>
 
-          {/* Room Badge */}
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#F1F3F5] text-xs font-mono">
-            <span className="text-[#868C98]">room:</span>
+            <span className="text-[#868C98]">share:</span>
             <span className="font-bold text-[#0A0D14]" data-testid="shared-room-id">
-              {roomId}
+              {shareId}
             </span>
             <button
               onClick={handleCopyLink}
@@ -328,7 +298,7 @@ const SharedInvestigationContent: React.FC = () => {
           </div>
         </div>
 
-        {/* WORKSPACE NAVIGATION TABS: Graph / Calendar / Full Research */}
+        {/* WORKSPACE NAVIGATION TABS */}
         <nav className="flex items-center gap-1 bg-[#F1F3F5] p-1 rounded-full border border-[#E5E7EB] text-xs font-mono">
           <button
             type="button"
@@ -381,9 +351,8 @@ const SharedInvestigationContent: React.FC = () => {
 
         {/* PRESENCE BADGE & SHARE ACTION */}
         <div className="flex items-center gap-2.5">
-          {/* Active Presence Badge */}
           <div
-            onClick={handleOpenShareModal}
+            onClick={() => setIsShareModalOpen(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-[#E5E7EB] text-xs font-mono shadow-2xs hover:border-[#CBD5E1] transition-colors cursor-pointer"
             title="Click to view all collaborators"
           >
@@ -400,10 +369,9 @@ const SharedInvestigationContent: React.FC = () => {
             </span>
           </div>
 
-          {/* Share Button */}
           <button
             type="button"
-            onClick={handleOpenShareModal}
+            onClick={() => setIsShareModalOpen(true)}
             className="px-3.5 py-1.5 rounded-full bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-transform active:scale-95 cursor-pointer"
           >
             <Share2 size={13} />
@@ -412,13 +380,12 @@ const SharedInvestigationContent: React.FC = () => {
         </div>
       </header>
 
-      {/* REALTIME UNAVAILABLE WARNING BANNER (IF WEBSOCKET DISCONNECTED) */}
       {isRealtimeUnavailable && (
         <div className="bg-[#FFFBEB] border-b border-[#FDE68A] px-4 sm:px-6 py-2 text-xs font-mono text-[#92400E] flex items-center justify-between">
           <div className="flex items-center gap-2">
             <WifiOff size={13} className="text-[#D97706]" />
             <span>
-              Realtime connection unavailable — workspace loaded from database. Changes are saved to persistent storage.
+              Realtime connection unavailable — workspace loaded from Supabase.
             </span>
           </div>
           <span className="text-[10px] uppercase font-bold">
@@ -467,11 +434,10 @@ const SharedInvestigationContent: React.FC = () => {
         </div>
       </div>
 
-      {/* 3. PERSISTED INVESTIGATION ENTITIES OVERVIEW STRIP (Assumptions, Problems, Users, Competitors, Unknowns, Next Tests) */}
-      {showOverviewStrip && investigation && (
+      {/* 3. PERSISTED INVESTIGATION ENTITIES OVERVIEW STRIP */}
+      {showOverviewStrip && (
         <div className="bg-[#F8FAFC] border-b border-[#E5E7EB] px-4 sm:px-6 py-3.5">
           <div className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2.5 text-xs">
-            {/* Assumptions */}
             <div className="bg-white p-2.5 rounded-xl border border-[#E5E7EB] shadow-2xs">
               <div className="flex items-center gap-1.5 text-[10px] font-mono font-bold uppercase text-[#0F52BA] mb-1">
                 <Lightbulb size={11} />
@@ -482,7 +448,6 @@ const SharedInvestigationContent: React.FC = () => {
               </p>
             </div>
 
-            {/* Problems */}
             <div className="bg-white p-2.5 rounded-xl border border-[#E5E7EB] shadow-2xs">
               <div className="flex items-center gap-1.5 text-[10px] font-mono font-bold uppercase text-[#E11D48] mb-1">
                 <Target size={11} />
@@ -493,7 +458,6 @@ const SharedInvestigationContent: React.FC = () => {
               </p>
             </div>
 
-            {/* Target Users */}
             <div className="bg-white p-2.5 rounded-xl border border-[#E5E7EB] shadow-2xs">
               <div className="flex items-center gap-1.5 text-[10px] font-mono font-bold uppercase text-[#059669] mb-1">
                 <Users size={11} />
@@ -504,7 +468,6 @@ const SharedInvestigationContent: React.FC = () => {
               </p>
             </div>
 
-            {/* Competitors / Products */}
             <div className="bg-white p-2.5 rounded-xl border border-[#E5E7EB] shadow-2xs">
               <div className="flex items-center gap-1.5 text-[10px] font-mono font-bold uppercase text-[#64748B] mb-1">
                 <Building2 size={11} />
@@ -515,7 +478,6 @@ const SharedInvestigationContent: React.FC = () => {
               </p>
             </div>
 
-            {/* Unknowns */}
             <div className="bg-white p-2.5 rounded-xl border border-[#E5E7EB] shadow-2xs">
               <div className="flex items-center gap-1.5 text-[10px] font-mono font-bold uppercase text-[#D97706] mb-1">
                 <HelpCircle size={11} />
@@ -526,14 +488,14 @@ const SharedInvestigationContent: React.FC = () => {
               </p>
             </div>
 
-            {/* Next Tests */}
             <div className="bg-white p-2.5 rounded-xl border border-[#E5E7EB] shadow-2xs">
               <div className="flex items-center gap-1.5 text-[10px] font-mono font-bold uppercase text-[#4F46E5] mb-1">
                 <FlaskConical size={11} />
                 <span>Next Tests ({tests.length})</span>
               </div>
               <p className="text-[11px] text-[#0A0D14] font-medium line-clamp-2 leading-snug">
-                {tests[0]?.question || 'Click any node in the graph to schedule a real-world validation test.'}
+                {tests[0]?.question ||
+                  'Click any node in the graph to schedule a real-world validation test.'}
               </p>
             </div>
           </div>
@@ -545,7 +507,7 @@ const SharedInvestigationContent: React.FC = () => {
         {activeTab === 'graph' && (
           <div className="w-full bg-white">
             <EvidenceGraph
-              roomId={roomId}
+              roomId={shareId}
               externalGraphData={graphData}
               focusNodeId={focusNodeId}
               onSelectSource={handleOpenSourceDetail}
@@ -557,7 +519,7 @@ const SharedInvestigationContent: React.FC = () => {
         {activeTab === 'calendar' && (
           <div className="w-full bg-white">
             <EvidenceTimeline
-              roomId={roomId}
+              roomId={shareId}
               onNavigateToGraphNode={(nodeId) => {
                 setFocusNodeId(nodeId);
                 setActiveTab('graph');
@@ -582,8 +544,10 @@ const SharedInvestigationContent: React.FC = () => {
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}
         roomId={roomId}
+        shareId={shareId}
         query={activeQuery}
         collaborators={collaborators}
+        onPersistShare={persistWorkspaceNow}
       />
 
       <EvidenceModal
