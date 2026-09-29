@@ -4,6 +4,36 @@ import { TestingAgent } from './agent/testing.agent';
 import { BrowserSessionData, StreamEvent } from './testing.types';
 import { CreateSessionRequest, normalizeAndValidateProductUrl } from './testing.schema';
 
+const encodeSessionToken = (payload: { u: string; t: string; m?: number }): string => {
+  try {
+    return Buffer.from(JSON.stringify(payload), 'utf-8')
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+  } catch {
+    return '';
+  }
+};
+
+const decodeSessionToken = (
+  sessionId: string
+): { u: string; t: string; m?: number } | null => {
+  const match = /^test_\d+_[a-z0-9]+_([A-Za-z0-9_-]+)$/.exec(sessionId);
+  if (!match) return null;
+  try {
+    const b64 = match[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '==='.slice((b64.length + 3) % 4);
+    const parsed = JSON.parse(Buffer.from(padded, 'base64').toString('utf-8'));
+    if (parsed && typeof parsed.u === 'string' && typeof parsed.t === 'string') {
+      return parsed;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
 export class TestingService {
   private sessions = new Map<string, BrowserSession>();
   private agent = new TestingAgent();
@@ -20,7 +50,13 @@ export class TestingService {
       throw new Error('Maximum concurrent browser testing sessions reached. Please wait a moment.');
     }
 
-    const sessionId = `test_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const token = encodeSessionToken({
+      u: validation.normalizedUrl,
+      t: req.task,
+      m: req.maxSteps,
+    });
+    const baseId = `test_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const sessionId = token ? `${baseId}_${token}` : baseId;
 
     const session = new BrowserSession({
       sessionId,
@@ -38,7 +74,9 @@ export class TestingService {
       if (oldestKey) this.sessions.delete(oldestKey);
     }
 
-    if (req.waitForCompletion) {
+    const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+
+    if (req.waitForCompletion || isServerless) {
       await this.executeSessionLifecycle(session);
       return session.getData();
     } else {
@@ -76,6 +114,29 @@ export class TestingService {
     return this.sessions.get(sessionId)?.getData();
   }
 
+  public async getOrRehydrateSessionData(sessionId: string): Promise<BrowserSessionData | undefined> {
+    const existing = this.sessions.get(sessionId);
+    if (existing) {
+      return existing.getData();
+    }
+
+    const decoded = decodeSessionToken(sessionId);
+    if (!decoded) {
+      return undefined;
+    }
+
+    const rehydrated = new BrowserSession({
+      sessionId,
+      productUrl: decoded.u,
+      task: decoded.t,
+      maxSteps: decoded.m || 8,
+      timeoutMs: 30000,
+    });
+    this.sessions.set(sessionId, rehydrated);
+    await this.executeSessionLifecycle(rehydrated);
+    return rehydrated.getData();
+  }
+
   public listSessions(): Omit<BrowserSessionData, 'screenshots' | 'pages'>[] {
     return Array.from(this.sessions.values())
       .map((s) => {
@@ -92,13 +153,31 @@ export class TestingService {
 
   public async stopSession(sessionId: string): Promise<boolean> {
     const session = this.sessions.get(sessionId);
-    if (!session) return false;
+    if (!session) {
+      const decoded = decodeSessionToken(sessionId);
+      return Boolean(decoded);
+    }
     await session.finish('STOPPED');
     return true;
   }
 
-  public subscribeToStream(sessionId: string, res: Response): void {
-    const session = this.sessions.get(sessionId);
+  public async subscribeToStream(sessionId: string, res: Response): Promise<void> {
+    let session = this.sessions.get(sessionId);
+    if (!session) {
+      const decoded = decodeSessionToken(sessionId);
+      if (decoded) {
+        session = new BrowserSession({
+          sessionId,
+          productUrl: decoded.u,
+          task: decoded.t,
+          maxSteps: decoded.m || 8,
+          timeoutMs: 30000,
+        });
+        this.sessions.set(sessionId, session);
+        await this.executeSessionLifecycle(session);
+      }
+    }
+
     if (!session) {
       res.status(404).json({ error: 'Testing session not found' });
       return;
@@ -109,34 +188,53 @@ export class TestingService {
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders?.();
 
-    // Send initial snapshot
+    const currentSnapshot = session.getData();
     const initialSnapshot: StreamEvent = {
-      type: 'session.started',
+      type: 'session.snapshot',
       sessionId: session.sessionId,
       timestamp: new Date().toISOString(),
-      data: { snapshot: session.getData() }
+      data: currentSnapshot as unknown as Record<string, unknown>,
     };
     res.write(`data: ${JSON.stringify(initialSnapshot)}\n\n`);
 
+    if (
+      currentSnapshot.status === 'COMPLETED' ||
+      currentSnapshot.status === 'FAILED' ||
+      currentSnapshot.status === 'STOPPED'
+    ) {
+      res.write(
+        `data: ${JSON.stringify({
+          type: 'session.finished',
+          sessionId: session.sessionId,
+          timestamp: new Date().toISOString(),
+          data: { status: currentSnapshot.status, finalSession: currentSnapshot },
+        })}\n\n`
+      );
+      if (process.env.VERCEL) {
+        res.end();
+        return;
+      }
+    }
+
+    const activeSession = session;
     const onStreamEvent = (event: StreamEvent) => {
       res.write(`data: ${JSON.stringify(event)}\n\n`);
       if (event.type === 'session.finished') {
-        // Send final full session data payload before closing
         res.write(
           `data: ${JSON.stringify({
             type: 'session.finished',
-            sessionId: session.sessionId,
+            sessionId: activeSession.sessionId,
             timestamp: new Date().toISOString(),
-            data: { finalSession: session.getData() }
+            data: { finalSession: activeSession.getData() }
           })}\n\n`
         );
       }
     };
 
-    session.on('stream', onStreamEvent);
+    activeSession.on('stream', onStreamEvent);
 
     res.on('close', () => {
-      session.off('stream', onStreamEvent);
+      activeSession.off('stream', onStreamEvent);
     });
   }
 }

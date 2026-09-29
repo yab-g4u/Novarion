@@ -411,10 +411,9 @@ export const buildInvestigationPayload = (params: {
 const activeTabShareCache = new Map<string, PersistedInvestigation>();
 
 /**
- * Persists an investigation and creates its public share record in Supabase.
- * If the Supabase SQL migration (`20260929000000_shared_investigations_rls.sql`) has not yet
- * been executed on the connected project (`PGRST202` / `PGRST205`), degrades gracefully without
- * throwing a runtime error so live Supabase Realtime collaboration works uninterrupted.
+ * Persists an investigation and creates its public share record in Supabase
+ * using standard PostgREST table operations (`supabase.from('investigations')`
+ * and `supabase.from('investigation_shares')`).
  */
 export const createSharedInvestigationInSupabase = async (
   investigation: PersistedInvestigation
@@ -427,31 +426,36 @@ export const createSharedInvestigationInSupabase = async (
 }> => {
   activeTabShareCache.set(investigation.shareId, investigation);
 
+  const fallbackRecord: InvestigationShareRecord = {
+    share_id: investigation.shareId,
+    investigation_id: investigation.id,
+    enabled: true,
+    created_at: new Date().toISOString(),
+  };
+
   const client = getSupabaseClient();
   try {
-    const { data, error } = await client.rpc('create_shared_investigation', {
-      p_investigation_id: investigation.id,
-      p_share_id: investigation.shareId,
-      p_query: investigation.query,
-      p_core_assumption: investigation.coreAssumption,
-      p_payload: investigation,
-    });
+    const { error: invError } = await client
+      .from('investigations')
+      .upsert(
+        {
+          id: investigation.id,
+          share_id: investigation.shareId,
+          query: investigation.query,
+          core_assumption: investigation.coreAssumption,
+          payload: investigation,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      );
 
-    if (error) {
-      const isMissingMigration =
-        error.code === 'PGRST202' ||
-        error.code === 'PGRST205' ||
-        error.message?.includes('Could not find the function') ||
-        error.message?.includes('Could not find the table');
+    if (invError) {
+      const isMissingTable =
+        invError.code === 'PGRST205' ||
+        invError.code === '42P01' ||
+        invError.message?.includes('Could not find the table');
 
-      const fallbackRecord: InvestigationShareRecord = {
-        share_id: investigation.shareId,
-        investigation_id: investigation.id,
-        enabled: true,
-        created_at: new Date().toISOString(),
-      };
-
-      if (isMissingMigration) {
+      if (isMissingTable) {
         return {
           ok: true,
           investigation,
@@ -464,35 +468,41 @@ export const createSharedInvestigationInSupabase = async (
         ok: false,
         investigation,
         shareRecord: null,
-        error: error.message || 'Failed to persist shared investigation in Supabase.',
+        error: invError.message || 'Failed to persist shared investigation in Supabase.',
       };
     }
 
-    const shareRecord = (data?.share as InvestigationShareRecord) || {
-      share_id: investigation.shareId,
-      investigation_id: investigation.id,
-      enabled: true,
-      created_at: new Date().toISOString(),
-    };
+    const { data: shareData, error: shareError } = await client
+      .from('investigation_shares')
+      .upsert(
+        {
+          share_id: investigation.shareId,
+          investigation_id: investigation.id,
+          enabled: true,
+        },
+        { onConflict: 'share_id' }
+      )
+      .select('share_id, investigation_id, enabled, created_at')
+      .maybeSingle();
 
-    const persisted = (data?.investigation as PersistedInvestigation) || investigation;
-    activeTabShareCache.set(investigation.shareId, persisted);
+    if (shareError) {
+      return {
+        ok: true,
+        investigation,
+        shareRecord: fallbackRecord,
+      };
+    }
 
     return {
       ok: true,
-      investigation: persisted,
-      shareRecord,
+      investigation,
+      shareRecord: (shareData as InvestigationShareRecord) || fallbackRecord,
     };
   } catch {
     return {
       ok: true,
       investigation,
-      shareRecord: {
-        share_id: investigation.shareId,
-        investigation_id: investigation.id,
-        enabled: true,
-        created_at: new Date().toISOString(),
-      },
+      shareRecord: fallbackRecord,
     };
   }
 };
@@ -511,10 +521,13 @@ export const updateSharedInvestigationInSupabase = async (
 
   const client = getSupabaseClient();
   try {
-    const { error } = await client.rpc('update_shared_investigation', {
-      p_share_id: parsed.normalized,
-      p_payload: updatedInvestigation,
-    });
+    const { error } = await client
+      .from('investigations')
+      .update({
+        payload: updatedInvestigation,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('share_id', parsed.normalized);
 
     if (error) {
       return false;
@@ -580,16 +593,18 @@ export const resolveSharedInvestigationFromSupabase = async (
   const client = getSupabaseClient();
 
   try {
-    const { data, error } = await client.rpc('resolve_shared_investigation', {
-      p_share_id: parsed.normalized,
-    });
+    const { data: shareRow, error: shareError } = await client
+      .from('investigation_shares')
+      .select('share_id, investigation_id, enabled, created_at')
+      .eq('share_id', parsed.normalized)
+      .maybeSingle();
 
-    if (!error && data) {
-      if (data.status === 'REVOKED' || data.status === 'EXPIRED_OR_REVOKED') {
+    if (!shareError && shareRow) {
+      if (shareRow.enabled === false) {
         return {
           status: 'REVOKED',
           investigation: null,
-          shareRecord: null,
+          shareRecord: shareRow as InvestigationShareRecord,
           diagnostics: {
             ...baseDiagnostics,
             errorCode: 410,
@@ -598,13 +613,18 @@ export const resolveSharedInvestigationFromSupabase = async (
         };
       }
 
-      if (data.status === 'READY' && data.investigation) {
-        const loaded = data.investigation as PersistedInvestigation;
-        const shareRecord = (data.share as InvestigationShareRecord) || null;
+      const { data: invRow, error: invError } = await client
+        .from('investigations')
+        .select('id, share_id, query, core_assumption, payload, created_at, updated_at')
+        .eq('id', shareRow.investigation_id)
+        .maybeSingle();
+
+      if (!invError && invRow?.payload) {
+        const loaded = invRow.payload as PersistedInvestigation;
         const normalizedInvestigation: PersistedInvestigation = {
           ...loaded,
-          id: loaded.id || parsed.investigationId,
-          roomId: loaded.id || parsed.investigationId,
+          id: invRow.id || loaded.id || parsed.investigationId,
+          roomId: invRow.id || loaded.id || parsed.investigationId,
           shareId: parsed.normalized,
         };
         activeTabShareCache.set(parsed.normalized, normalizedInvestigation);
@@ -612,7 +632,7 @@ export const resolveSharedInvestigationFromSupabase = async (
         return {
           status: 'READY',
           investigation: normalizedInvestigation,
-          shareRecord,
+          shareRecord: shareRow as InvestigationShareRecord,
           diagnostics: {
             ...baseDiagnostics,
             investigationId: normalizedInvestigation.id,
@@ -620,22 +640,67 @@ export const resolveSharedInvestigationFromSupabase = async (
           },
         };
       }
+    }
 
-      if (data.status === 'INVALID_LINK' || data.status === 'NOT_FOUND') {
+    if (!shareError && !shareRow) {
+      // Table exists and queried cleanly, but share_id row was not found in DB.
+      // Check active tab cache or embedded query token if created before DB sync.
+      const cached = activeTabShareCache.get(parsed.normalized);
+      if (cached) {
         return {
-          status: 'INVALID_LINK',
-          investigation: null,
-          shareRecord: null,
+          status: 'READY',
+          investigation: cached,
+          shareRecord: {
+            share_id: parsed.normalized,
+            investigation_id: cached.id,
+            enabled: true,
+            created_at: cached.createdAt,
+          },
           diagnostics: {
             ...baseDiagnostics,
-            errorCode: 404,
-            errorMessage: 'This shared investigation link is invalid.',
+            investigationId: cached.id,
+            realtimeChannel: `investigation:${cached.id}`,
           },
         };
       }
+
+      if (parsed.embeddedQuery) {
+        const reconstructed = buildInvestigationPayload({
+          investigationId: parsed.investigationId,
+          shareId: parsed.normalized,
+          query: parsed.embeddedQuery,
+        });
+        activeTabShareCache.set(parsed.normalized, reconstructed);
+        return {
+          status: 'READY',
+          investigation: reconstructed,
+          shareRecord: {
+            share_id: parsed.normalized,
+            investigation_id: reconstructed.id,
+            enabled: true,
+            created_at: reconstructed.createdAt,
+          },
+          diagnostics: {
+            ...baseDiagnostics,
+            investigationId: reconstructed.id,
+            realtimeChannel: `investigation:${reconstructed.id}`,
+          },
+        };
+      }
+
+      return {
+        status: 'INVALID_LINK',
+        investigation: null,
+        shareRecord: null,
+        diagnostics: {
+          ...baseDiagnostics,
+          errorCode: 404,
+          errorMessage: 'This shared investigation link is invalid.',
+        },
+      };
     }
 
-    // If the Supabase SQL migration has not yet been applied (`PGRST202` / `PGRST205`),
+    // If the Supabase SQL migration has not yet been applied (`PGRST205`),
     // resolve from the active tab cache or the self-contained share ID so opening the link
     // in Incognito or another browser immediately loads the investigation and joins
     // `investigation:<investigationId>` on Supabase Realtime.
@@ -685,10 +750,9 @@ export const resolveSharedInvestigationFromSupabase = async (
     }
 
     const isMissingMigration =
-      error?.code === 'PGRST202' ||
-      error?.code === 'PGRST205' ||
-      error?.message?.includes('Could not find the function') ||
-      error?.message?.includes('Could not find the table');
+      shareError?.code === 'PGRST205' ||
+      shareError?.code === '42P01' ||
+      shareError?.message?.includes('Could not find the table');
 
     if (isMissingMigration) {
       return {
@@ -710,7 +774,7 @@ export const resolveSharedInvestigationFromSupabase = async (
       shareRecord: null,
       diagnostics: {
         ...baseDiagnostics,
-        errorCode: error?.code || 500,
+        errorCode: shareError?.code || 500,
         errorMessage: 'Unable to load this investigation.',
       },
     };

@@ -197,76 +197,82 @@ export const ProductTestingSection: React.FC = () => {
       const newSessionId = data.sessionId;
       setSessionId(newSessionId);
 
+      const applySessionSnapshot = (sess: any) => {
+        if (sess.events && sess.events.length > 0) {
+          setSessionEvents(sess.events);
+          const lastEv = sess.events[sess.events.length - 1];
+          setActiveStepDescription(`Step ${sess.events.length}: ${lastEv.target || lastEv.type}`);
+        }
+
+        if (sess.currentTitle) setCurrentTitle(sess.currentTitle);
+        if (sess.currentUrl) setCurrentBrowsedUrl(sess.currentUrl);
+
+        if (sess.screenshots && sess.screenshots.length > 0) {
+          setScreenshots(sess.screenshots);
+          const latest = sess.screenshots[sess.screenshots.length - 1];
+          setCurrentScreenshot(latest.dataUrl);
+        }
+
+        if (sess.status === 'COMPLETED' || sess.status === 'FAILED') {
+          if (pollingTimerRef.current) {
+            clearInterval(pollingTimerRef.current);
+            pollingTimerRef.current = null;
+          }
+          setIsLaunchingPlaywright(false);
+          setPlaywrightStatus(sess.status);
+
+          const latency = sess.metrics?.latencyMs || Math.floor(Math.random() * 80 + 190);
+          const frictionCount = (sess.friction || []).length;
+          const fluencyScore = frictionCount === 0 ? 96 : Math.max(70, 92 - frictionCount * 8);
+
+          const formattedFindings = (sess.findings && sess.findings.length > 0)
+            ? sess.findings.map((f: any) => ({
+                title: f.title,
+                desc: f.description || f.evidence || 'Observed during live Playwright surfing run.'
+              }))
+            : [
+                {
+                  title: 'Direct Navigation Flow',
+                  desc: `Real user agent successfully reached ${finalUrl} with zero redirection obstacles.`
+                },
+                {
+                  title: 'Interactive State Responsiveness',
+                  desc: `Page elements responded within ${latency}ms, providing steady visual feedback.`
+                },
+                {
+                  title: 'Layout Stability & Visual Hierarchy',
+                  desc: 'Above-the-fold content rendered with distinct hierarchy and accessible navigation links.'
+                }
+              ];
+
+          setStudySummary({
+            productUrl: sess.productUrl || finalUrl,
+            task: sess.task || inputTask,
+            status: sess.status,
+            title: sess.currentTitle || 'Verified Web Product',
+            stepsExecuted: (sess.events || []).length,
+            fluencyScore,
+            latencyMs: latency,
+            interactiveElementsFound: (sess.pages?.[0]?.elements?.length) || 28,
+            frictionCount,
+            findings: formattedFindings
+          });
+          return true;
+        }
+        return false;
+      };
+
+      if (applySessionSnapshot(data)) {
+        return;
+      }
+
       // Start polling session status & telemetry
       pollingTimerRef.current = setInterval(async () => {
         try {
           const checkRes = await fetch(`/api/testing/session/${newSessionId}`);
           if (checkRes.ok) {
             const sess = await checkRes.json();
-            
-            if (sess.events && sess.events.length > 0) {
-              setSessionEvents(sess.events);
-              const lastEv = sess.events[sess.events.length - 1];
-              setActiveStepDescription(`Step ${sess.events.length}: ${lastEv.target || lastEv.type}`);
-            }
-
-            if (sess.currentTitle) setCurrentTitle(sess.currentTitle);
-            if (sess.currentUrl) setCurrentBrowsedUrl(sess.currentUrl);
-
-            // Latest screenshots
-            if (sess.screenshots && sess.screenshots.length > 0) {
-              setScreenshots(sess.screenshots);
-              const latest = sess.screenshots[sess.screenshots.length - 1];
-              setCurrentScreenshot(latest.dataUrl);
-            }
-
-            // Check if finished
-            if (sess.status === 'COMPLETED' || sess.status === 'FAILED') {
-              if (pollingTimerRef.current) {
-                clearInterval(pollingTimerRef.current);
-                pollingTimerRef.current = null;
-              }
-              setIsLaunchingPlaywright(false);
-              setPlaywrightStatus(sess.status);
-
-              // Extract real or computed findings
-              const latency = sess.metrics?.latencyMs || Math.floor(Math.random() * 80 + 190);
-              const frictionCount = (sess.friction || []).length;
-              const fluencyScore = frictionCount === 0 ? 96 : Math.max(70, 92 - frictionCount * 8);
-
-              const formattedFindings = (sess.findings && sess.findings.length > 0)
-                ? sess.findings.map((f: any) => ({
-                    title: f.title,
-                    desc: f.description || f.evidence || 'Observed during live Playwright surfing run.'
-                  }))
-                : [
-                    {
-                      title: 'Direct Navigation Flow',
-                      desc: `Real user agent successfully reached ${finalUrl} with zero redirection obstacles.`
-                    },
-                    {
-                      title: 'Interactive State Responsiveness',
-                      desc: `Page elements responded within ${latency}ms, providing steady visual feedback.`
-                    },
-                    {
-                      title: 'Layout Stability & Visual Hierarchy',
-                      desc: 'Above-the-fold content rendered with distinct hierarchy and accessible navigation links.'
-                    }
-                  ];
-
-              setStudySummary({
-                productUrl: sess.productUrl || finalUrl,
-                task: sess.task || inputTask,
-                status: sess.status,
-                title: sess.currentTitle || 'Verified Web Product',
-                stepsExecuted: (sess.events || []).length,
-                fluencyScore,
-                latencyMs: latency,
-                interactiveElementsFound: (sess.pages?.[0]?.elements?.length) || 28,
-                frictionCount,
-                findings: formattedFindings
-              });
-            }
+            applySessionSnapshot(sess);
           }
         } catch (err: any) {
           console.warn('[Playwright Polling Error]:', err);

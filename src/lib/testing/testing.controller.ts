@@ -27,9 +27,9 @@ testingRouter.post('/session', async (req: Request, res: Response) => {
 });
 
 // GET /api/testing/session/:id - Inspect full session state, metrics, findings
-testingRouter.get('/session/:id', (req: Request, res: Response) => {
+testingRouter.get('/session/:id', async (req: Request, res: Response) => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const sessionData = testingService.getSessionData(id);
+  const sessionData = await testingService.getOrRehydrateSessionData(id);
   if (!sessionData) {
     return res.status(404).json({ error: 'Session not found' });
   }
@@ -37,9 +37,9 @@ testingRouter.get('/session/:id', (req: Request, res: Response) => {
 });
 
 // GET /api/testing/session/:id/stream - Server-Sent Events live stream
-testingRouter.get('/session/:id/stream', (req: Request, res: Response) => {
+testingRouter.get('/session/:id/stream', async (req: Request, res: Response) => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  testingService.subscribeToStream(id, res);
+  await testingService.subscribeToStream(id, res);
 });
 
 // GET /api/testing/sessions - List recent sessions

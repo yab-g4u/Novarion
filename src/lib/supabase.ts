@@ -9,9 +9,15 @@ import { ProbeRealtimeEvent, CollaboratorPresence } from '../types/collaboration
 export const sanitizeSupabaseProjectUrl = (rawUrl: string): string => {
   const trimmed = (rawUrl || '').trim();
   if (!trimmed) return '';
-  return trimmed
-    .replace(/\/+(rest|realtime|auth|storage)\/v1\/?$/i, '')
+  const stripped = trimmed
+    .replace(/\/+(rest|realtime|auth|storage|functions)\/v1(\/.*)?$/i, '')
     .replace(/\/+$/, '');
+  try {
+    const parsed = new URL(stripped);
+    return parsed.origin;
+  } catch {
+    return stripped;
+  }
 };
 
 export const resolveSupabaseConfig = () => {
@@ -24,24 +30,29 @@ export const resolveSupabaseConfig = () => {
     '';
 
   const rawEnvKey =
+    metaEnv?.VITE_SUPABASE_PUBLISHABLE_KEY ||
     metaEnv?.VITE_SUPABASE_ANON_KEY ||
     (typeof process !== 'undefined' &&
-      (process.env?.VITE_SUPABASE_ANON_KEY || process.env?.SUPABASE_ANON_KEY)) ||
+      (process.env?.VITE_SUPABASE_PUBLISHABLE_KEY ||
+        process.env?.VITE_SUPABASE_ANON_KEY ||
+        process.env?.SUPABASE_PUBLISHABLE_KEY ||
+        process.env?.SUPABASE_ANON_KEY)) ||
     '';
 
   const cleanedEnvUrl = sanitizeSupabaseProjectUrl(rawEnvUrl);
 
-  // Connected production Supabase project for Probe
+  // Connected production Supabase project origin ONLY (never /rest/v1 or /realtime/v1)
   const supabaseUrl = cleanedEnvUrl || 'https://xhxgbqwytmzwnzswelln.supabase.co';
-  const supabaseAnonKey =
+  const supabasePublishableKey =
     rawEnvKey.trim() || 'sb_publishable_ac2r1Xx3s62t68b6Bfnm9Q_vOofu63P';
 
   return {
     supabaseUrl,
-    supabaseAnonKey,
+    supabasePublishableKey,
+    supabaseAnonKey: supabasePublishableKey,
     rawEnvUrl,
     wasUrlSanitized: Boolean(rawEnvUrl && cleanedEnvUrl !== rawEnvUrl.replace(/\/+$/, '')),
-    isConfigured: Boolean(supabaseUrl && supabaseAnonKey),
+    isConfigured: Boolean(supabaseUrl && supabasePublishableKey),
   };
 };
 
@@ -49,8 +60,8 @@ let supabaseInstance: SupabaseClient | null = null;
 
 export const getSupabaseClient = (): SupabaseClient => {
   if (!supabaseInstance) {
-    const { supabaseUrl, supabaseAnonKey } = resolveSupabaseConfig();
-    supabaseInstance = createClient(supabaseUrl, supabaseAnonKey, {
+    const { supabaseUrl, supabasePublishableKey } = resolveSupabaseConfig();
+    supabaseInstance = createClient(supabaseUrl, supabasePublishableKey, {
       auth: {
         persistSession: false,
         autoRefreshToken: false,

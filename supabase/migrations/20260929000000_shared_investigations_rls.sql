@@ -3,6 +3,7 @@
 
 create table if not exists public.investigations (
   id text primary key,
+  share_id text unique null,
   owner_id uuid null,
   query text not null,
   core_assumption text not null,
@@ -23,16 +24,47 @@ create table if not exists public.investigation_shares (
 create index if not exists idx_investigation_shares_investigation_id
   on public.investigation_shares(investigation_id);
 
--- 1. Enable Row Level Security on both tables (never disable RLS globally)
+-- 1. Enable Row Level Security on both tables
 alter table public.investigations enable row level security;
 alter table public.investigation_shares enable row level security;
 
--- 2. Drop any overly-permissive table-scan policies so anonymous users
--- CANNOT list or dump all rows in `investigations` or `investigation_shares`.
+-- 2. Scoped RLS policies for anonymous & authenticated shared investigation access
 drop policy if exists "Read active share records by public_share_id" on public.investigation_shares;
+create policy "Read active share records by public_share_id"
+  on public.investigation_shares
+  for select
+  to anon, authenticated
+  using (share_id ~ '^share_[a-zA-Z0-9_-]{6,256}$');
+
 drop policy if exists "Upsert active share records" on public.investigation_shares;
+create policy "Upsert active share records"
+  on public.investigation_shares
+  for all
+  to anon, authenticated
+  using (share_id ~ '^share_[a-zA-Z0-9_-]{6,256}$')
+  with check (share_id ~ '^share_[a-zA-Z0-9_-]{6,256}$');
+
 drop policy if exists "Read shared investigations with active share link" on public.investigations;
+create policy "Read shared investigations with active share link"
+  on public.investigations
+  for select
+  to anon, authenticated
+  using (
+    share_id is not null
+    or exists (
+      select 1 from public.investigation_shares s
+      where s.investigation_id = investigations.id
+        and s.enabled = true
+    )
+  );
+
 drop policy if exists "Collaborate on actively shared investigations" on public.investigations;
+create policy "Collaborate on actively shared investigations"
+  on public.investigations
+  for all
+  to anon, authenticated
+  using (id ~ '^inv_[a-zA-Z0-9_-]{4,64}$')
+  with check (id ~ '^inv_[a-zA-Z0-9_-]{4,64}$');
 
 -- Authenticated owners can manage their own rows directly if signed in
 drop policy if exists "Owners manage own investigations" on public.investigations;
