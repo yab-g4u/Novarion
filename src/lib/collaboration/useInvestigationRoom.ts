@@ -1,14 +1,29 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { 
-  CollaboratorPresence, 
-  NodeComment, 
-  NodeDecision, 
-  ValidationTest, 
-  EvidenceChallenge, 
+import {
+  CollaboratorPresence,
+  NodeComment,
+  NodeDecision,
+  ValidationTest,
+  EvidenceChallenge,
   ProbeRealtimeEvent,
-  SharedInvestigationState
+  SharedInvestigationState,
+  PersistedInvestigation,
+  WorkspaceLoadState,
+  RoomDiagnosticContext,
 } from '../../types/collaboration';
+import { DynamicGraphData } from '../../types/evidenceGraph';
 import { joinInvestigationRoom, InvestigationRoomChannel } from '../supabase';
+import {
+  generateRoomCode,
+  roomCodeFromIdea,
+  buildPersistedInvestigationFromIdea,
+  saveInvestigationToDatabase,
+  patchInvestigationInDatabase,
+  resolveInvestigationById,
+  registerDeterministicRoomIdea,
+} from './investigationStore';
+
+export { generateRoomCode, roomCodeFromIdea };
 
 const COLLABORATOR_COLORS = [
   '#0F52BA', // Probe Blue
@@ -20,66 +35,73 @@ const COLLABORATOR_COLORS = [
   '#F43F5E', // Rose
 ];
 
-// Generate simple 6-character room code (e.g. "T4fTpH")
-export const generateRoomCode = (): string => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
-  let result = '';
-  for (let i = 0; i < 6; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
-};
-
-// Deterministic short room code from an idea string
-export const roomCodeFromIdea = (idea: string): string => {
-  if (!idea) return 'T4fTpH';
-  let hash = 0;
-  for (let i = 0; i < idea.length; i++) {
-    hash = ((hash << 5) - hash) + idea.charCodeAt(i);
-    hash |= 0;
-  }
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
-  let code = '';
-  let positiveHash = Math.abs(hash);
-  for (let i = 0; i < 6; i++) {
-    code += chars.charAt(positiveHash % chars.length);
-    positiveHash = Math.floor(positiveHash / chars.length) + (i * 7);
-  }
-  return code;
-};
-
-export const getShareableUrl = (roomId: string): string => {
+export const getShareableUrl = (roomId: string, ideaHint?: string): string => {
+  const cleanRoomId = (roomId || 'T4fTpH').trim();
   const configuredBase =
     typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_PUBLIC_APP_URL
       ? String((import.meta as any).env.VITE_PUBLIC_APP_URL).replace(/\/+$/, '')
       : '';
 
+  let baseOrigin = 'https://probe.pro.et';
   if (configuredBase) {
-    return `${configuredBase}/r/${roomId}`;
+    baseOrigin = configuredBase;
+  } else if (typeof window !== 'undefined' && window.location?.origin) {
+    baseOrigin = window.location.origin;
   }
 
-  if (typeof window !== 'undefined' && window.location?.origin) {
-    return `${window.location.origin}/r/${roomId}`;
+  const baseUrl = `${baseOrigin}/r/${cleanRoomId}`;
+  if (ideaHint && ideaHint.trim()) {
+    return `${baseUrl}?idea=${encodeURIComponent(ideaHint.trim())}`;
   }
-  // Production fallback
-  return `https://probe.pro.et/r/${roomId}`;
+  return baseUrl;
 };
 
 export const useInvestigationRoom = (
   initialRoomId?: string,
   initialQuery?: string,
-  initialCoreAssumption?: string
+  initialCoreAssumption?: string,
+  initialGraphData?: DynamicGraphData | null
 ) => {
-  // Resolve or initialize roomId
-  const [roomId, setRoomId] = useState<string>(() => {
-    return initialRoomId || (initialQuery ? roomCodeFromIdea(initialQuery) : 'T4fTpH');
+  const computedRoomId =
+    initialRoomId?.trim() ||
+    (initialQuery?.trim() ? roomCodeFromIdea(initialQuery.trim()) : 'T4fTpH');
+
+  const [roomId, setRoomId] = useState<string>(computedRoomId);
+  const [loadState, setLoadState] = useState<WorkspaceLoadState>('LOADING');
+  const [investigation, setInvestigation] = useState<PersistedInvestigation | null>(() => {
+    if (initialQuery?.trim()) {
+      return buildPersistedInvestigationFromIdea(computedRoomId, initialQuery.trim(), {
+        coreAssumption: initialCoreAssumption,
+        graphData: initialGraphData || undefined,
+      });
+    }
+    return null;
   });
+  const [diagnostics, setDiagnostics] = useState<RoomDiagnosticContext | null>(null);
+
+  // Sync roomId if initialRoomId or initialQuery prop changes dynamically
+  useEffect(() => {
+    const nextId =
+      initialRoomId?.trim() ||
+      (initialQuery?.trim() ? roomCodeFromIdea(initialQuery.trim()) : '');
+    if (nextId && nextId !== roomId) {
+      setRoomId(nextId);
+    }
+  }, [initialRoomId, initialQuery, roomId]);
 
   // Local user presence
   const [currentUser] = useState<CollaboratorPresence>(() => {
-    const storedAuth = typeof localStorage !== 'undefined' ? localStorage.getItem('probe_auth_user') : null;
-    const authData = storedAuth ? JSON.parse(storedAuth) : null;
-    const randomColor = COLLABORATOR_COLORS[Math.floor(Math.random() * COLLABORATOR_COLORS.length)];
+    let authData: any = null;
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const storedAuth = localStorage.getItem('probe_auth_user');
+        authData = storedAuth ? JSON.parse(storedAuth) : null;
+      } catch {
+        authData = null;
+      }
+    }
+    const randomColor =
+      COLLABORATOR_COLORS[Math.floor(Math.random() * COLLABORATOR_COLORS.length)];
     const randomId = `user_${Math.random().toString(36).substring(2, 9)}`;
     const randomName = authData?.name || `Founder #${Math.floor(Math.random() * 900 + 100)}`;
 
@@ -94,118 +116,303 @@ export const useInvestigationRoom = (
 
   // State
   const [collaborators, setCollaborators] = useState<CollaboratorPresence[]>([currentUser]);
-  const [connectionStatus, setConnectionStatus] = useState<'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR'>('CONNECTING');
-  
+  const [connectionStatus, setConnectionStatus] = useState<
+    'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR'
+  >('CONNECTING');
+
   // Collaborative data structures
   const [comments, setComments] = useState<Record<string, NodeComment[]>>({});
   const [decisions, setDecisions] = useState<Record<string, NodeDecision>>({});
   const [tests, setTests] = useState<ValidationTest[]>([]);
   const [challenges, setChallenges] = useState<Record<string, EvidenceChallenge>>({});
-  
-  // Channel ref
+
   const channelRef = useRef<InvestigationRoomChannel | null>(null);
+  const stateRef = useRef<{
+    roomId: string;
+    query: string;
+    coreAssumption: string;
+    graphData?: DynamicGraphData;
+    comments: Record<string, NodeComment[]>;
+    decisions: Record<string, NodeDecision>;
+    tests: ValidationTest[];
+    challenges: Record<string, EvidenceChallenge>;
+  }>({
+    roomId,
+    query: initialQuery || '',
+    coreAssumption: initialCoreAssumption || '',
+    graphData: initialGraphData || undefined,
+    comments: {},
+    decisions: {},
+    tests: [],
+    challenges: {},
+  });
 
-  // Load persisted state from localStorage on roomId change
   useEffect(() => {
-    if (typeof localStorage === 'undefined') return;
-    try {
-      const stored = localStorage.getItem(`probe_room_state_${roomId}`);
-      if (stored) {
-        const parsed: SharedInvestigationState = JSON.parse(stored);
-        setComments(parsed.comments || {});
-        setDecisions(parsed.decisions || {});
-        setTests(parsed.tests || []);
-        setChallenges(parsed.challenges || {});
+    stateRef.current = {
+      roomId,
+      query: investigation?.query || initialQuery || '',
+      coreAssumption: investigation?.coreAssumption || initialCoreAssumption || '',
+      graphData: investigation?.graphData || initialGraphData || undefined,
+      comments,
+      decisions,
+      tests,
+      challenges,
+    };
+  }, [
+    roomId,
+    investigation,
+    initialQuery,
+    initialCoreAssumption,
+    initialGraphData,
+    comments,
+    decisions,
+    tests,
+    challenges,
+  ]);
+
+  // Resolve and load persisted investigation from Database / Store on roomId or initialQuery change
+  useEffect(() => {
+    let cancelled = false;
+    setLoadState('LOADING');
+
+    const loadRoom = async () => {
+      try {
+        if (initialQuery?.trim()) {
+          registerDeterministicRoomIdea(roomId, initialQuery.trim());
+        }
+
+        const resolved = await resolveInvestigationById(roomId, initialQuery);
+        if (cancelled) return;
+
+        setDiagnostics(resolved.diagnostics);
+
+        if (resolved.status !== 'READY' || !resolved.investigation) {
+          setLoadState(resolved.status);
+          return;
+        }
+
+        const loadedInv = resolved.investigation;
+        // If caller explicitly passed live graphData with sources, merge it and persist
+        const mergedInv: PersistedInvestigation =
+          initialGraphData && initialGraphData.sources?.length
+            ? {
+                ...loadedInv,
+                query: initialGraphData.query || loadedInv.query,
+                coreAssumption: initialGraphData.coreAssumption || loadedInv.coreAssumption,
+                graphData: initialGraphData,
+                updatedAt: Date.now(),
+              }
+            : loadedInv;
+
+        setInvestigation(mergedInv);
+        setComments(mergedInv.comments || {});
+        setDecisions(mergedInv.decisions || {});
+        setTests(mergedInv.tests || []);
+        setChallenges(mergedInv.challenges || {});
+        setLoadState('READY');
+
+        // Ensure the resolved investigation is saved in the database so any share link recipient can load it
+        void saveInvestigationToDatabase(mergedInv);
+      } catch (err: any) {
+        if (cancelled) return;
+        console.error('[Probe Workspace Load Error]:', err);
+        setLoadState('LOAD_ERROR');
       }
-    } catch (e) {
-      console.warn('[Probe Realtime] Failed to load local room state', e);
-    }
-  }, [roomId]);
+    };
 
-  // Persist state changes
+    void loadRoom();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [roomId, initialQuery]);
+
+  // If caller updates initialGraphData (e.g. after running a pressure test), persist it to DB
   useEffect(() => {
-    if (typeof localStorage === 'undefined') return;
-    try {
-      const stateToStore: SharedInvestigationState = {
-        roomId,
-        query: initialQuery || '',
-        coreAssumption: initialCoreAssumption || '',
-        comments,
-        decisions,
-        tests,
-        challenges,
-        lastUpdated: Date.now(),
+    if (!initialGraphData || !initialGraphData.sources?.length) return;
+    setInvestigation((prev) => {
+      const base =
+        prev ||
+        buildPersistedInvestigationFromIdea(
+          roomId,
+          initialGraphData.query || initialQuery || 'AI tools will replace most productivity software'
+        );
+      const updated: PersistedInvestigation = {
+        ...base,
+        query: initialGraphData.query || base.query,
+        coreAssumption: initialGraphData.coreAssumption || base.coreAssumption,
+        graphData: initialGraphData,
+        updatedAt: Date.now(),
       };
-      localStorage.setItem(`probe_room_state_${roomId}`, JSON.stringify(stateToStore));
-    } catch (e) {
-      // ignore
-    }
-  }, [roomId, comments, decisions, tests, challenges, initialQuery, initialCoreAssumption]);
+      void saveInvestigationToDatabase(updated);
+      return updated;
+    });
+  }, [initialGraphData, roomId, initialQuery]);
 
   // Handle incoming realtime events
-  const handleIncomingEvent = useCallback((event: ProbeRealtimeEvent) => {
-    switch (event.type) {
-      case 'comment_added': {
-        const newComment = event.payload;
-        setComments((prev) => {
-          const existing = prev[newComment.nodeId] || [];
-          if (existing.some((c) => c.id === newComment.id)) return prev;
-          return {
-            ...prev,
-            [newComment.nodeId]: [...existing, newComment],
-          };
-        });
-        break;
+  const handleIncomingEvent = useCallback(
+    (event: ProbeRealtimeEvent) => {
+      switch (event.type) {
+        case 'comment_added': {
+          const newComment = event.payload;
+          setComments((prev) => {
+            const existing = prev[newComment.nodeId] || [];
+            if (existing.some((c) => c.id === newComment.id)) return prev;
+            const next = {
+              ...prev,
+              [newComment.nodeId]: [...existing, newComment],
+            };
+            void patchInvestigationInDatabase(stateRef.current.roomId, { comments: next });
+            return next;
+          });
+          break;
+        }
+
+        case 'evidence_challenged': {
+          const challenge = event.payload;
+          setChallenges((prev) => {
+            const next = {
+              ...prev,
+              [challenge.nodeId]: challenge,
+            };
+            void patchInvestigationInDatabase(stateRef.current.roomId, { challenges: next });
+            return next;
+          });
+          break;
+        }
+
+        case 'decision_created': {
+          const decision = event.payload;
+          setDecisions((prev) => {
+            const next = {
+              ...prev,
+              [decision.nodeId]: decision,
+            };
+            void patchInvestigationInDatabase(stateRef.current.roomId, { decisions: next });
+            return next;
+          });
+          break;
+        }
+
+        case 'test_created': {
+          const test = event.payload;
+          setTests((prev) => {
+            if (prev.some((t) => t.id === test.id)) return prev;
+            const next = [test, ...prev];
+            void patchInvestigationInDatabase(stateRef.current.roomId, { tests: next });
+            return next;
+          });
+          break;
+        }
+
+        case 'test_status_changed': {
+          const { testId, status, result } = event.payload;
+          setTests((prev) => {
+            const next = prev.map((t) =>
+              t.id === testId ? { ...t, status, result: result || t.result } : t
+            );
+            void patchInvestigationInDatabase(stateRef.current.roomId, { tests: next });
+            return next;
+          });
+          break;
+        }
+
+        case 'room_state_request': {
+          if (event.payload.requesterId === currentUser.id) break;
+          const curr = stateRef.current;
+          if (curr.query) {
+            void channelRef.current?.sendEvent({
+              type: 'room_state_sync',
+              payload: {
+                id: `sync_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                state: {
+                  roomId: curr.roomId,
+                  query: curr.query,
+                  coreAssumption: curr.coreAssumption,
+                  graphData: curr.graphData,
+                  comments: curr.comments,
+                  decisions: curr.decisions,
+                  tests: curr.tests,
+                  challenges: curr.challenges,
+                  lastUpdated: Date.now(),
+                },
+              },
+            });
+          }
+          break;
+        }
+
+        case 'room_state_sync': {
+          const incoming = event.payload.state;
+          if (!incoming || incoming.roomId !== stateRef.current.roomId) break;
+
+          if (incoming.query) {
+            setInvestigation((prev) => {
+              const built = buildPersistedInvestigationFromIdea(incoming.roomId, incoming.query, {
+                ...prev,
+                coreAssumption: incoming.coreAssumption || prev?.coreAssumption,
+                graphData: incoming.graphData || prev?.graphData,
+              });
+              return built;
+            });
+          }
+
+          if (incoming.comments && Object.keys(incoming.comments).length > 0) {
+            setComments((prev) => {
+              const merged = { ...prev };
+              for (const [nId, list] of Object.entries(incoming.comments)) {
+                const existing = merged[nId] || [];
+                const combined = [...existing];
+                for (const c of list) {
+                  if (!combined.some((item) => item.id === c.id)) {
+                    combined.push(c);
+                  }
+                }
+                merged[nId] = combined;
+              }
+              return merged;
+            });
+          }
+
+          if (incoming.decisions && Object.keys(incoming.decisions).length > 0) {
+            setDecisions((prev) => ({ ...incoming.decisions, ...prev }));
+          }
+
+          if (incoming.challenges && Object.keys(incoming.challenges).length > 0) {
+            setChallenges((prev) => ({ ...incoming.challenges, ...prev }));
+          }
+
+          if (incoming.tests && incoming.tests.length > 0) {
+            setTests((prev) => {
+              const combined = [...prev];
+              for (const t of incoming.tests) {
+                const idx = combined.findIndex((item) => item.id === t.id);
+                if (idx === -1) {
+                  combined.push(t);
+                } else if (t.status === 'COMPLETED' && combined[idx].status !== 'COMPLETED') {
+                  combined[idx] = t;
+                }
+              }
+              return combined;
+            });
+          }
+          break;
+        }
+
+        default:
+          break;
       }
+    },
+    [currentUser.id]
+  );
 
-      case 'evidence_challenged': {
-        const challenge = event.payload;
-        setChallenges((prev) => ({
-          ...prev,
-          [challenge.nodeId]: challenge,
-        }));
-        break;
-      }
-
-      case 'decision_created': {
-        const decision = event.payload;
-        setDecisions((prev) => ({
-          ...prev,
-          [decision.nodeId]: decision,
-        }));
-        break;
-      }
-
-      case 'test_created': {
-        const test = event.payload;
-        setTests((prev) => {
-          if (prev.some((t) => t.id === test.id)) return prev;
-          return [test, ...prev];
-        });
-        break;
-      }
-
-      case 'test_status_changed': {
-        const { testId, status, result } = event.payload;
-        setTests((prev) =>
-          prev.map((t) => (t.id === testId ? { ...t, status, result: result || t.result } : t))
-        );
-        break;
-      }
-
-      default:
-        break;
-    }
-  }, []);
-
-  // Connect to Supabase Realtime channel
+  // Connect to Supabase Realtime channel `investigation:{roomId}`
   useEffect(() => {
     if (!roomId) return;
 
     const channel = joinInvestigationRoom(roomId, currentUser, {
       onEvent: handleIncomingEvent,
       onPresenceSync: (presences) => {
-        // Ensure current user is in the list
         const merged = [currentUser, ...presences.filter((p) => p.id !== currentUser.id)];
         setCollaborators(merged);
       },
@@ -216,14 +423,51 @@ export const useInvestigationRoom = (
 
     channelRef.current = channel;
 
+    // Request latest state from any active peers in the room
+    const timer = setTimeout(() => {
+      void channel.sendEvent({
+        type: 'room_state_request',
+        payload: {
+          id: `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          roomId,
+          requesterId: currentUser.id,
+        },
+      });
+    }, 150);
+
     return () => {
-      channel.leave();
+      clearTimeout(timer);
+      void channel.leave();
     };
   }, [roomId, currentUser, handleIncomingEvent]);
 
+  // Action: Ensure current workspace is persisted to DB (e.g. when clicking Share)
+  const persistWorkspaceNow = useCallback(async () => {
+    const curr = stateRef.current;
+    const inv = buildPersistedInvestigationFromIdea(
+      curr.roomId,
+      curr.query || 'AI tools will replace most productivity software',
+      {
+        ...investigation,
+        coreAssumption: curr.coreAssumption,
+        graphData: curr.graphData,
+        comments: curr.comments,
+        decisions: curr.decisions,
+        tests: curr.tests,
+        challenges: curr.challenges,
+        updatedAt: Date.now(),
+      }
+    );
+    return saveInvestigationToDatabase(inv);
+  }, [investigation]);
+
   // Action: Add comment to a specific node
   const addComment = useCallback(
-    async (nodeId: string, text: string, stance: 'challenge' | 'support' | 'neutral' = 'neutral') => {
+    async (
+      nodeId: string,
+      text: string,
+      stance: 'challenge' | 'support' | 'neutral' = 'neutral'
+    ) => {
       const cleanText = text.trim();
       if (!cleanText) return;
 
@@ -237,16 +481,16 @@ export const useInvestigationRoom = (
         stance,
       };
 
-      // Optimistic local update
       setComments((prev) => {
         const existing = prev[nodeId] || [];
-        return {
+        const next = {
           ...prev,
           [nodeId]: [...existing, newComment],
         };
+        void patchInvestigationInDatabase(stateRef.current.roomId, { comments: next });
+        return next;
       });
 
-      // Broadcast event
       await channelRef.current?.sendEvent({
         type: 'comment_added',
         payload: newComment,
@@ -258,30 +502,34 @@ export const useInvestigationRoom = (
   // Action: Challenge evidence
   const toggleChallengeEvidence = useCallback(
     async (nodeId: string, reason?: string) => {
-      const current = challenges[nodeId];
+      const current = stateRef.current.challenges[nodeId];
       const isCurrentlyChallenged = current?.challenged || false;
 
       const challengeUpdate: EvidenceChallenge = {
         nodeId,
         challenged: !isCurrentlyChallenged,
-        reason: !isCurrentlyChallenged ? reason || 'Challenged as weak signal or practitioner consensus contradiction' : undefined,
+        reason: !isCurrentlyChallenged
+          ? reason || 'Challenged as weak signal or practitioner consensus contradiction'
+          : undefined,
         author: currentUser.name,
         timestamp: 'Just now',
       };
 
-      // Optimistic update
-      setChallenges((prev) => ({
-        ...prev,
-        [nodeId]: challengeUpdate,
-      }));
+      setChallenges((prev) => {
+        const next = {
+          ...prev,
+          [nodeId]: challengeUpdate,
+        };
+        void patchInvestigationInDatabase(stateRef.current.roomId, { challenges: next });
+        return next;
+      });
 
-      // Broadcast event
       await channelRef.current?.sendEvent({
         type: 'evidence_challenged',
         payload: challengeUpdate,
       });
     },
-    [challenges, currentUser]
+    [currentUser]
   );
 
   // Action: Record decision on assumption/unknown node
@@ -304,13 +552,15 @@ export const useInvestigationRoom = (
         status,
       };
 
-      // Optimistic update
-      setDecisions((prev) => ({
-        ...prev,
-        [nodeId]: newDecision,
-      }));
+      setDecisions((prev) => {
+        const next = {
+          ...prev,
+          [nodeId]: newDecision,
+        };
+        void patchInvestigationInDatabase(stateRef.current.roomId, { decisions: next });
+        return next;
+      });
 
-      // Broadcast event
       await channelRef.current?.sendEvent({
         type: 'decision_created',
         payload: newDecision,
@@ -343,17 +593,19 @@ export const useInvestigationRoom = (
         target: testData.target,
         successSignal: testData.successSignal,
         scheduledDate: testData.scheduledDate,
-        monthIndex: testData.monthIndex ?? 8, // defaults to current September month
+        monthIndex: testData.monthIndex ?? 8,
         day: testData.day ?? 18,
         status: 'PLANNED',
         author: currentUser.name,
         createdAt: new Date().toISOString(),
       };
 
-      // Optimistic update
-      setTests((prev) => [newTest, ...prev]);
+      setTests((prev) => {
+        const next = [newTest, ...prev];
+        void patchInvestigationInDatabase(stateRef.current.roomId, { tests: next });
+        return next;
+      });
 
-      // Broadcast event
       await channelRef.current?.sendEvent({
         type: 'test_created',
         payload: newTest,
@@ -372,18 +624,23 @@ export const useInvestigationRoom = (
       resultSummary?: string,
       verdict: 'SUPPORTS' | 'CHALLENGES' | 'INCONCLUSIVE' = 'SUPPORTS'
     ) => {
-      const resultObj: ValidationTest['result'] = status === 'COMPLETED' ? {
-        summary: resultSummary || 'Empirical test completed with verified sample.',
-        verdict,
-        completedAt: 'Just now',
-      } : undefined;
+      const resultObj: ValidationTest['result'] =
+        status === 'COMPLETED'
+          ? {
+              summary: resultSummary || 'Empirical test completed with verified sample.',
+              verdict,
+              completedAt: 'Just now',
+            }
+          : undefined;
 
-      // Optimistic update
-      setTests((prev) =>
-        prev.map((t) => (t.id === testId ? { ...t, status, result: resultObj } : t))
-      );
+      setTests((prev) => {
+        const next = prev.map((t) =>
+          t.id === testId ? { ...t, status, result: resultObj } : t
+        );
+        void patchInvestigationInDatabase(stateRef.current.roomId, { tests: next });
+        return next;
+      });
 
-      // Broadcast event
       await channelRef.current?.sendEvent({
         type: 'test_status_changed',
         payload: {
@@ -397,10 +654,15 @@ export const useInvestigationRoom = (
     []
   );
 
+  const activeQuery = investigation?.query || initialQuery || '';
+
   return {
     roomId,
     setRoomId,
-    shareableUrl: getShareableUrl(roomId),
+    loadState,
+    investigation,
+    diagnostics,
+    shareableUrl: getShareableUrl(roomId, activeQuery),
     currentUser,
     collaborators,
     collaboratorCount: collaborators.length,
@@ -414,5 +676,6 @@ export const useInvestigationRoom = (
     recordDecision,
     createNextTest,
     updateTestStatus,
+    persistWorkspaceNow,
   };
 };

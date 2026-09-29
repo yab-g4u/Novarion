@@ -4,7 +4,31 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/r/:roomId",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/r/:roomId/:path*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/workspace/:roomId",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/investigation/:roomId",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/share/:roomId",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/app/:path*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/((?!api/|assets/|.*\\..*).*)",
       "destination": "/index.html"
     }
   ]

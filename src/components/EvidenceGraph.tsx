@@ -163,7 +163,7 @@ const SourceItemNodeComponent: React.FC<NodeProps> = ({ data }) => {
         <div className="flex items-center gap-1.5 min-w-0">
           <SourceIconSelector type={source.sourceType as any} size={16} />
           <span className="text-[11px] font-bold text-[#0A0D14] truncate max-w-[110px]">
-            {source.sourceIdentifier.split('·')[0]}
+            {(source.sourceIdentifier || source.sourceName || 'Evidence').split('·')[0]}
           </span>
         </div>
         
@@ -255,7 +255,7 @@ const TestItemNodeComponent: React.FC<NodeProps> = ({ data }) => {
       </p>
 
       <div className="mt-2.5 pt-2 border-t border-black/5 flex items-center justify-between text-[9px] font-mono text-[#525866]">
-        <span>{test.methodLabel.split(' ')[0]} Test</span>
+        <span>{(test.methodLabel || 'Validation').split(' ')[0]} Test</span>
         <span className="text-[#4F46E5] font-semibold">{test.scheduledDate}</span>
       </div>
     </div>
@@ -294,6 +294,7 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
   // Realtime collaborative room hook
   const {
     roomId,
+    investigation,
     shareableUrl,
     currentUser,
     collaborators,
@@ -307,7 +308,13 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
     recordDecision,
     createNextTest,
     updateTestStatus,
-  } = useInvestigationRoom(propRoomId, externalGraphData?.query, externalGraphData?.coreAssumption);
+    persistWorkspaceNow,
+  } = useInvestigationRoom(
+    propRoomId,
+    externalGraphData?.query,
+    externalGraphData?.coreAssumption,
+    externalGraphData
+  );
 
   // Modals state
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -350,10 +357,13 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
   }, [isFullscreen]);
 
   const handleCopyShareLink = useCallback(() => {
-    navigator.clipboard.writeText(shareableUrl);
+    void persistWorkspaceNow();
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      void navigator.clipboard.writeText(shareableUrl);
+    }
     setCopiedRoomCode(true);
     setTimeout(() => setCopiedRoomCode(false), 2000);
-  }, [shareableUrl]);
+  }, [shareableUrl, persistWorkspaceNow]);
 
   const showToast = useCallback((msg: string) => {
     setActiveToast(msg);
@@ -535,6 +545,9 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
     const rawEdges: Edge[] = [];
 
     // 1. Evidence source nodes
+    let supIdx = 0;
+    let chalIdx = 0;
+    let unkIdx = 0;
     if (filterRelationship !== 'Tests') {
       filteredSources.forEach((src) => {
         const isSupport = src.relationship === 'Supports';
@@ -543,10 +556,21 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
         const nodeComments = comments[src.id] || [];
         const nodeChallenge = challenges[src.id];
 
+        let fallbackPos = { x: 380, y: 360 + unkIdx * 130 };
+        if (isSupport) {
+          fallbackPos = { x: 40, y: 60 + supIdx * 135 };
+          supIdx++;
+        } else if (isChallenges) {
+          fallbackPos = { x: 740, y: 60 + chalIdx * 135 };
+          chalIdx++;
+        } else {
+          unkIdx++;
+        }
+
         rawNodes.push({
           id: src.id,
           type: 'sourceNode',
-          position: { x: 0, y: 0 },
+          position: fallbackPos,
           data: { 
             source: src, 
             commentsCount: nodeComments.length,
@@ -575,11 +599,11 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
 
     // 2. Real-World Validation Test nodes
     if (filterRelationship === 'all' || filterRelationship === 'Tests') {
-      tests.forEach((test) => {
+      tests.forEach((test, tIdx) => {
         rawNodes.push({
           id: test.id,
           type: 'testNode',
-          position: { x: 0, y: 0 },
+          position: { x: 240 + tIdx * 280, y: 420 },
           data: {
             test,
             onSelect: () => handleSelectTestNode(test),
@@ -624,6 +648,10 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
       })),
     };
 
+    // Set deterministic fallback positions immediately so graph is never empty while ELK calculates
+    setNodes(rawNodes);
+    setEdges(rawEdges);
+
     try {
       const layoutResult = await elk.layout(elkGraph);
 
@@ -632,8 +660,8 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
         return {
           ...node,
           position: {
-            x: layoutNode?.x || (node.id === 'center' ? 380 : 60),
-            y: layoutNode?.y || 100,
+            x: layoutNode?.x ?? node.position.x,
+            y: layoutNode?.y ?? node.position.y,
           },
         };
       });
@@ -706,7 +734,10 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
 
           <button
             type="button"
-            onClick={() => setIsShareModalOpen(true)}
+            onClick={() => {
+              void persistWorkspaceNow();
+              setIsShareModalOpen(true);
+            }}
             className="px-4 py-2 rounded-xl bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-transform active:scale-95 cursor-pointer"
           >
             <Share2 size={13} />
@@ -1069,7 +1100,7 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}
         roomId={roomId}
-        query={externalGraphData?.query}
+        query={externalGraphData?.query || investigation?.query || currentLabel}
         collaborators={collaborators}
       />
 

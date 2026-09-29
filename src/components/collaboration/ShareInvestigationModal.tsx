@@ -1,8 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X, Copy, Check, Users, Globe, ShieldCheck, ExternalLink } from 'lucide-react';
 import { CollaboratorPresence } from '../../types/collaboration';
 import { getShareableUrl } from '../../lib/collaboration/useInvestigationRoom';
+import {
+  buildPersistedInvestigationFromIdea,
+  saveInvestigationToDatabase,
+} from '../../lib/collaboration/investigationStore';
 
 interface ShareInvestigationModalProps {
   isOpen: boolean;
@@ -21,15 +25,25 @@ export const ShareInvestigationModal: React.FC<ShareInvestigationModalProps> = (
 }) => {
   const [copied, setCopied] = useState(false);
   const navigate = useNavigate();
-  const baseShareableUrl = getShareableUrl(roomId);
-  const shareableUrl = query
-    ? `${baseShareableUrl}?idea=${encodeURIComponent(query)}`
-    : baseShareableUrl;
+  const shareableUrl = getShareableUrl(roomId, query);
+
+  // Persist the workspace to the database as soon as the Share modal opens
+  useEffect(() => {
+    if (isOpen && roomId) {
+      const inv = buildPersistedInvestigationFromIdea(
+        roomId,
+        query || 'AI tools will replace most productivity software'
+      );
+      void saveInvestigationToDatabase(inv);
+    }
+  }, [isOpen, roomId, query]);
 
   if (!isOpen) return null;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(shareableUrl);
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      void navigator.clipboard.writeText(shareableUrl);
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
   };
@@ -43,13 +57,14 @@ export const ShareInvestigationModal: React.FC<ShareInvestigationModalProps> = (
       }
     }
     onClose();
-    navigate(query ? `/r/${roomId}?idea=${encodeURIComponent(query)}` : `/r/${roomId}`);
+    navigate(
+      query ? `/r/${roomId}?idea=${encodeURIComponent(query)}` : `/r/${roomId}`
+    );
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-xs p-4 animate-in fade-in duration-150 select-none">
       <div className="bg-white rounded-3xl border border-[#E5E7EB] p-6 sm:p-7 max-w-md w-full shadow-2xl space-y-5 text-left font-['Geist','Inter',sans-serif]">
-        
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-[#F1F3F5]">
           <div className="flex items-center gap-2">
@@ -57,8 +72,12 @@ export const ShareInvestigationModal: React.FC<ShareInvestigationModalProps> = (
               <Users size={15} />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-[#0A0D14]">Share Investigation Workspace</h3>
-              <p className="text-[11px] font-mono text-[#868C98]">Room Code: {roomId}</p>
+              <h3 className="text-sm font-bold text-[#0A0D14]">
+                Share Investigation Workspace
+              </h3>
+              <p className="text-[11px] font-mono text-[#868C98]">
+                Room Code: {roomId}
+              </p>
             </div>
           </div>
 
@@ -76,9 +95,7 @@ export const ShareInvestigationModal: React.FC<ShareInvestigationModalProps> = (
             <span className="text-[10px] font-mono text-[#868C98] uppercase font-bold block mb-0.5">
               Investigated Idea
             </span>
-            <p className="text-[#0A0D14] font-medium leading-snug">
-              "{query}"
-            </p>
+            <p className="text-[#0A0D14] font-medium leading-snug">"{query}"</p>
           </div>
         )}
 
@@ -90,7 +107,7 @@ export const ShareInvestigationModal: React.FC<ShareInvestigationModalProps> = (
             </label>
             <span className="text-[10px] font-mono text-[#059669] bg-[#ECFDF5] px-2 py-0.5 rounded-full border border-[#A7F3D0] flex items-center gap-1 font-semibold">
               <ShieldCheck size={11} />
-              Public Access (No 403)
+              Persisted &amp; Live Synced
             </span>
           </div>
 
@@ -99,6 +116,7 @@ export const ShareInvestigationModal: React.FC<ShareInvestigationModalProps> = (
               type="text"
               readOnly
               value={shareableUrl}
+              data-testid="shareable-workspace-url"
               className="flex-1 px-3 py-1.5 bg-transparent text-xs font-mono text-[#0A0D14] focus:outline-none"
             />
             <button
@@ -115,7 +133,11 @@ export const ShareInvestigationModal: React.FC<ShareInvestigationModalProps> = (
             </button>
           </div>
           <p className="text-[11px] text-[#64748B] leading-relaxed">
-            Teammates can immediately enter Room <strong className="font-mono text-[#0A0D14]">{roomId}</strong> without sign-up or Google 403 authorization walls to investigate the graph, challenge evidence, and record decisions together.
+            Anyone with this link can open Room{' '}
+            <strong className="font-mono text-[#0A0D14]">{roomId}</strong> in any
+            browser or incognito window to view the persisted Evidence Graph,
+            challenge evidence, add comments, and run validation tests together in
+            real time.
           </p>
         </div>
 
@@ -126,7 +148,9 @@ export const ShareInvestigationModal: React.FC<ShareInvestigationModalProps> = (
               <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse" />
               <span>Active in Room ({collaborators.length})</span>
             </span>
-            <span className="text-[10px] text-[#868C98]">Realtime Presence</span>
+            <span className="text-[10px] text-[#868C98]">
+              investigation:{roomId}
+            </span>
           </div>
 
           <div className="flex flex-wrap gap-2 pt-1">
@@ -135,7 +159,10 @@ export const ShareInvestigationModal: React.FC<ShareInvestigationModalProps> = (
                 key={c.id}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white border border-[#E5E7EB] text-xs font-medium text-[#0A0D14] shadow-2xs"
               >
-                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
+                <span
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: c.color }}
+                />
                 <span>{c.name}</span>
               </span>
             ))}
@@ -146,7 +173,9 @@ export const ShareInvestigationModal: React.FC<ShareInvestigationModalProps> = (
         <div className="flex items-center justify-between text-[11px] font-mono text-[#868C98] pt-2 border-t border-[#F1F3F5]">
           <span className="flex items-center gap-1 min-w-0">
             <Globe size={12} className="text-[#0F52BA] shrink-0" />
-            <span className="truncate max-w-[180px]">{baseShareableUrl.replace(/^https?:\/\//, '')}</span>
+            <span className="truncate max-w-[180px]">
+              {shareableUrl.replace(/^https?:\/\//, '')}
+            </span>
           </span>
           <div className="flex items-center gap-3 shrink-0">
             <button
@@ -166,7 +195,6 @@ export const ShareInvestigationModal: React.FC<ShareInvestigationModalProps> = (
             </button>
           </div>
         </div>
-
       </div>
     </div>
   );

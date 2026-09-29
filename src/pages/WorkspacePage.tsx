@@ -21,6 +21,7 @@ import { EvidenceSource } from '../types';
 import { DynamicGraphData } from '../types/evidenceGraph';
 import { ProbeLogo } from '../components/ProbeLogo';
 import { roomCodeFromIdea } from '../lib/collaboration/useInvestigationRoom';
+import { generateDynamicInvestigation } from '../lib/research/dynamicInvestigationResolver';
 
 export const WorkspacePage: React.FC = () => {
   const location = useLocation();
@@ -34,16 +35,19 @@ export const WorkspacePage: React.FC = () => {
   else if (path.includes('/app/calendar')) activeTab = 'calendar';
   else activeTab = 'research';
 
-  // State
-  const [selectedSource, setSelectedSource] = useState<EvidenceSource | null>(null);
-  const [isTryModalOpen, setIsTryModalOpen] = useState<boolean>(false);
-  const [activeGraphData, setActiveGraphData] = useState<DynamicGraphData | null>(null);
-  const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
-  
   // Idea initialized from localStorage or default
   const [investigationIdea, setInvestigationIdea] = useState<string>(() => {
     return localStorage.getItem('probe_active_idea') || 'I want to build a cooking app';
   });
+
+  // State
+  const [selectedSource, setSelectedSource] = useState<EvidenceSource | null>(null);
+  const [isTryModalOpen, setIsTryModalOpen] = useState<boolean>(false);
+  const [activeGraphData, setActiveGraphData] = useState<DynamicGraphData | null>(() => {
+    const initial = localStorage.getItem('probe_active_idea') || 'I want to build a cooking app';
+    return generateDynamicInvestigation(initial).graphData;
+  });
+  const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
 
   const [isEditingIdea, setIsEditingIdea] = useState(false);
   const [tempIdea, setTempIdea] = useState(investigationIdea);
@@ -64,6 +68,7 @@ export const WorkspacePage: React.FC = () => {
     if (clean) {
       setInvestigationIdea(clean);
       localStorage.setItem('probe_active_idea', clean);
+      setActiveGraphData(generateDynamicInvestigation(clean).graphData);
     }
     setIsEditingIdea(false);
   };
@@ -250,7 +255,13 @@ export const WorkspacePage: React.FC = () => {
             <PressureTestWorkspace
               externalIdea={investigationIdea}
               onOpenSourceModal={(item) => handleOpenSourceDetail(item)}
-              onPressureTestUpdated={(data) => setActiveGraphData(data)}
+              onPressureTestUpdated={(data) => {
+                setActiveGraphData(data);
+                if (data.query && data.query.trim()) {
+                  setInvestigationIdea(data.query.trim());
+                  localStorage.setItem('probe_active_idea', data.query.trim());
+                }
+              }}
               onFocusProductTest={() => navigate('/app/testing')}
             />
           </div>

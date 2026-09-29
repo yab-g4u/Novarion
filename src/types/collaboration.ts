@@ -1,3 +1,5 @@
+import { DynamicGraphData } from './evidenceGraph';
+
 export type NodeCategory = 
   | 'IDEA'
   | 'ASSUMPTION'
@@ -69,6 +71,105 @@ export interface EvidenceChallenge {
   timestamp?: string;
 }
 
+export interface InvestigationAssumptionItem {
+  id: string;
+  text: string;
+  category: 'problem' | 'behavior' | 'willingness_to_pay' | 'technical';
+  riskLevel: 'HIGH' | 'MEDIUM' | 'LOW';
+  status: 'SUPPORTED' | 'CHALLENGED' | 'MIXED' | 'UNKNOWN';
+}
+
+export interface InvestigationProblemItem {
+  id: string;
+  title: string;
+  description: string;
+  severity: 'CRITICAL' | 'HIGH' | 'MODERATE';
+}
+
+export interface InvestigationUserSegment {
+  id: string;
+  segment: string;
+  painPoint: string;
+  willingnessToPay: string;
+}
+
+export interface InvestigationCompetitorItem {
+  id: string;
+  name: string;
+  category: string;
+  weakness: string;
+  url?: string;
+}
+
+export interface InvestigationUnknownItem {
+  id: string;
+  topic: string;
+  question: string;
+  riskLevel: 'HIGH' | 'MEDIUM';
+}
+
+export interface PersistedInvestigation {
+  id: string;
+  roomId: string;
+  query: string;
+  coreAssumption: string;
+  productName: string;
+  domain: string;
+  assumptions: InvestigationAssumptionItem[];
+  problems: InvestigationProblemItem[];
+  users: InvestigationUserSegment[];
+  competitors: InvestigationCompetitorItem[];
+  unknowns: InvestigationUnknownItem[];
+  graphData: DynamicGraphData;
+  comments: Record<string, NodeComment[]>;
+  decisions: Record<string, NodeDecision>;
+  tests: ValidationTest[];
+  challenges: Record<string, EvidenceChallenge>;
+  createdAt: string;
+  updatedAt: number;
+}
+
+export interface SharedInvestigationState {
+  roomId: string;
+  query: string;
+  coreAssumption: string;
+  graphData?: DynamicGraphData;
+  comments: Record<string, NodeComment[]>; // keyed by nodeId
+  decisions: Record<string, NodeDecision>; // keyed by nodeId
+  tests: ValidationTest[];
+  challenges: Record<string, EvidenceChallenge>; // keyed by nodeId
+  lastUpdated: number;
+}
+
+export type WorkspaceLoadState =
+  | 'LOADING'
+  | 'READY'
+  | 'NOT_FOUND'
+  | 'INVALID_LINK'
+  | 'ACCESS_DENIED'
+  | 'LOAD_ERROR'
+  | 'UNEXPECTED_ERROR';
+
+export type RoomLookupStatus =
+  | 'LOADING'
+  | 'FOUND'
+  | 'NOT_FOUND'
+  | 'INVALID_ROOM'
+  | 'UNAUTHORIZED'
+  | 'NETWORK_ERROR';
+
+export interface RoomDiagnosticContext {
+  roomId: string;
+  decodedIdea: string | null;
+  rawIdeaParam: string | null;
+  lookupSource: 'database_api' | 'supabase_db' | 'url_param' | 'deterministic_registry' | 'realtime_peer' | 'local_cache' | 'none';
+  realtimeChannel: string;
+  supabaseConfigured: boolean;
+  errorCode?: string | number;
+  errorMessage?: string;
+  timestamp: string;
+}
+
 // Typed events for Supabase Broadcast
 export type ProbeRealtimeEvent =
   | {
@@ -104,15 +205,19 @@ export type ProbeRealtimeEvent =
         result?: ValidationTest['result'];
         timestamp: string;
       };
+    }
+  | {
+      type: 'room_state_request';
+      payload: {
+        id: string;
+        roomId: string;
+        requesterId: string;
+      };
+    }
+  | {
+      type: 'room_state_sync';
+      payload: {
+        id: string;
+        state: SharedInvestigationState;
+      };
     };
-
-export interface SharedInvestigationState {
-  roomId: string;
-  query: string;
-  coreAssumption: string;
-  comments: Record<string, NodeComment[]>; // keyed by nodeId
-  decisions: Record<string, NodeDecision>; // keyed by nodeId
-  tests: ValidationTest[];
-  challenges: Record<string, EvidenceChallenge>; // keyed by nodeId
-  lastUpdated: number;
-}

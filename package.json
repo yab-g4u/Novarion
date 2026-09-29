@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "tsc && vite build",
+    "build": "tsc && vite build && node scripts/postbuild.mjs",
     "lint": "tsc --noEmit",
     "test": "tsx tests/integration/shared-workspace.test.ts && tsx tests/integration/build-brief.test.ts && tsx tests/integration/domain-isolation.test.ts && tsx tests/integration/pressure-test.test.ts && tsx tests/integration/product-testing.test.ts",
     "start": "NODE_ENV=production tsx server.ts",
