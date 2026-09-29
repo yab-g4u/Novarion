@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ALLOWED_GOOGLE_TEST_EMAIL } from './testing.types';
 
 const BLOCKED_HOSTS = new Set([
   'localhost',
@@ -95,6 +96,17 @@ export const CreateSessionRequestSchema = z.object({
     .max(500, { message: 'Task description cannot exceed 500 characters' })
     .optional()
     .default('Explore the landing page, test main navigation, and evaluate core interactive workflow as a real user'),
+  authEmail: z
+    .string()
+    .trim()
+    .email()
+    .optional()
+    .refine(
+      (val) => !val || val.toLowerCase() === ALLOWED_GOOGLE_TEST_EMAIL,
+      {
+        message: `Only the designated Google test account (${ALLOWED_GOOGLE_TEST_EMAIL}) is supported for authenticated testing`
+      }
+    ),
   maxSteps: z.number().int().min(3).max(25).optional().default(12),
   timeoutMs: z.number().int().min(10000).max(120000).optional().default(60000),
   waitForCompletion: z.boolean().optional().default(false)

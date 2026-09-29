@@ -4,7 +4,7 @@ import { TestingAgent } from './agent/testing.agent';
 import { BrowserSessionData, StreamEvent } from './testing.types';
 import { CreateSessionRequest, normalizeAndValidateProductUrl } from './testing.schema';
 
-const encodeSessionToken = (payload: { u: string; t: string; m?: number }): string => {
+const encodeSessionToken = (payload: { u: string; t: string; m?: number; a?: string }): string => {
   try {
     return Buffer.from(JSON.stringify(payload), 'utf-8')
       .toString('base64')
@@ -18,7 +18,7 @@ const encodeSessionToken = (payload: { u: string; t: string; m?: number }): stri
 
 const decodeSessionToken = (
   sessionId: string
-): { u: string; t: string; m?: number } | null => {
+): { u: string; t: string; m?: number; a?: string } | null => {
   const match = /^test_\d+_[a-z0-9]+_([A-Za-z0-9_-]+)$/.exec(sessionId);
   if (!match) return null;
   try {
@@ -54,6 +54,7 @@ export class TestingService {
       u: validation.normalizedUrl,
       t: req.task,
       m: req.maxSteps,
+      a: req.authEmail
     });
     const baseId = `test_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const sessionId = token ? `${baseId}_${token}` : baseId;
@@ -62,6 +63,7 @@ export class TestingService {
       sessionId,
       productUrl: validation.normalizedUrl,
       task: req.task,
+      authEmail: req.authEmail,
       maxSteps: req.maxSteps,
       timeoutMs: req.timeoutMs
     });
@@ -80,7 +82,7 @@ export class TestingService {
       await this.executeSessionLifecycle(session);
       return session.getData();
     } else {
-      // Run asynchronously in background so client can stream SSE events
+      // Run asynchronously in background so client can stream SSE events or poll
       this.executeSessionLifecycle(session).catch((err) => {
         console.error(`[TestingService] Unhandled error in session ${sessionId}:`, err);
       });
@@ -95,12 +97,17 @@ export class TestingService {
       const navSuccess = await session.navigateToInitialUrl();
       if (navSuccess && session.getStatus() === 'RUNNING') {
         await this.agent.runSession(session);
-      } else if (session.getStatus() === 'FAILED' || session.getStatus() === 'BLOCKED' || session.getStatus() === 'AUTHENTICATION_REQUIRED') {
-        await session.finish(session.getStatus());
+      } else {
+        const currentStatus = session.getStatus();
+        const finalStatus =
+          currentStatus === 'BLOCKED' || currentStatus === 'AUTHENTICATION_REQUIRED'
+            ? currentStatus
+            : 'FAILED';
+        await this.agent.finalizeSessionAnalysis(session, finalStatus);
       }
     } catch (err: any) {
-      console.error(`[TestingService] Session lifecycle error (${session.sessionId}):`, err);
-      await session.finish('FAILED');
+      console.error(`[TestingService] Session lifecycle error (${session.sessionId}):`, err?.message || err);
+      await this.agent.finalizeSessionAnalysis(session, 'FAILED');
     } finally {
       this.activeSessionCount = Math.max(0, this.activeSessionCount - 1);
     }
@@ -129,8 +136,9 @@ export class TestingService {
       sessionId,
       productUrl: decoded.u,
       task: decoded.t,
+      authEmail: decoded.a,
       maxSteps: decoded.m || 8,
-      timeoutMs: 30000,
+      timeoutMs: 45000
     });
     this.sessions.set(sessionId, rehydrated);
     await this.executeSessionLifecycle(rehydrated);
@@ -170,8 +178,9 @@ export class TestingService {
           sessionId,
           productUrl: decoded.u,
           task: decoded.t,
+          authEmail: decoded.a,
           maxSteps: decoded.m || 8,
-          timeoutMs: 30000,
+          timeoutMs: 45000
         });
         this.sessions.set(sessionId, session);
         await this.executeSessionLifecycle(session);
@@ -193,13 +202,15 @@ export class TestingService {
       type: 'session.snapshot',
       sessionId: session.sessionId,
       timestamp: new Date().toISOString(),
-      data: currentSnapshot as unknown as Record<string, unknown>,
+      data: currentSnapshot as unknown as Record<string, unknown>
     };
     res.write(`data: ${JSON.stringify(initialSnapshot)}\n\n`);
 
     if (
       currentSnapshot.status === 'COMPLETED' ||
       currentSnapshot.status === 'FAILED' ||
+      currentSnapshot.status === 'BLOCKED' ||
+      currentSnapshot.status === 'AUTHENTICATION_REQUIRED' ||
       currentSnapshot.status === 'STOPPED'
     ) {
       res.write(
@@ -207,7 +218,7 @@ export class TestingService {
           type: 'session.finished',
           sessionId: session.sessionId,
           timestamp: new Date().toISOString(),
-          data: { status: currentSnapshot.status, finalSession: currentSnapshot },
+          data: { status: currentSnapshot.status, finalSession: currentSnapshot }
         })}\n\n`
       );
       if (process.env.VERCEL) {
@@ -225,7 +236,7 @@ export class TestingService {
             type: 'session.finished',
             sessionId: activeSession.sessionId,
             timestamp: new Date().toISOString(),
-            data: { finalSession: activeSession.getData() }
+            data: { status: activeSession.getStatus(), finalSession: activeSession.getData() }
           })}\n\n`
         );
       }

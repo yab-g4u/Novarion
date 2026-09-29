@@ -3,7 +3,7 @@ import { TaskPlan } from './task.planner';
 import { GoogleGenAI, Type } from '@google/genai';
 
 export interface NextActionDecision {
-  actionType: 'CLICK' | 'TYPE' | 'PRESS_KEY' | 'SCROLL' | 'WAIT' | 'FINISH_TASK' | 'FAIL_TASK';
+  actionType: 'CLICK' | 'TYPE' | 'SUBMIT' | 'PRESS_KEY' | 'SCROLL' | 'WAIT' | 'FINISH_TASK' | 'FAIL_TASK';
   targetDescription: string;
   selector?: string;
   value?: string;
@@ -16,58 +16,63 @@ export class AgentActionPlanner {
     observation: PageObservation,
     history: ActionRecord[]
   ): Promise<NextActionDecision> {
-    // 1. DETERMINISTIC FAST-PATH FOR URL SHORTENERS (e.g. links.et)
-    if (plan.inferredGoal === 'CREATE_SHORT_LINK') {
-      const targetUrl = plan.extractedData?.inputUrl || 'https://example.com';
+    // 1. DETERMINISTIC FAST-PATH FOR URL SHORTENERS & RECEIPT VERIFICATION (e.g. links.et)
+    if (plan.inferredGoal === 'CREATE_SHORT_LINK' || plan.inferredGoal === 'VERIFY_RECEIPT') {
+      const valueToType =
+        plan.extractedData?.referenceCode ||
+        plan.extractedData?.inputUrl ||
+        'DHV0BHI2GG';
 
-      const hasTypedUrl = history.some((h) => h.type === 'TYPE' && h.success);
-      const hasClickedSubmit = history.some(
+      const hasTyped = history.some((h) => h.type === 'TYPE' && h.success);
+      const hasSubmitted = history.some(
         (h) =>
-          (h.type === 'CLICK' || h.type === 'PRESS_KEY') &&
+          (h.type === 'CLICK' || h.type === 'SUBMIT' || h.type === 'PRESS_KEY') &&
           h.success &&
           history.indexOf(h) > history.findIndex((t) => t.type === 'TYPE' && t.success)
       );
 
-      // Step 1: Find URL input if we haven't typed yet
-      if (!hasTypedUrl) {
-        const urlInput = this.findBestUrlInput(observation.elements);
-        if (urlInput) {
+      if (!hasTyped) {
+        const primaryInput = this.findBestUrlOrTextInput(observation.elements);
+        if (primaryInput) {
           return {
             actionType: 'TYPE',
-            targetDescription: urlInput.placeholder || urlInput.label || urlInput.name || 'URL input field',
-            selector: urlInput.selector,
-            value: targetUrl,
-            rationale: 'Located primary URL input field to enter target link.'
+            targetDescription:
+              primaryInput.placeholder ||
+              primaryInput.label ||
+              primaryInput.name ||
+              primaryInput.text ||
+              'Primary input field',
+            selector: primaryInput.selector,
+            value: valueToType,
+            rationale: `Located primary input field to enter "${valueToType}".`
           };
         }
       }
 
-      // Step 2: Click submit button or press Enter after typing
-      if (hasTypedUrl && !hasClickedSubmit) {
+      if (hasTyped && !hasSubmitted) {
         const submitBtn = this.findBestSubmitButton(observation.elements);
         if (submitBtn) {
           return {
             actionType: 'CLICK',
-            targetDescription: submitBtn.text || submitBtn.label || 'Shorten / Submit button',
+            targetDescription: submitBtn.text || submitBtn.label || 'Submit / Verify button',
             selector: submitBtn.selector,
-            rationale: 'Clicking primary submit button to generate shortened link.'
-          };
-        } else {
-          return {
-            actionType: 'PRESS_KEY',
-            targetDescription: 'Enter key on URL input',
-            value: 'Enter',
-            rationale: 'No explicit submit button text found; pressing Enter to submit form.'
+            rationale: 'Clicking primary submit button to execute form action.'
           };
         }
+        return {
+          actionType: 'PRESS_KEY',
+          targetDescription: 'Enter key on active input',
+          value: 'Enter',
+          rationale: 'Pressing Enter to submit the input value.'
+        };
       }
 
-      // Step 3: If we already submitted, check if copy button is visible or wait once
-      if (hasTypedUrl && hasClickedSubmit) {
+      if (hasTyped && hasSubmitted) {
         const copyBtn = observation.elements.find(
           (e) =>
             e.role === 'button' &&
-            (e.text.toLowerCase().includes('copy') || (e.label || '').toLowerCase().includes('copy'))
+            (e.text.toLowerCase().includes('copy') || (e.label || '').toLowerCase().includes('copy')) &&
+            !e.text.toLowerCase().includes('agent')
         );
 
         const hasClickedCopy = history.some(
@@ -77,9 +82,9 @@ export class AgentActionPlanner {
         if (copyBtn && !hasClickedCopy) {
           return {
             actionType: 'CLICK',
-            targetDescription: copyBtn.text || 'Copy short link button',
+            targetDescription: copyBtn.text || 'Copy button',
             selector: copyBtn.selector,
-            rationale: 'Short link generated; clicking Copy button to verify interactive output.'
+            rationale: 'Clicking Copy button to verify interactive output.'
           };
         }
 
@@ -87,16 +92,16 @@ export class AgentActionPlanner {
         if (waitCount === 0) {
           return {
             actionType: 'WAIT',
-            targetDescription: 'Wait for short link generation response',
-            value: '2000',
-            rationale: 'Waiting briefly for asynchronous shortener API response.'
+            targetDescription: 'Wait for verification/submission response',
+            value: '1500',
+            rationale: 'Waiting briefly for asynchronous response to render in the DOM.'
           };
         }
 
         return {
           actionType: 'FINISH_TASK',
-          targetDescription: 'Short link creation workflow completed',
-          rationale: 'Completed input, submission, and result verification steps.'
+          targetDescription: 'Input and submission workflow completed',
+          rationale: 'Completed input entry, form submission, and result state observation.'
         };
       }
     }
@@ -120,7 +125,6 @@ export class AgentActionPlanner {
         };
       }
 
-      // Otherwise click first product link
       const productLink = observation.elements.find(
         (e) =>
           e.role === 'link' &&
@@ -139,73 +143,141 @@ export class AgentActionPlanner {
       }
     }
 
-    // 2B. DETERMINISTIC REAL USER SURFING / EXPLORATION FLOW
-    if (plan.inferredGoal === 'EXPLORE_FEATURE') {
-      const step = history.length;
+    // 3. DETERMINISTIC REAL USER SURFING / EXPLORATION FLOW
+    if (plan.inferredGoal === 'EXPLORE_FEATURE' || plan.inferredGoal === 'GENERAL_TASK') {
+      const nonNavSteps = history.filter((h) => h.type !== 'NAVIGATE').length;
 
-      // Step 1: Scroll down to inspect above-the-fold & mid-page layout
-      if (step <= 1 && !history.some((h) => h.type === 'SCROLL')) {
-        return {
-          actionType: 'SCROLL',
-          targetDescription: 'Scroll down landing page to inspect layout & value proposition',
-          value: '450',
-          rationale: 'Simulating real user scanning the landing page content.'
-        };
-      }
+      // Check if any element on the page matches specific keywords in the user's task
+      const taskKeywords = plan.originalTask
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter(
+          (w) =>
+            w.length >= 4 &&
+            ![
+              'surf',
+              'around',
+              'landing',
+              'page',
+              'explore',
+              'test',
+              'evaluate',
+              'find',
+              'check',
+              'verify',
+              'with',
+              'from',
+              'that',
+              'this',
+              'user',
+              'product',
+              'website',
+              'link',
+              'links',
+              'navigation',
+              'interactive'
+            ].includes(w)
+        );
 
-      // Step 2: Click a primary navigation or feature link
-      const navOrFeatureElement = observation.elements.find(
-        (e) =>
-          (e.role === 'link' || e.role === 'button') &&
-          e.text.length >= 2 &&
-          !history.some((h) => h.selector === e.selector) &&
-          /feature|pricing|about|explore|doc|api|product|try|get started|shorten/i.test(e.text)
-      );
-
-      if (navOrFeatureElement && step <= 3) {
-        return {
-          actionType: 'CLICK',
-          targetDescription: `Interactive element "${navOrFeatureElement.text}"`,
-          selector: navOrFeatureElement.selector,
-          rationale: 'Testing primary navigation or feature call-to-action responsiveness.'
-        };
-      }
-
-      // Step 3: If there is an input on page, test typing into it like a real user
-      const anyInput = observation.elements.find(
-        (e) => e.tag === 'input' && !history.some((h) => h.type === 'TYPE')
-      );
-      if (anyInput && step <= 4) {
+      // Step A: If there is an unvisited input and the task mentions typing/verifying/entering/shortening
+      const unvisitedInput = this.findBestUrlOrTextInput(observation.elements);
+      if (
+        unvisitedInput &&
+        !history.some((h) => h.type === 'TYPE') &&
+        (plan.extractedData?.inputUrl ||
+          /type|enter|input|paste|search|verify|shorten/i.test(plan.originalTask))
+      ) {
+        const val = plan.extractedData?.inputUrl || 'DHV0BHI2GG';
         return {
           actionType: 'TYPE',
-          targetDescription: anyInput.placeholder || anyInput.name || 'Interactive input field',
-          selector: anyInput.selector,
-          value: 'https://probe-validation-test.io',
-          rationale: 'Testing interactive form input responsiveness as a real user.'
+          targetDescription:
+            unvisitedInput.placeholder || unvisitedInput.label || unvisitedInput.name || 'Input field',
+          selector: unvisitedInput.selector,
+          value: val,
+          rationale: `Entering "${val}" into interactive input field on page.`
         };
       }
 
-      // Step 4: If we typed into an input, click submit button
-      if (history.some((h) => h.type === 'TYPE') && !history.some((h) => h.type === 'CLICK' && h.target.toLowerCase().includes('shorten'))) {
+      if (
+        history.some((h) => h.type === 'TYPE' && h.success) &&
+        !history.some((h) => h.type === 'CLICK' || h.type === 'SUBMIT')
+      ) {
         const submitBtn = this.findBestSubmitButton(observation.elements);
         if (submitBtn) {
           return {
             actionType: 'CLICK',
-            targetDescription: submitBtn.text || 'Primary Submit CTA',
+            targetDescription: submitBtn.text || 'Submit button',
             selector: submitBtn.selector,
-            rationale: 'Submitting interactive form to observe real-time state feedback.'
+            rationale: 'Submitting form input to observe live response.'
+          };
+        }
+      }
+
+      // Step B: Match task keywords to a real visible link or button
+      if (taskKeywords.length > 0 && nonNavSteps <= 2) {
+        const matchedClickable = observation.elements.find((e) => {
+          if (e.role !== 'link' && e.role !== 'button' && e.tag !== 'a' && e.tag !== 'button') {
+            return false;
+          }
+          if (history.some((h) => h.selector === e.selector)) return false;
+          const textLower = `${e.text} ${e.label || ''} ${e.href || ''}`.toLowerCase();
+          if (textLower.startsWith('mailto:') || textLower.includes('javascript:')) return false;
+          return taskKeywords.some((kw) => textLower.includes(kw));
+        });
+
+        if (matchedClickable) {
+          return {
+            actionType: 'CLICK',
+            targetDescription: matchedClickable.text || matchedClickable.label || matchedClickable.selector,
+            selector: matchedClickable.selector,
+            rationale: `Clicking "${matchedClickable.text || matchedClickable.selector}" matching task keywords.`
+          };
+        }
+      }
+
+      // Step C: Scroll down to inspect layout
+      if (!history.some((h) => h.type === 'SCROLL')) {
+        return {
+          actionType: 'SCROLL',
+          targetDescription: 'Scroll down page to inspect layout & content',
+          value: '450',
+          rationale: 'Scrolling viewport to inspect content and interactive elements.'
+        };
+      }
+
+      // Step D: Click a primary navigation link or button on the page
+      if (!history.some((h) => h.type === 'CLICK')) {
+        const navOrFeatureElement = observation.elements.find(
+          (e) =>
+            (e.role === 'link' || e.role === 'button' || e.tag === 'a' || e.tag === 'button') &&
+            e.text.length >= 2 &&
+            !(e.href || '').startsWith('mailto:') &&
+            !history.some((h) => h.selector === e.selector) &&
+            (/feature|pricing|doc|guide|verify|status|more information|new|top|about|explore|get started/i.test(
+              e.text
+            ) ||
+              e.tag === 'a')
+        );
+
+        if (navOrFeatureElement) {
+          return {
+            actionType: 'CLICK',
+            targetDescription: navOrFeatureElement.text || navOrFeatureElement.selector,
+            selector: navOrFeatureElement.selector,
+            rationale: `Clicking interactive element "${navOrFeatureElement.text}" to test navigation and response.`
           };
         }
       }
 
       return {
         actionType: 'FINISH_TASK',
-        targetDescription: 'Completed real user exploratory session',
-        rationale: 'Sufficiently surfed product layout, navigation, and interactive states.'
+        targetDescription: 'Completed live browser task evaluation',
+        rationale: 'Executed navigation, viewport scroll, and interactive element testing on the live page.'
       };
     }
 
-    // 3. SELECTIVE GEMINI FALLBACK FOR COMPLEX / GENERAL TASKS
+    // 4. OPTIONAL GEMINI FALLBACK IF CONFIGURED
     const apiKey = typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : undefined;
     if (apiKey) {
       try {
@@ -236,7 +308,7 @@ Page Title: "${observation.title}"
 Recent Actions Taken: ${JSON.stringify(recentHistory)}
 Available Interactive Elements: ${JSON.stringify(simplifiedElements)}
 
-Choose the single most logical next action to complete the user's task. Avoid repeating actions that already succeeded unless needed.`;
+Choose the single most logical next action to complete the user's task. Avoid repeating actions that already succeeded.`;
 
         const response = await ai.models.generateContent({
           model: 'gemini-2.5-flash',
@@ -266,112 +338,66 @@ Choose the single most logical next action to complete the user's task. Avoid re
           return JSON.parse(text) as NextActionDecision;
         }
       } catch {
-        // Fallback to heuristic below
+        // Fallback below
       }
-    }
-
-    // 4. DETERMINISTIC GENERAL HEURISTIC FALLBACK
-    const unvisitedInput = observation.elements.find(
-      (e) =>
-        (e.tag === 'input' || e.tag === 'textarea') &&
-        !history.some((h) => h.selector === e.selector)
-    );
-
-    if (unvisitedInput && plan.extractedData?.inputUrl) {
-      return {
-        actionType: 'TYPE',
-        targetDescription: unvisitedInput.placeholder || unvisitedInput.name || 'Input field',
-        selector: unvisitedInput.selector,
-        value: plan.extractedData.inputUrl,
-        rationale: 'Entering input into first available form field.'
-      };
-    }
-
-    const unvisitedBtn = observation.elements.find(
-      (e) =>
-        e.role === 'button' &&
-        e.text.length > 1 &&
-        !history.some((h) => h.selector === e.selector)
-    );
-
-    if (unvisitedBtn) {
-      return {
-        actionType: 'CLICK',
-        targetDescription: unvisitedBtn.text,
-        selector: unvisitedBtn.selector,
-        rationale: 'Clicking primary interactive button on page.'
-      };
-    }
-
-    if (history.length < 3) {
-      return {
-        actionType: 'SCROLL',
-        targetDescription: 'Scroll down page to reveal more elements',
-        value: '400',
-        rationale: 'Scrolling down to inspect below-the-fold content.'
-      };
     }
 
     return {
       actionType: 'FINISH_TASK',
       targetDescription: 'Task exploration complete',
-      rationale: 'All primary interactive elements on page have been inspected.'
+      rationale: 'Primary interactive elements on page have been inspected.'
     };
   }
 
-  private findBestUrlInput(elements: InteractiveElement[]): InteractiveElement | undefined {
+  private findBestUrlOrTextInput(elements: InteractiveElement[]): InteractiveElement | undefined {
     const inputs = elements.filter(
       (e) =>
-        e.tag === 'input' ||
+        (e.tag === 'input' && !['hidden', 'checkbox', 'radio', 'submit', 'button', 'file'].includes(e.type || '')) ||
         e.tag === 'textarea' ||
-        e.role === 'input' ||
         e.role === 'textbox' ||
         e.role === 'searchbox'
     );
 
-    // Priority 1: Explicit URL/link keywords in placeholder, name, label, or type
-    const urlMatched = inputs.find((e) => {
-      const combined = `${e.type || ''} ${e.name || ''} ${e.placeholder || ''} ${e.label || ''} ${e.selector}`.toLowerCase();
+    const matched = inputs.find((e) => {
+      const combined = `${e.type || ''} ${e.name || ''} ${e.placeholder || ''} ${e.label || ''} ${e.text || ''} ${e.selector}`.toLowerCase();
       return (
         combined.includes('url') ||
         combined.includes('link') ||
+        combined.includes('receipt') ||
+        combined.includes('reference') ||
         combined.includes('http') ||
         combined.includes('paste') ||
         combined.includes('shorten') ||
-        combined.includes('domain')
+        combined.includes('search')
       );
     });
 
-    if (urlMatched) return urlMatched;
-
-    // Priority 2: First visible text/url/search input
-    return inputs.find((e) => !e.type || ['text', 'url', 'search'].includes(e.type));
+    if (matched) return matched;
+    return inputs[0];
   }
 
   private findBestSubmitButton(elements: InteractiveElement[]): InteractiveElement | undefined {
-    const buttons = elements.filter((e) => e.role === 'button' || e.tag === 'button' || e.type === 'submit');
+    const buttons = elements.filter(
+      (e) => e.role === 'button' || e.tag === 'button' || e.type === 'submit'
+    );
 
-    // Priority 1: Explicit shortener/submit keywords
+    const submitTypeBtn = buttons.find((e) => e.type === 'submit');
+    if (submitTypeBtn) return submitTypeBtn;
+
     const keywordBtn = buttons.find((e) => {
       const combined = `${e.text} ${e.label || ''} ${e.name || ''} ${e.selector}`.toLowerCase();
       return (
+        combined.includes('verify') ||
         combined.includes('shorten') ||
         combined.includes('create') ||
         combined.includes('generate') ||
-        combined.includes('cut') ||
-        combined.includes('shrink') ||
         combined.includes('submit') ||
-        combined.includes('go')
+        combined.includes('search') ||
+        combined.includes('check')
       );
     });
 
     if (keywordBtn) return keywordBtn;
-
-    // Priority 2: Button with type="submit"
-    const submitTypeBtn = buttons.find((e) => e.type === 'submit');
-    if (submitTypeBtn) return submitTypeBtn;
-
-    // Priority 3: First button adjacent to input
     return buttons[0];
   }
 }

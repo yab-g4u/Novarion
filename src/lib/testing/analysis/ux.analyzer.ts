@@ -4,16 +4,15 @@ export class UXAnalyzer {
   public analyze(session: BrowserSessionData): { metrics: UXMetrics; findings: UXFinding[] } {
     const startMs = new Date(session.startedAt).getTime();
     const endMs = session.finishedAt ? new Date(session.finishedAt).getTime() : Date.now();
-    const durationMs = Math.max(500, endMs - startMs);
+    const durationMs = Math.max(100, endMs - startMs);
 
     const firstAction = session.events[0];
     const timeToFirstActionMs = firstAction
-      ? Math.max(200, new Date(firstAction.timestamp).getTime() - startMs)
-      : 1000;
+      ? Math.max(50, new Date(firstAction.timestamp).getTime() - startMs)
+      : durationMs;
 
     const failedActionsCount = session.events.filter((e) => !e.success).length;
 
-    // Count repeated identical actions
     let repeatedActionsCount = 0;
     for (let i = 1; i < session.events.length; i++) {
       if (
@@ -24,10 +23,31 @@ export class UXAnalyzer {
       }
     }
 
-    const taskCompleted = session.status === 'COMPLETED' || session.completion?.status === 'COMPLETED';
-    const completionConfidence = session.completion?.confidence || (taskCompleted ? 0.85 : 0.3);
+    const pageLoadMs =
+      session.navigationTiming?.loadTimeMs ||
+      session.events.find((e) => e.type === 'NAVIGATE')?.durationMs ||
+      durationMs;
+    const ttfbMs = session.navigationTiming?.ttfbMs;
+    const domContentLoadedMs = session.navigationTiming?.domContentLoadedMs;
 
-    // Friction score (0 = frictionless, 100 = severe friction)
+    const interactiveEvents = session.events.filter((e) => e.type !== 'NAVIGATE');
+    const avgActionLatencyMs =
+      interactiveEvents.length > 0
+        ? Math.round(
+            interactiveEvents.reduce((acc, e) => acc + e.durationMs, 0) / interactiveEvents.length
+          )
+        : pageLoadMs;
+
+    const consoleErrorsCount = (session.consoleErrors || []).filter(
+      (c) => c.type === 'console.error' || c.type === 'pageerror'
+    ).length;
+    const networkFailuresCount = (session.networkFailures || []).length;
+
+    const taskCompleted =
+      session.status === 'COMPLETED' && session.completion?.status !== 'FAILED';
+    const completionConfidence =
+      session.completion?.confidence ?? (taskCompleted ? 0.9 : 0.2);
+
     const highFrictionCount = session.friction.filter((f) => f.severity === 'HIGH').length;
     const medFrictionCount = session.friction.filter((f) => f.severity === 'MEDIUM').length;
     const lowFrictionCount = session.friction.filter((f) => f.severity === 'LOW').length;
@@ -36,67 +56,175 @@ export class UXAnalyzer {
       highFrictionCount * 30 +
       medFrictionCount * 15 +
       lowFrictionCount * 5 +
-      failedActionsCount * 12 +
+      failedActionsCount * 15 +
       repeatedActionsCount * 10 +
-      (taskCompleted ? 0 : 25);
+      Math.min(20, consoleErrorsCount * 5) +
+      Math.min(20, networkFailuresCount * 5) +
+      (taskCompleted ? 0 : 30);
 
     const frictionScore = Math.min(100, Math.max(0, rawFriction));
 
-    // Clarity score (100 = crystal clear)
     const clarityPenalty =
       highFrictionCount * 20 +
       medFrictionCount * 10 +
-      Math.max(0, (session.stepCount - 4) * 5);
-    const clarityScore = Math.min(100, Math.max(15, 95 - clarityPenalty));
+      failedActionsCount * 12 +
+      Math.max(0, (session.stepCount - 5) * 4);
+    const clarityScore = Math.min(100, Math.max(10, 95 - clarityPenalty));
 
-    // Onboarding ease score
     const onboardingEaseScore = Math.min(
       100,
-      Math.max(10, Math.round((clarityScore * 0.6) + ((100 - frictionScore) * 0.4)))
+      Math.max(10, Math.round(clarityScore * 0.6 + (100 - frictionScore) * 0.4))
     );
 
     const metrics: UXMetrics = {
       taskCompleted,
+      completion: taskCompleted
+        ? 'Completed'
+        : session.status === 'AUTHENTICATION_REQUIRED'
+        ? 'Auth Required'
+        : session.status === 'BLOCKED'
+        ? 'Blocked'
+        : 'Failed',
       completionConfidence,
       stepsTaken: session.stepCount,
+      steps: session.stepCount,
       durationMs,
+      timeSeconds: Math.max(1, Math.round(durationMs / 1000)),
       timeToFirstActionMs,
       timeToCompletionMs: taskCompleted ? durationMs : undefined,
+      pageLoadMs,
+      ttfbMs,
+      domContentLoadedMs,
+      avgActionLatencyMs,
       failedActionsCount,
       repeatedActionsCount,
       navigationCount: Math.max(1, session.navigations.length),
+      consoleErrorsCount,
+      networkFailuresCount,
       frictionScore,
+      frictionPoints: session.friction.length + failedActionsCount,
       clarityScore,
       onboardingEaseScore
     };
 
     const findings: UXFinding[] = [];
 
-    // 1. Positive findings when task succeeds cleanly
-    if (taskCompleted && session.stepCount <= 5) {
+    // 1. Real Page Load & Navigation Timing Finding
+    if (session.navigationTiming) {
+      const nt = session.navigationTiming;
+      const isSlow = nt.loadTimeMs > 4500;
       findings.push({
-        id: 'find_pos_fast_flow',
-        type: 'POSITIVE',
-        severity: 'LOW',
-        title: 'Clear above-the-fold primary workflow',
-        description: `User task "${session.task}" was completed in ${session.stepCount} steps (${(durationMs / 1000).toFixed(1)}s) without requiring complex navigation.`,
-        evidence: session.completion?.evidence || ['Primary input and submit controls were immediately discoverable.']
+        id: 'find_nav_timing',
+        type: isSlow ? 'FRICTION' : 'POSITIVE',
+        severity: isSlow ? 'MEDIUM' : 'LOW',
+        title: isSlow
+          ? `Slow initial page load (${nt.loadTimeMs}ms)`
+          : `Measured page load & navigation timing (${nt.loadTimeMs}ms)`,
+        description: `Target URL ${session.productUrl} loaded in ${nt.loadTimeMs}ms${
+          nt.ttfbMs !== undefined ? ` (TTFB: ${nt.ttfbMs}ms` : ''
+        }${
+          nt.domContentLoadedMs !== undefined ? `, DOMContentLoaded: ${nt.domContentLoadedMs}ms)` : nt.ttfbMs !== undefined ? ')' : ''
+        }.`,
+        evidence: [
+          `HTTP Status: ${nt.httpStatus || 200}`,
+          `Total Load: ${nt.loadTimeMs}ms`,
+          ...(nt.ttfbMs !== undefined ? [`TTFB: ${nt.ttfbMs}ms`] : []),
+          ...(nt.domContentLoadedMs !== undefined ? [`DOMContentLoaded: ${nt.domContentLoadedMs}ms`] : [])
+        ]
       });
     }
 
-    const firstPage = session.pages[0];
-    if (firstPage && firstPage.elements.some((e) => e.tag === 'input')) {
+    // 2. Positive workflow finding when task completed
+    if (taskCompleted) {
+      const firstPage = session.pages[0];
       findings.push({
-        id: 'find_pos_input_clarity',
+        id: 'find_pos_workflow',
         type: 'POSITIVE',
         severity: 'LOW',
-        title: 'Immediate interactive input availability',
-        description: 'The landing page exposes an interactive input directly on initial load without forcing account creation first.',
-        evidence: [`Detected ${firstPage.elements.length} interactive elements on ${firstPage.url}`]
+        title: `Completed live browser task across ${session.stepCount} interaction step(s)`,
+        description:
+          session.completion?.explanation ||
+          `Task "${session.task}" executed against live DOM on ${session.currentUrl}.`,
+        evidence:
+          session.completion?.evidence && session.completion.evidence.length > 0
+            ? session.completion.evidence
+            : [
+                `Observed ${firstPage?.elements.length || 0} interactive elements on ${session.currentUrl}`
+              ]
       });
     }
 
-    // 2. Convert friction events into structured UX findings
+    // 3. Authentication detection & Google Auth findings
+    if (session.status === 'AUTHENTICATION_REQUIRED' || session.authDetection?.authRequired) {
+      const ad = session.authDetection;
+      findings.push({
+        id: 'find_auth_status',
+        type: session.status === 'AUTHENTICATION_REQUIRED' ? 'BLOCKER' : 'USABILITY_OBSERVATION',
+        severity: session.status === 'AUTHENTICATION_REQUIRED' ? 'HIGH' : 'MEDIUM',
+        title: ad?.supportsGoogleAuth
+          ? `Authentication required (Google Sign-In ${ad.authAccountAttempted ? `attempted with ${ad.authAccountAttempted}` : 'detected'})`
+          : 'Authentication wall requires user credentials',
+        description:
+          ad?.reason ||
+          'Product requires user authentication before completing the requested workflow.',
+        evidence: [
+          `URL: ${session.currentUrl}`,
+          `Supports Google Auth: ${ad?.supportsGoogleAuth ? 'Yes' : 'No'}`,
+          `Password Input Present: ${ad?.hasPasswordInput ? 'Yes' : 'No'}`,
+          ...(ad?.authAccountAttempted ? [`Google Account: ${ad.authAccountAttempted}`] : [])
+        ],
+        recommendation:
+          'Provide an unauthenticated guest preview or interactive sandbox prior to mandatory sign-in.'
+      });
+    } else if (session.status === 'BLOCKED') {
+      findings.push({
+        id: 'find_block_bot',
+        type: 'BLOCKER',
+        severity: 'HIGH',
+        title: 'Automated security / CAPTCHA challenge blocked access',
+        description:
+          session.errors[0] ||
+          'Cloudflare or bot verification challenge prevented headless browser inspection.',
+        evidence: session.errors
+      });
+    } else if (session.status === 'FAILED') {
+      findings.push({
+        id: 'find_session_failed',
+        type: 'BLOCKER',
+        severity: 'HIGH',
+        title: 'Browser test failed to complete target workflow',
+        description:
+          session.errors[0] ||
+          session.completion?.explanation ||
+          'Playwright encountered a navigation or interaction error on the target URL.',
+        evidence:
+          session.errors.length > 0
+            ? session.errors
+            : session.completion?.evidence || [`Status: ${session.status}`]
+      });
+    }
+
+    // 4. Console & Network Error Findings
+    if (consoleErrorsCount > 0 || networkFailuresCount > 0) {
+      const sampleEvidence: string[] = [];
+      for (const ce of (session.consoleErrors || []).slice(0, 3)) {
+        sampleEvidence.push(`[${ce.type}] ${ce.text}`);
+      }
+      for (const nf of (session.networkFailures || []).slice(0, 3)) {
+        sampleEvidence.push(`[${nf.method} ${nf.failureText}] ${nf.url}`);
+      }
+      findings.push({
+        id: 'find_diag_errors',
+        type: 'FRICTION',
+        severity: networkFailuresCount > 2 || consoleErrorsCount > 2 ? 'MEDIUM' : 'LOW',
+        title: `Captured ${consoleErrorsCount} console error(s) and ${networkFailuresCount} failed network request(s)`,
+        description:
+          'Runtime console errors or failed HTTP requests were observed while interacting with the live page.',
+        evidence: sampleEvidence
+      });
+    }
+
+    // 5. Convert friction events into structured UX findings
     session.friction.forEach((f, idx) => {
       findings.push({
         id: `find_fric_${idx + 1}`,
@@ -108,28 +236,6 @@ export class UXAnalyzer {
         recommendation: this.getRecommendationForFriction(f.type)
       });
     });
-
-    // 3. Blocker findings if session failed or hit auth wall
-    if (session.status === 'AUTHENTICATION_REQUIRED') {
-      findings.push({
-        id: 'find_block_auth',
-        type: 'BLOCKER',
-        severity: 'HIGH',
-        title: 'Mandatory authentication wall blocks anonymous task evaluation',
-        description: 'Users cannot test or experience core product value without logging in first.',
-        evidence: session.errors,
-        recommendation: 'Provide an interactive guest demo or sandboxed trial before requiring sign-up.'
-      });
-    } else if (session.status === 'BLOCKED') {
-      findings.push({
-        id: 'find_block_bot',
-        type: 'BLOCKER',
-        severity: 'HIGH',
-        title: 'Automated security challenge blocked page access',
-        description: 'Cloudflare or CAPTCHA challenge prevented automated browser inspection.',
-        evidence: session.errors
-      });
-    }
 
     return { metrics, findings };
   }

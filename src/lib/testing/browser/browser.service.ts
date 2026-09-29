@@ -1,4 +1,18 @@
 import { chromium, type Browser, type BrowserContext } from 'playwright';
+import { execFile } from 'child_process';
+import fs from 'fs';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
+
+const CANDIDATE_CHROMIUM_PATHS = [
+  process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+  process.env.CHROMIUM_PATH,
+  '/usr/bin/chromium',
+  '/usr/bin/chromium-browser',
+  '/usr/bin/google-chrome-stable',
+  '/usr/bin/google-chrome'
+].filter((p): p is string => Boolean(p));
 
 export class BrowserService {
   private static instance: BrowserService;
@@ -12,6 +26,64 @@ export class BrowserService {
       BrowserService.instance = new BrowserService();
     }
     return BrowserService.instance;
+  }
+
+  private resolveSystemChromiumPath(): string | undefined {
+    for (const candidate of CANDIDATE_CHROMIUM_PATHS) {
+      try {
+        if (fs.existsSync(candidate)) {
+          return candidate;
+        }
+      } catch {
+        // Ignore
+      }
+    }
+    return undefined;
+  }
+
+  private async launchChromiumWithFallback(): Promise<Browser> {
+    const args = [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--disable-gpu'
+    ];
+
+    const systemExec = this.resolveSystemChromiumPath();
+    if (systemExec) {
+      try {
+        return await chromium.launch({
+          headless: true,
+          executablePath: systemExec,
+          args
+        });
+      } catch (err) {
+        console.warn(`[BrowserService] Failed launching system chromium at ${systemExec}, trying Playwright managed binary...`, err);
+      }
+    }
+
+    try {
+      return await chromium.launch({
+        headless: true,
+        args
+      });
+    } catch (err: any) {
+      const msg = String(err?.message || err);
+      if (msg.includes("Executable doesn't exist") || msg.includes('playwright install')) {
+        console.log('[BrowserService] Playwright Chromium binary missing; installing chromium on-demand...');
+        await execFileAsync('npx', ['playwright', 'install', 'chromium'], {
+          timeout: 180000
+        });
+        return await chromium.launch({
+          headless: true,
+          args
+        });
+      }
+      throw err;
+    }
   }
 
   public async getBrowser(): Promise<Browser> {
@@ -30,18 +102,7 @@ export class BrowserService {
 
     this.isLaunching = true;
     try {
-      this.browser = await chromium.launch({
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--disable-gpu'
-        ]
-      });
+      this.browser = await this.launchChromiumWithFallback();
       return this.browser;
     } finally {
       this.isLaunching = false;
@@ -58,13 +119,16 @@ export class BrowserService {
       viewport: options?.viewport || { width: 1280, height: 800 },
       userAgent:
         options?.userAgent ||
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36 ProbeBrowserAgent/1.0',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
       ignoreHTTPSErrors: true,
       locale: 'en-US',
       timezoneId: 'America/New_York',
       colorScheme: 'light',
       deviceScaleFactor: 1
     });
+
+    // Prevent tsx/esbuild __name wrapper from throwing ReferenceError inside page.evaluate callbacks
+    await context.addInitScript('window.__name = (fn) => fn; globalThis.__name = (fn) => fn;');
 
     await context.route('**/*', (route) => {
       const url = route.request().url().toLowerCase();

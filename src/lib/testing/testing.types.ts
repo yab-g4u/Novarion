@@ -1,3 +1,5 @@
+export const ALLOWED_GOOGLE_TEST_EMAIL = 'g4uforlife@gmail.com';
+
 export type SessionStatus =
   | 'QUEUED'
   | 'STARTING'
@@ -13,6 +15,7 @@ export type ActionType =
   | 'NAVIGATE'
   | 'CLICK'
   | 'TYPE'
+  | 'SUBMIT'
   | 'PRESS_KEY'
   | 'SCROLL'
   | 'WAIT'
@@ -43,6 +46,52 @@ export interface InteractiveElement {
   };
 }
 
+export interface NavigationTimingMetrics {
+  loadTimeMs: number;
+  ttfbMs?: number;
+  domInteractiveMs?: number;
+  domContentLoadedMs?: number;
+  loadEventMs?: number;
+  httpStatus?: number;
+}
+
+export interface AuthDetection {
+  authRequired: boolean;
+  hasPasswordInput: boolean;
+  hasEmailInput: boolean;
+  supportsGoogleAuth: boolean;
+  googleAuthSelector?: string;
+  googleAuthText?: string;
+  emailInputSelector?: string;
+  authAccountAttempted?: string;
+  authOutcome?:
+    | 'NOT_REQUIRED'
+    | 'GOOGLE_AUTH_ATTEMPTED'
+    | 'PASSWORD_OR_2FA_REQUIRED'
+    | 'AUTH_WALL_DETECTED'
+    | 'AUTHENTICATED';
+  reason?: string;
+}
+
+export interface ConsoleErrorRecord {
+  id: string;
+  timestamp: string;
+  type: 'console.error' | 'console.warning' | 'pageerror';
+  text: string;
+  url?: string;
+  location?: string;
+}
+
+export interface NetworkFailureRecord {
+  id: string;
+  timestamp: string;
+  url: string;
+  method: string;
+  resourceType: string;
+  status?: number;
+  failureText: string;
+}
+
 export interface PageObservation {
   url: string;
   title: string;
@@ -54,6 +103,8 @@ export interface PageObservation {
     inputs: string[];
   }[];
   visibleErrors: string[];
+  authDetection?: AuthDetection;
+  navigationTiming?: NavigationTimingMetrics;
   isLoading: boolean;
   timestamp: string;
 }
@@ -78,7 +129,7 @@ export interface ScreenshotRecord {
   timestamp: string;
   url: string;
   eventId?: string;
-  dataUrl: string; // base64 image/jpeg or image/png
+  dataUrl: string; // base64 image/jpeg or image/png from real Playwright page.screenshot()
   trigger: 'initial' | 'after_action' | 'navigation' | 'error' | 'completion' | 'failure';
 }
 
@@ -89,6 +140,7 @@ export interface NavigationRecord {
   toUrl: string;
   title: string;
   status?: number;
+  loadTimeMs?: number;
 }
 
 export type FrictionType =
@@ -101,6 +153,7 @@ export type FrictionType =
   | 'AUTH_WALL'
   | 'SLOW_PAGE_RESPONSE'
   | 'EXCESSIVE_STEPS'
+  | 'CONSOLE_OR_NETWORK_ERROR'
   | 'NO_VISIBLE_CONFIRMATION';
 
 export type SeverityLevel = 'LOW' | 'MEDIUM' | 'HIGH';
@@ -146,9 +199,15 @@ export interface UXMetrics {
   timeSeconds?: number;
   timeToFirstActionMs: number;
   timeToCompletionMs?: number;
+  pageLoadMs?: number;
+  ttfbMs?: number;
+  domContentLoadedMs?: number;
+  avgActionLatencyMs?: number;
   failedActionsCount: number;
   repeatedActionsCount: number;
   navigationCount: number;
+  consoleErrorsCount?: number;
+  networkFailuresCount?: number;
   frictionScore: number; // 0 to 100
   frictionPoints?: number;
   clarityScore: number; // 0 to 100
@@ -178,6 +237,7 @@ export interface BrowserSessionData {
   productUrl: string;
   targetDomain: string;
   task: string;
+  authEmail?: string;
   maxSteps: number;
   timeoutMs: number;
   startedAt: string;
@@ -191,6 +251,10 @@ export interface BrowserSessionData {
   navigations: NavigationRecord[];
   pages: PageObservation[];
   errors: string[];
+  consoleErrors: ConsoleErrorRecord[];
+  networkFailures: NetworkFailureRecord[];
+  navigationTiming?: NavigationTimingMetrics;
+  authDetection?: AuthDetection;
   completion?: CompletionEvaluation;
   friction: FrictionEvent[];
   findings: UXFinding[];
@@ -207,6 +271,9 @@ export type StreamEventType =
   | 'screenshot.created'
   | 'navigation.changed'
   | 'friction.detected'
+  | 'console.error'
+  | 'network.failed'
+  | 'auth.detected'
   | 'task.progress'
   | 'task.completed'
   | 'task.failed'

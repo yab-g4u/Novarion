@@ -18,17 +18,43 @@ export class TestingAgent {
     const plan = this.taskPlanner.plan(session.task, session.productUrl);
 
     try {
-      // 1. Initial observation
+      // 1. Initial observation of the real page
       let currentObservation = await session.observePage();
 
-      // Check if already blocked or auth required during initial navigation
-      const initialStatus = session.getStatus();
-      if (initialStatus === 'BLOCKED' || initialStatus === 'AUTHENTICATION_REQUIRED') {
-        await this.finalizeSessionAnalysis(session, initialStatus);
+      // Check if already blocked during initial navigation
+      if (session.getStatus() === 'BLOCKED' || session.getStatus() === 'FAILED') {
+        await this.finalizeSessionAnalysis(session, session.getStatus() as 'BLOCKED' | 'FAILED');
         return;
       }
 
-      // 2. Main perception-action loop
+      // 2. Check if authentication is required OR if authenticated testing was requested
+      const wantsAuth =
+        plan.inferredGoal === 'AUTHENTICATE_GOOGLE' ||
+        Boolean(session.authEmail) ||
+        Boolean(currentObservation?.authDetection?.authRequired);
+
+      if (currentObservation && wantsAuth) {
+        const isAuthWall = Boolean(currentObservation.authDetection?.authRequired);
+        const supportsGoogle = Boolean(currentObservation.authDetection?.supportsGoogleAuth);
+
+        if (isAuthWall || plan.inferredGoal === 'AUTHENTICATE_GOOGLE' || (session.authEmail && supportsGoogle)) {
+          const authRes = await session.attemptGoogleAuthentication(currentObservation);
+          currentObservation = await session.observePage();
+
+          if (!authRes.authenticated && (isAuthWall || plan.inferredGoal === 'AUTHENTICATE_GOOGLE')) {
+            session.setCompletion({
+              status: 'BLOCKED',
+              confidence: 0.95,
+              evidence: [authRes.explanation],
+              explanation: authRes.explanation
+            });
+            await this.finalizeSessionAnalysis(session, 'AUTHENTICATION_REQUIRED');
+            return;
+          }
+        }
+      }
+
+      // 3. Main perception-action loop against live Playwright page
       while (
         session.getStatus() === 'RUNNING' &&
         session.getStepCount() < session.maxSteps
@@ -38,19 +64,21 @@ export class TestingAgent {
         }
         if (!currentObservation) break;
 
-        // Evaluate if task is already completed
-        if (session.getStepCount() > 0) {
-          const evalResult = this.completionDetector.evaluate(
-            plan,
-            currentObservation,
-            session.getStepCount()
-          );
-
-          if (evalResult.status === 'COMPLETED' && evalResult.confidence >= 0.8) {
-            session.setCompletion(evalResult);
-            await this.finalizeSessionAnalysis(session, 'COMPLETED');
+        // If navigation led to an authentication wall mid-session, handle it
+        if (currentObservation.authDetection?.authRequired) {
+          const authRes = await session.attemptGoogleAuthentication(currentObservation);
+          currentObservation = await session.observePage();
+          if (!authRes.authenticated) {
+            session.setCompletion({
+              status: 'BLOCKED',
+              confidence: 0.95,
+              evidence: [authRes.explanation],
+              explanation: authRes.explanation
+            });
+            await this.finalizeSessionAnalysis(session, 'AUTHENTICATION_REQUIRED');
             return;
           }
+          if (!currentObservation) break;
         }
 
         // Decide next action
@@ -65,36 +93,30 @@ export class TestingAgent {
           const finalEval = this.completionDetector.evaluate(
             plan,
             currentObservation,
-            session.getStepCount()
+            session.getStepCount(),
+            session.getData().events
           );
 
-          if (finalEval.status === 'COMPLETED') {
-            session.setCompletion(finalEval);
-            await this.finalizeSessionAnalysis(session, 'COMPLETED');
-          } else {
-            session.setCompletion({
-              status: 'COMPLETED',
-              confidence: 0.75,
-              evidence: [decision.rationale],
-              explanation: `Agent completed workflow steps: ${decision.rationale}`
-            });
-            await this.finalizeSessionAnalysis(session, 'COMPLETED');
-          }
+          session.setCompletion(finalEval);
+          await this.finalizeSessionAnalysis(
+            session,
+            finalEval.status === 'FAILED' ? 'FAILED' : 'COMPLETED'
+          );
           return;
         }
 
         if (decision.actionType === 'FAIL_TASK') {
           session.setCompletion({
             status: 'FAILED',
-            confidence: 0.85,
+            confidence: 0.9,
             evidence: [decision.rationale],
-            explanation: `Agent unable to proceed: ${decision.rationale}`
+            explanation: `Agent unable to complete task: ${decision.rationale}`
           });
           await this.finalizeSessionAnalysis(session, 'FAILED');
           return;
         }
 
-        // Execute decided action
+        // Execute decided action in real Playwright page
         const obsBefore = currentObservation;
         const actionRecord = await session.executeAction(
           decision.actionType,
@@ -121,11 +143,16 @@ export class TestingAgent {
         }
       }
 
-      // 3. Loop ended due to maxSteps or status change
+      // 4. Loop ended due to maxSteps or status change
       if (session.getStatus() === 'RUNNING') {
         const finalObs = currentObservation || (await session.observePage());
         if (finalObs) {
-          const evalResult = this.completionDetector.evaluate(plan, finalObs, session.getStepCount());
+          const evalResult = this.completionDetector.evaluate(
+            plan,
+            finalObs,
+            session.getStepCount(),
+            session.getData().events
+          );
           session.setCompletion(evalResult);
           await this.finalizeSessionAnalysis(
             session,
@@ -136,17 +163,24 @@ export class TestingAgent {
         }
       }
     } catch (err: any) {
+      session.setCompletion({
+        status: 'FAILED',
+        confidence: 1.0,
+        evidence: [err?.message || String(err)],
+        explanation: `Execution error: ${err?.message || String(err)}`
+      });
       await this.finalizeSessionAnalysis(session, 'FAILED');
     }
   }
 
-  private async finalizeSessionAnalysis(
+  public async finalizeSessionAnalysis(
     session: BrowserSession,
     finalStatus: 'COMPLETED' | 'FAILED' | 'BLOCKED' | 'AUTHENTICATION_REQUIRED'
   ): Promise<void> {
+    session.setStatus(finalStatus);
     const rawData = session.getData();
 
-    // Calculate UX Metrics & Findings
+    // Calculate UX Metrics & Findings from real telemetry
     const { metrics, findings } = this.uxAnalyzer.analyze(rawData);
     session.setMetrics(metrics);
     session.setFindings(findings);

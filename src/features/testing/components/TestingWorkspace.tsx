@@ -3,18 +3,13 @@ import {
   Compass,
   ArrowRight,
   RotateCcw,
-  Sparkles,
-  ExternalLink,
-  ShieldCheck,
   AlertTriangle,
   Play,
-  Layers,
-  Scale,
-  CheckCircle2,
-  Box
+  Box,
+  Lock
 } from 'lucide-react';
 import { TestingSession } from './TestingSession';
-import { BrowserSessionData } from '../../../lib/testing/testing.types';
+import { ALLOWED_GOOGLE_TEST_EMAIL } from '../../../lib/testing/testing.types';
 
 interface TestingWorkspaceProps {
   onSyncToGraph?: (evidence: any) => void;
@@ -22,36 +17,50 @@ interface TestingWorkspaceProps {
 
 const PRESET_TEST_CASES = [
   {
-    name: 'links.et (Short Link Creation)',
+    name: 'links.et (Payment Receipt Verification)',
     url: 'https://links.et/',
-    task: 'Find a way to create a short link for https://example.com and copy the resulting short URL.'
+    task: 'Verify transaction reference DHV0BHI2GG in the payment receipt input and inspect the response.',
+    useGoogleAuth: false
   },
   {
-    name: 'Standard Web Application',
+    name: 'links.et/signup (Google Auth Detection)',
+    url: 'https://links.et/signup',
+    task: 'Detect authentication requirements and test Continue with Google sign-in with g4uforlife@gmail.com.',
+    useGoogleAuth: true
+  },
+  {
+    name: 'Standard Web Application (example.com)',
     url: 'https://example.com',
-    task: 'Navigate to the domain information link and verify the more information section.'
+    task: 'Navigate to the domain information link and verify the more information section.',
+    useGoogleAuth: false
   },
   {
-    name: 'Documentation Exploration',
+    name: 'Live News Portal (news.ycombinator.com)',
     url: 'https://news.ycombinator.com',
-    task: 'Find the newest submissions and open the top submission.'
+    task: 'Find the newest submissions link and open the newest page.',
+    useGoogleAuth: false
   }
 ];
 
 export const TestingWorkspace: React.FC<TestingWorkspaceProps> = ({ onSyncToGraph }) => {
   const [productUrl, setProductUrl] = useState('https://links.et/');
   const [task, setTask] = useState(
-    'Find a way to create a short link for https://example.com and copy the resulting short URL.'
+    'Verify transaction reference DHV0BHI2GG in the payment receipt input and inspect the response.'
   );
+  const [useGoogleAuth, setUseGoogleAuth] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [isLaunching, setIsLaunching] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [comparisonMode, setComparisonMode] = useState(false);
-  const [comparisonHistory, setComparisonHistory] = useState<BrowserSessionData[]>([]);
 
-  const handleStartTest = async (overrideUrl?: string, overrideTask?: string) => {
+  const handleStartTest = async (
+    overrideUrl?: string,
+    overrideTask?: string,
+    overrideGoogleAuth?: boolean
+  ) => {
     const targetUrl = (overrideUrl || productUrl).trim();
     const targetTask = (overrideTask || task).trim();
+    const shouldUseGoogle =
+      overrideGoogleAuth !== undefined ? overrideGoogleAuth : useGoogleAuth;
 
     if (!targetUrl || !targetTask) return;
 
@@ -65,8 +74,9 @@ export const TestingWorkspace: React.FC<TestingWorkspaceProps> = ({ onSyncToGrap
         body: JSON.stringify({
           productUrl: targetUrl,
           task: targetTask,
-          maxSteps: 25,
-          timeoutMs: 120000
+          authEmail: shouldUseGoogle ? ALLOWED_GOOGLE_TEST_EMAIL : undefined,
+          maxSteps: 15,
+          timeoutMs: 90000
         })
       });
 
@@ -87,6 +97,7 @@ export const TestingWorkspace: React.FC<TestingWorkspaceProps> = ({ onSyncToGrap
   const handlePresetSelect = (preset: (typeof PRESET_TEST_CASES)[0]) => {
     setProductUrl(preset.url);
     setTask(preset.task);
+    setUseGoogleAuth(preset.useGoogleAuth);
   };
 
   return (
@@ -101,7 +112,7 @@ export const TestingWorkspace: React.FC<TestingWorkspaceProps> = ({ onSyncToGrap
           Probe can actually use a product, not just talk about it.
         </h2>
         <p className="text-xs sm:text-sm text-[#525866] mt-1.5 max-w-3xl leading-relaxed">
-          Launch an isolated Playwright browser session, execute concrete user tasks, capture real page interactions and screenshots, measure empirical UX friction, and generate structured evidence for your Living Evidence Graph.
+          Launch an isolated Playwright browser session, execute concrete user tasks against the live URL, capture real screenshots and navigation timing, detect authentication walls, and record console/network errors.
         </p>
       </div>
 
@@ -110,10 +121,10 @@ export const TestingWorkspace: React.FC<TestingWorkspaceProps> = ({ onSyncToGrap
         <div className="flex items-center justify-between text-xs font-mono font-bold uppercase tracking-wider text-[#868C98]">
           <div className="flex items-center gap-2 text-[#0A0D14]">
             <Box size={14} className="text-[#0F52BA]" />
-            <span>CONFIGURE BROWSER TEST PARAMETERS</span>
+            <span>CONFIGURE LIVE PLAYWRIGHT PARAMETERS</span>
           </div>
           <span className="text-[11px] font-normal normal-case text-[#059669]">
-            Headless Chromium with Sandboxed Context
+            Headless Chromium · Real Network & DOM
           </span>
         </div>
 
@@ -144,7 +155,7 @@ export const TestingWorkspace: React.FC<TestingWorkspaceProps> = ({ onSyncToGrap
                 type="text"
                 value={task}
                 onChange={(e) => setTask(e.target.value)}
-                placeholder="Find a way to create a short link for https://example.com and copy the resulting short URL."
+                placeholder="Verify transaction reference DHV0BHI2GG in the payment receipt input..."
                 className="flex-1 text-sm font-medium text-[#0A0D14] placeholder:text-[#94A3B8] border border-[#CBD5E1] rounded-2xl px-4 py-3 bg-[#FAFAFA] focus:outline-none focus:border-[#0F52BA] focus:ring-2 focus:ring-[#0F52BA]/15 transition-all"
               />
               <button
@@ -169,19 +180,34 @@ export const TestingWorkspace: React.FC<TestingWorkspaceProps> = ({ onSyncToGrap
           </div>
         </div>
 
-        {/* Quick Presets */}
-        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#F1F3F5] text-[11px] font-mono text-[#64748B]">
-          <span className="text-[#868C98]">Quick Presets:</span>
-          {PRESET_TEST_CASES.map((preset) => (
-            <button
-              key={preset.name}
-              type="button"
-              onClick={() => handlePresetSelect(preset)}
-              className="px-2.5 py-1 rounded-lg bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#334155] transition-colors cursor-pointer"
-            >
-              {preset.name}
-            </button>
-          ))}
+        {/* Google Auth Option & Presets */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[#F1F3F5] text-[11px] font-mono text-[#64748B]">
+          <label className="inline-flex items-center gap-2 cursor-pointer text-[#334155]">
+            <input
+              type="checkbox"
+              checked={useGoogleAuth}
+              onChange={(e) => setUseGoogleAuth(e.target.checked)}
+              className="rounded border-[#CBD5E1] text-[#0F52BA]"
+            />
+            <Lock size={12} className="text-[#0F52BA]" />
+            <span>
+              Support Google/Gmail Auth (<strong>{ALLOWED_GOOGLE_TEST_EMAIL}</strong> — no stored passwords)
+            </span>
+          </label>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[#868C98]">Presets:</span>
+            {PRESET_TEST_CASES.map((preset) => (
+              <button
+                key={preset.name}
+                type="button"
+                onClick={() => handlePresetSelect(preset)}
+                className="px-2.5 py-1 rounded-lg bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#334155] transition-colors cursor-pointer"
+              >
+                {preset.name}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -209,10 +235,16 @@ export const TestingWorkspace: React.FC<TestingWorkspaceProps> = ({ onSyncToGrap
           </p>
           <button
             type="button"
-            onClick={() => handleStartTest('https://links.et/', 'Find a way to create a short link for https://example.com and copy the resulting short URL.')}
+            onClick={() =>
+              handleStartTest(
+                'https://links.et/',
+                'Verify transaction reference DHV0BHI2GG in the payment receipt input and inspect the response.',
+                false
+              )
+            }
             className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#EFF6FF] border border-[#BFDBFE] text-[#1D4ED8] font-bold cursor-pointer hover:bg-[#DBEAFE] transition-colors"
           >
-            <span>Launch Demo: Test links.et live</span>
+            <span>Run Live Test on links.et</span>
             <ArrowRight size={13} />
           </button>
         </div>
