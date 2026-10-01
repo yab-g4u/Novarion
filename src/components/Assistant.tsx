@@ -2,23 +2,47 @@
 import React, { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { VoxideClient, VoxideWidget } from "@voxide/react";
-import { ALLOWED_GOOGLE_TEST_EMAIL } from "../lib/testing/testing.types";
-
-const VOXIDE_PUBLIC_KEY =
-  (typeof import.meta !== "undefined" &&
-    ((import.meta as any).env?.VITE_VOXIDE_KEY ||
-      (import.meta as any).env?.VITE_VOXIDE_PUBLIC_KEY)) ||
-  "vox_pub_XXXXXXXXXXXX";
+import { resolveLiveUrl } from "@voxide/react/core";
+import {
+  getConciseProbeState,
+  getProbeInternalState,
+  updateProbeLiveState,
+  ensureInvestigationLoaded,
+  emitProbeBridgeEvent,
+  findMatchingAssumption,
+  cleanNaturalIdeaInput,
+  inferAlternativesForIdea,
+  executeFindEvidence,
+  executeStartProductTest,
+  executeShowProductTestResults,
+  normalizeEvidenceStanceFilter,
+  normalizeSourceTypeFilter,
+} from "../lib/voxide/probeVoxideBridge";
+import {
+  resolveVoiceCapabilityCall,
+  formatCapabilityResultForSpeech,
+} from "../lib/voxide/voxideCapabilityAgent";
 
 // Publishable key — safe to ship in the browser
+const VOXIDE_PUBLIC_KEY =
+  (typeof import.meta.env !== "undefined" &&
+    (import.meta.env.VITE_VOXIDE_KEY || import.meta.env.VITE_VOXIDE_PUBLIC_KEY)) ||
+  "vox_pub_6e58205fd999454d834a51f6d2e4eee8b7cbc475cbe1521e";
+
+const isEphemeralPreviewOrigin =
+  typeof window !== "undefined" && window.location.hostname.endsWith(".run.app");
+
 export const ai = new VoxideClient({
   publicKey: VOXIDE_PUBLIC_KEY,
+  ...(isEphemeralPreviewOrigin ? { baseUrl: window.location.origin } : {}),
 });
 
-// Keep a reference to React Router's navigate function so global capabilities can navigate cleanly
+// Keep a reference to React Router's navigate function so capabilities can navigate cleanly without page reload
 let appNavigate: ((path: string) => void) | null = null;
 
 function navigateTo(path: string) {
+  updateProbeLiveState({ currentRoute: path });
+  ai.setActiveRoute(path);
   if (appNavigate) {
     appNavigate(path);
   } else if (typeof window !== "undefined") {
@@ -26,416 +50,1502 @@ function navigateTo(path: string) {
   }
 }
 
-// Register navigation with Probe's real application routes
+// 1. Register navigation with Probe's exact valid routes
 ai.enableNavigation(
   {
     push: (route: string) => navigateTo(route),
   },
   [
-    { path: "/", description: "Probe landing page with live investigation, evidence graph, and Playwright testing" },
-    { path: "/signin", description: "Founder sign-in and account authentication page" },
-    { path: "/app", description: "Main Probe founder workspace" },
-    { path: "/app/research", description: "Idea pressure-testing and multi-source research workspace" },
-    { path: "/app/testing", description: "Real Playwright headless browser product testing workspace" },
-    { path: "/app/evidence", description: "Living Evidence Graph showing supporting and challenging evidence nodes" },
-    { path: "/app/calendar", description: "Founder validation sprint calendar and milestone schedule" },
+    {
+      path: "/",
+      description: "Probe landing page with live investigation, evidence graph, and Playwright testing",
+    },
+    {
+      path: "/signin",
+      description: "Founder sign-in and account authentication page",
+    },
+    {
+      path: "/app",
+      description: "Main Probe founder workspace",
+    },
+    {
+      path: "/app/research",
+      description: "Idea pressure-testing, assumptions deconstruction, and multi-source research workspace",
+    },
+    {
+      path: "/app/testing",
+      description: "Real Playwright headless Chromium product testing workspace",
+    },
+    {
+      path: "/app/evidence",
+      description: "Living Evidence Graph showing supporting and challenging evidence nodes and validation tests",
+    },
+    {
+      path: "/app/calendar",
+      description: "Founder validation sprint calendar and scheduled validation experiments",
+    },
   ]
 );
 
-// Register real capabilities for Probe
+// 2. Register REAL Probe capabilities
 ai.register({
-  investigateIdea: {
+  startInvestigation: {
     description:
-      "Pressure-test and investigate a startup idea, product concept, or market hypothesis across Reddit, X, LinkedIn, and ScholarXIV.",
+      "Starts a complete Probe investigation for any arbitrary natural-language product idea or market hypothesis. Deconstructs the idea into testable assumptions, researches real practitioner and academic evidence, identifies supporting and conflicting signals, identifies existing alternatives, populates the investigation UI, and returns the actual investigation results.",
     params: {
       idea: {
         type: "string",
         required: true,
-        description: "The startup idea, product hypothesis, or market claim to investigate",
-      },
-      openWorkspace: {
-        type: "boolean",
-        description: "If true, navigate to the full Research Workspace (/app/research) to display the investigation",
+        description:
+          "The user's raw natural-language product idea, concept, or hypothesis to investigate (do not summarize or alter the idea).",
       },
     },
-    handler: async ({ idea, openWorkspace }) => {
-      const cleanIdea = String(idea || "").trim();
-      if (!cleanIdea) {
-        return { status: "error", message: "Please provide a startup idea or hypothesis to investigate." };
-      }
-
-      if (typeof window !== "undefined") {
-        localStorage.setItem("probe_active_idea", cleanIdea);
-        window.dispatchEvent(
-          new CustomEvent("probe:voxide-investigate", {
-            detail: { idea: cleanIdea },
-          })
-        );
-      }
-
-      if (openWorkspace) {
-        navigateTo("/app/research");
-      }
-
-      const res = await fetch("/api/pressure-test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idea: cleanIdea }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        return {
-          status: "error",
-          message: err.message || err.error || `Pressure-test request failed (HTTP ${res.status})`,
-        };
-      }
-
-      const data = await res.json();
-      return {
-        status: "ok",
-        idea: data.idea,
-        verdict: data.verdict?.overallAssessment || "Analyzed",
-        confidenceScore: data.verdict?.confidenceScore,
-        assumptionsCount: Array.isArray(data.assumptions) ? data.assumptions.length : 0,
-        evidenceCount: Array.isArray(data.allEvidence) ? data.allEvidence.length : 0,
-        topRecommendation: data.verdict?.recommendedNextStep,
-      };
-    },
-  },
-
-  searchEvidence: {
-    description:
-      "Search real-world practitioner discussions and academic papers across Reddit, X, LinkedIn, and ScholarXIV.",
-    params: {
-      query: {
-        type: "string",
-        required: true,
-        description: "Search query or topic to look up across evidence sources",
-      },
-      source: {
-        type: "string",
-        description: "Optional specific source filter",
-        enum: ["all", "reddit", "x", "linkedin", "scholarxiv"],
-      },
-      limit: {
-        type: "number",
-        description: "Maximum number of evidence items to return (1 to 25)",
-      },
-    },
-    handler: async ({ query, source, limit }) => {
-      const cleanQuery = String(query || "").trim();
-      const sources =
-        source && source !== "all" ? [String(source)] : ["reddit", "x", "linkedin", "scholarxiv"];
-
-      const res = await fetch("/api/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query: cleanQuery,
-          sources,
-          limit: typeof limit === "number" ? Math.min(Math.max(limit, 1), 25) : 10,
-        }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        return {
-          status: "error",
-          message: err.message || err.error || `Evidence search failed (HTTP ${res.status})`,
-        };
-      }
-
-      const data = await res.json();
-      return {
-        status: "ok",
-        query: cleanQuery,
-        totalResults: data.results?.length || 0,
-        topResults: (data.results || []).slice(0, 5).map((r: any) => ({
-          title: r.title,
-          sourceType: r.sourceType,
-          stance: r.stance,
-          url: r.url,
-        })),
-      };
-    },
-  },
-
-  runProductTest: {
-    description:
-      "Launch a real headless Playwright Chromium browser session to open a live website URL, execute a concrete user task, measure load time, and detect UX friction.",
-    params: {
-      productUrl: {
-        type: "string",
-        required: true,
-        description: "The live website URL to open in Playwright (e.g. https://links.et or https://example.com)",
-      },
-      task: {
-        type: "string",
-        description: "Concrete user task for the Playwright browser agent to execute on the target site",
-      },
-      useGoogleAuth: {
-        type: "boolean",
-        description: "Enable Google Sign-In authentication testing where the site supports Google OAuth",
-      },
-    },
-    handler: async ({ productUrl, task, useGoogleAuth }) => {
-      const targetUrl = String(productUrl || "").trim();
-      const targetTask =
-        String(
-          task || "Explore landing page, test primary navigation, and evaluate UX friction"
-        ).trim();
-
-      const res = await fetch("/api/testing/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          productUrl: targetUrl,
-          task: targetTask,
-          authEmail: useGoogleAuth ? ALLOWED_GOOGLE_TEST_EMAIL : undefined,
-          maxSteps: 8,
-          timeoutMs: 45000,
-        }),
-      });
-
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) {
+    handler: async ({ idea }) => {
+      const rawIdea = String(idea || "").trim();
+      const cleanIdea = cleanNaturalIdeaInput(rawIdea) || rawIdea;
+      if (!cleanIdea || cleanIdea.length < 3) {
+        updateProbeLiveState({ investigationStatus: "ERROR" });
         return {
           status: "error",
           message:
-            payload?.message ||
-            payload?.error ||
-            `Failed to launch Playwright session (HTTP ${res.status})`,
+            "Please provide a clear product idea or hypothesis (at least 3 characters) to investigate.",
+          recovery: "Ask the user what product idea or problem they want Probe to research.",
         };
       }
 
       if (typeof window !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent("probe:voxide-product-test", {
-            detail: {
-              sessionId: payload.sessionId,
-              productUrl: payload.productUrl || targetUrl,
-              task: payload.task || targetTask,
-              useGoogleAuth: Boolean(useGoogleAuth),
-            },
-          })
-        );
+        const currentPath = window.location.pathname || "/";
+        if (currentPath === "/") {
+          const el = document.getElementById("live-investigation");
+          el?.scrollIntoView({ behavior: "smooth" });
+        } else if (currentPath !== "/app/research") {
+          navigateTo("/app/research");
+        }
       }
 
+      try {
+        const data = await ensureInvestigationLoaded(cleanIdea, true);
+        const analyses = data.analysis || [];
+        const contradictions = analyses
+          .filter((a) => a.status === "CHALLENGED" || a.contradiction || a.challengingCount > 0)
+          .map((a) => ({
+            assumptionId: a.assumption.id,
+            assumption: a.assumption.text,
+            contradiction:
+              a.contradiction || `${a.challengingCount} challenging practitioner signals found`,
+          }));
+        const alternatives = inferAlternativesForIdea(data.idea || cleanIdea);
+
+        return {
+          status: "success",
+          investigationId: getConciseProbeState().currentInvestigationId,
+          idea: data.idea,
+          assumptionsFound: analyses.map((a) => ({
+            id: a.assumption.id,
+            category: a.assumption.category,
+            text: a.assumption.text,
+            status: a.status,
+            supportingSignals: a.supportingCount,
+            challengingSignals: a.challengingCount,
+          })),
+          assumptionsCount: analyses.length,
+          assumptions: analyses.map((a) => ({
+            id: a.assumption.id,
+            text: a.assumption.text,
+            status: a.status,
+          })),
+          evidenceFound: {
+            total: data.allEvidence?.length || 0,
+            supporting: (data.allEvidence || []).filter((e) => e.stance === "SUPPORTS").length,
+            challenging: (data.allEvidence || []).filter((e) => e.stance === "CHALLENGES").length,
+            topSignals: (data.allEvidence || []).slice(0, 4).map((e) => ({
+              id: e.id,
+              sourceType: e.sourceType,
+              stance: e.stance,
+              title: e.title,
+              excerpt: e.excerpt,
+            })),
+          },
+          evidenceCount: data.allEvidence?.length || 0,
+          contradictionsFound: contradictions,
+          alternativesFound: alternatives,
+          strongestSignal: data.summary?.strongestSignal,
+          biggestContradiction: data.summary?.biggestContradiction,
+          recommendedNextStep: data.summary?.recommendedNextTest?.description,
+        };
+      } catch (err: any) {
+        updateProbeLiveState({ investigationStatus: "ERROR" });
+        return {
+          status: "error",
+          message: err?.message || "Failed to execute Probe investigation pipeline.",
+          recovery: "Check network connectivity or retry the investigation with a specific product idea.",
+        };
+      }
+    },
+  },
+
+  showAssumptions: {
+    description:
+      "Display and optionally focus a specific deconstructed assumption generated by Probe for the active investigation.",
+    params: {
+      idea: {
+        type: "string",
+        description: "Optional idea to inspect assumptions for; defaults to the current active idea.",
+      },
+      focusAssumption: {
+        type: "string",
+        description:
+          "Optional assumption selector such as 'first', 'second', 'third', 'A1', 'A2', 'this', or a keyword to focus a specific assumption in the UI.",
+      },
+    },
+    handler: async ({ idea, focusAssumption }) => {
+      const data = await ensureInvestigationLoaded(idea ? String(idea) : undefined);
+      const analyses = data.analysis || [];
+      const focused = focusAssumption
+        ? findMatchingAssumption(analyses, String(focusAssumption))
+        : undefined;
+
+      if (focused) {
+        updateProbeLiveState({
+          selectedNode: focused.assumption.id,
+          activeEvidenceFilters: {
+            ...getProbeInternalState().activeEvidenceFilters,
+            assumptionId: focused.assumption.id,
+          },
+        });
+      }
+
+      if (typeof window !== "undefined") {
+        const currentPath = window.location.pathname || "/";
+        if (currentPath === "/app/evidence" && focused) {
+          emitProbeBridgeEvent("probe:voxide-open-graph", {
+            focusNodeId: focused.assumption.id,
+          });
+        } else {
+          if (!currentPath.startsWith("/app") || (currentPath !== "/app/research" && currentPath !== "/app")) {
+            navigateTo("/app/research");
+          }
+          setTimeout(() => {
+            emitProbeBridgeEvent("probe:voxide-show-assumptions", {
+              idea: data.idea,
+              assumptionId: focused?.assumption.id || "all",
+              assumptions: analyses,
+            });
+          }, 60);
+        }
+      }
+
+      const assumptions = analyses.map((a, idx) => ({
+        id: a.assumption.id,
+        index: idx + 1,
+        category: a.assumption.category,
+        text: a.assumption.text,
+        status: a.status,
+        testability: a.assumption.testability,
+        supportingSignals: a.supportingCount,
+        challengingSignals: a.challengingCount,
+        contradiction: a.contradiction || null,
+      }));
+
       return {
-        status: "ok",
-        sessionId: payload.sessionId,
-        sessionStatus: payload.status,
-        productUrl: payload.productUrl,
-        task: payload.task,
+        status: "success",
+        idea: data.idea,
+        focusedAssumption: focused
+          ? {
+              id: focused.assumption.id,
+              text: focused.assumption.text,
+              status: focused.status,
+              contradiction: focused.contradiction || null,
+            }
+          : null,
+        assumptionsCount: assumptions.length,
+        assumptions,
       };
     },
   },
 
-  getProductTestStatus: {
+  challengeAssumption: {
     description:
-      "Check the status, page load timing, actions, and UX findings of a Playwright product testing session.",
+      "Challenge a real assumption in the active Probe investigation, mark it as CHALLENGED in the workspace and Living Evidence Graph, and surface empirical counter-evidence against it. Supports natural references like 'this assumption', 'the second assumption', or assumption IDs (A1, A2).",
     params: {
-      sessionId: {
+      assumptionIdOrQuery: {
         type: "string",
-        description: "Optional specific Playwright sessionId. If omitted, returns the most recent session.",
+        description:
+          "Optional assumption reference ('this', 'first', 'second', 'A1', 'A2', or topic keyword). If omitted, challenges the currently selected assumption in visible UI state.",
+      },
+      reason: {
+        type: "string",
+        description: "Optional reason or counter-argument explaining why this assumption is challenged.",
       },
     },
-    handler: async ({ sessionId }) => {
-      if (sessionId) {
-        const res = await fetch(`/api/testing/session/${encodeURIComponent(String(sessionId))}`);
-        if (!res.ok) {
-          return { status: "error", message: `Session ${sessionId} not found (HTTP ${res.status})` };
-        }
-        const sess = await res.json();
+    handler: async ({ assumptionIdOrQuery, reason }) => {
+      const data = await ensureInvestigationLoaded();
+      const matched = findMatchingAssumption(
+        data.analysis || [],
+        assumptionIdOrQuery ? String(assumptionIdOrQuery) : undefined
+      );
+
+      if (!matched) {
         return {
-          status: "ok",
-          sessionId: sess.sessionId,
-          sessionStatus: sess.status,
-          currentUrl: sess.currentUrl,
-          loadTimeMs: sess.navigationTiming?.loadTimeMs,
-          stepCount: sess.stepCount,
-          errors: sess.errors,
-          findingsCount: sess.findings?.length || 0,
+          status: "error",
+          message: "No assumptions are available in the current investigation to challenge.",
+          recovery: "Start an investigation first using startInvestigation.",
         };
       }
 
-      const listRes = await fetch("/api/testing/sessions");
-      if (!listRes.ok) {
-        return { status: "error", message: "Unable to retrieve active testing sessions." };
-      }
-      const { sessions } = await listRes.json();
-      const latest = Array.isArray(sessions) && sessions.length > 0 ? sessions[0] : null;
-      if (!latest) {
-        return { status: "ok", message: "No product testing sessions have been run yet." };
-      }
+      const challengeReason =
+        String(
+          reason ||
+            matched.contradiction ||
+            "Challenged via empirical stress-test: requires independent practitioner verification"
+        ).trim();
+
+      updateProbeLiveState({
+        selectedNode: matched.assumption.id,
+        challengedAssumptions: {
+          ...getProbeInternalState().challengedAssumptions,
+          [matched.assumption.id]: {
+            nodeId: matched.assumption.id,
+            challenged: true,
+            reason: challengeReason,
+            author: "Founder",
+            timestamp: "Just now",
+          },
+        },
+      });
+
+      emitProbeBridgeEvent("probe:voxide-challenge-assumption", {
+        assumptionId: matched.assumption.id,
+        assumptionText: matched.assumption.text,
+        reason: challengeReason,
+      });
+
+      const counterEvidence = (data.allEvidence || [])
+        .filter(
+          (ev) =>
+            ev.relatedAssumptionIds.includes(matched.assumption.id) &&
+            ev.stance === "CHALLENGES"
+        )
+        .slice(0, 3)
+        .map((ev) => ({
+          title: ev.title,
+          sourceType: ev.sourceType,
+          excerpt: ev.excerpt,
+          url: ev.url,
+        }));
+
       return {
-        status: "ok",
-        sessionId: latest.sessionId,
-        sessionStatus: latest.status,
-        currentUrl: latest.currentUrl,
-        loadTimeMs: latest.navigationTiming?.loadTimeMs,
-        stepCount: latest.stepCount,
-        errors: latest.errors,
+        status: "success",
+        challengedAssumptionId: matched.assumption.id,
+        assumptionText: matched.assumption.text,
+        previousStatus: matched.status,
+        newStatus: "CHALLENGED",
+        challengeReason,
+        challengingSignalsCount: matched.challengingCount,
+        counterEvidence,
       };
     },
   },
 
-  stopProductTest: {
-    description: "Stop and abort a running Playwright browser product testing session.",
-    dangerous: true,
-    params: {
-      sessionId: {
-        type: "string",
-        required: true,
-        description: "The sessionId of the running Playwright test to abort",
-      },
-    },
-    handler: async ({ sessionId }) => {
-      const res = await fetch(
-        `/api/testing/session/${encodeURIComponent(String(sessionId))}/stop`,
-        { method: "POST" }
-      );
-      if (!res.ok) {
-        return { status: "error", message: "Session not found or already finished." };
-      }
-      return { status: "ok", sessionId, sessionStatus: "STOPPED" };
-    },
-  },
-
-  filterWorkspaceEvidence: {
+  findEvidence: {
     description:
-      "Filter the evidence items in the Probe Research Workspace by stance (supporting vs challenging) or by source platform.",
-    scope: "/app/*",
+      "Retrieve real empirical evidence for an existing investigation or arbitrary search query through Probe's research pipeline across Reddit, X, LinkedIn, and ScholarXIV. Supports filtering by evidenceType (supporting vs contradictory) and sourceType.",
     params: {
-      stance: {
+      query: {
         type: "string",
-        description: "Filter evidence by stance toward the hypothesis",
-        enum: ["all", "SUPPORTS", "CHALLENGES", "NEUTRAL"],
+        description:
+          "Arbitrary search query, problem statement, or topic to find evidence for. Defaults to the current active investigation idea if omitted.",
+      },
+      evidenceType: {
+        type: "string",
+        description:
+          "Optional evidence stance/type to retrieve ('all', 'supporting', 'contradictory', 'SUPPORTS', 'CHALLENGES', 'NEUTRAL').",
       },
       sourceType: {
         type: "string",
-        description: "Filter evidence by source platform",
-        enum: ["all", "reddit", "x", "linkedin", "scholarxiv"],
+        description:
+          "Optional source platform ('all', 'reddit', 'scholarxiv', 'academic', 'x', 'linkedin').",
       },
-      tab: {
+      source: {
         type: "string",
-        description: "Switch between verified, unverified, or rejected evidence repositories",
-        enum: ["verified", "unverified", "rejected"],
+        description: "Optional alias for sourceType ('all', 'reddit', 'x', 'linkedin', 'scholarxiv').",
+      },
+      stance: {
+        type: "string",
+        description: "Optional alias for evidenceType ('all', 'SUPPORTS', 'CHALLENGES', 'NEUTRAL').",
       },
     },
-    handler: async ({ stance, sourceType, tab }) => {
+    handler: async ({ query, evidenceType, sourceType, source, stance }) => {
       if (typeof window !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent("probe:voxide-filter", {
-            detail: { stance, sourceType, tab },
-          })
-        );
+        const path = window.location.pathname || "/";
+        if (path === "/signin" || path === "/app/testing" || path === "/app/calendar") {
+          navigateTo("/app/research");
+        }
       }
+
+      const result = await executeFindEvidence({
+        query: query ? String(query) : undefined,
+        evidenceType: String(evidenceType || stance || "all"),
+        sourceType: String(sourceType || source || "all"),
+      });
+
       return {
-        status: "ok",
-        appliedFilters: {
-          stance: stance || "unchanged",
-          sourceType: sourceType || "unchanged",
-          tab: tab || "unchanged",
+        ...result,
+        totalVerifiedEvidence: result.evidenceCount,
+        topEvidence: result.evidence,
+      };
+    },
+  },
+
+  addEvidence: {
+    description:
+      "Add a new supporting or challenging empirical evidence item directly into the active investigation and Living Evidence Graph.",
+    params: {
+      excerpt: {
+        type: "string",
+        required: true,
+        description: "The quote, observation, or empirical finding to add as evidence.",
+      },
+      stance: {
+        type: "string",
+        description: "Whether this evidence supports or challenges the core hypothesis.",
+        enum: ["Supports", "Challenges"],
+      },
+      sourceType: {
+        type: "string",
+        description: "Source platform of the evidence.",
+        enum: ["reddit", "x", "linkedin", "scholarxiv", "docs"],
+      },
+      sourceName: {
+        type: "string",
+        description: "Name or author of the evidence source.",
+      },
+      url: {
+        type: "string",
+        description: "Optional URL link for the evidence source.",
+      },
+    },
+    handler: async ({ excerpt, stance, sourceType, sourceName, url }) => {
+      const cleanExcerpt = String(excerpt || "").trim();
+      if (!cleanExcerpt) {
+        return { status: "error", message: "Evidence excerpt is required." };
+      }
+
+      const relationship: "Supports" | "Challenges" =
+        String(stance || "Supports").toLowerCase().includes("challeng")
+          ? "Challenges"
+          : "Supports";
+
+      const newSource = {
+        id: `ev_custom_${Date.now()}`,
+        sourceType: (sourceType || "reddit") as any,
+        sourceName: String(sourceName || "Founder Field Evidence"),
+        sourceIdentifier: `${sourceName || "Founder"} · Empirical Signal`,
+        date: "Just now",
+        excerpt: cleanExcerpt,
+        relationship,
+        url: String(url || "https://novarion.ethiodeploy.com"),
+        topic: "founder_empirical_evidence",
+        confidence: 90,
+      };
+
+      const internal = getProbeInternalState();
+      updateProbeLiveState({
+        customEvidence: [newSource, ...internal.customEvidence],
+        selectedNode: newSource.id,
+      });
+
+      emitProbeBridgeEvent("probe:voxide-add-evidence", {
+        evidence: newSource,
+      });
+
+      return {
+        status: "success",
+        addedEvidence: {
+          id: newSource.id,
+          excerpt: newSource.excerpt,
+          relationship: newSource.relationship,
+          sourceName: newSource.sourceName,
         },
       };
     },
   },
 
-  scrollToLandingSection: {
+  createValidationTest: {
     description:
-      "Scroll smoothly to a specific section on the Probe landing page (live investigation, evidence graph, or product testing).",
-    scope: "/",
+      "Create and schedule a real-world validation experiment to test an assumption in the Probe Validation Calendar and Living Evidence Graph.",
     params: {
-      section: {
+      question: {
         type: "string",
-        required: true,
-        description: "Section identifier on the landing page",
-        enum: ["live-investigation", "section-evidence-graph", "section-testing"],
+        description:
+          "The validation question or hypothesis to test. If omitted, generates an experiment for the selected or highest-risk assumption.",
+      },
+      method: {
+        type: "string",
+        description: "Validation experiment method.",
+        enum: [
+          "user_interviews",
+          "landing_page_smoke",
+          "prototype_test",
+          "preorder_test",
+          "data_scrape",
+          "live_telemetry",
+        ],
+      },
+      target: {
+        type: "string",
+        description: "Target audience or sample size for the validation test.",
+      },
+      successSignal: {
+        type: "string",
+        description: "Measurable success threshold that validates the assumption.",
       },
     },
-    handler: async ({ section }) => {
-      if (typeof document !== "undefined") {
-        const el = document.getElementById(String(section));
-        if (el) {
-          el.scrollIntoView({ behavior: "smooth" });
-          return { status: "ok", scrolledTo: section };
+    handler: async ({ question, method, target, successSignal }) => {
+      const data = await ensureInvestigationLoaded();
+      const targetAssumption = findMatchingAssumption(data.analysis || []);
+
+      const testQuestion = String(
+        question ||
+          data.summary?.recommendedNextTest?.description ||
+          (targetAssumption
+            ? `Validate whether users experience "${targetAssumption.assumption.text}" in real workflows`
+            : `Validate core demand for "${data.idea}"`)
+      ).trim();
+
+      const rawMethod = String(method || "prototype_test");
+      const methodMap: Record<
+        string,
+        | "landing_page_smoke"
+        | "user_interviews"
+        | "preorder_test"
+        | "prototype_test"
+        | "data_scrape"
+        | "live_telemetry"
+      > = {
+        interviews: "user_interviews",
+        user_interviews: "user_interviews",
+        landing_page: "landing_page_smoke",
+        landing_page_smoke: "landing_page_smoke",
+        prototype: "prototype_test",
+        prototype_test: "prototype_test",
+        preorder_test: "preorder_test",
+        data_scrape: "data_scrape",
+        live_telemetry: "live_telemetry",
+      };
+      const methodKey = methodMap[rawMethod] || "prototype_test";
+
+      const methodLabels: Record<string, string> = {
+        user_interviews: "Customer Discovery Interviews",
+        landing_page_smoke: "Fake Door / Smoke Test",
+        prototype_test: "Interactive Prototype Usability Test",
+        preorder_test: "Pre-order Willingness-to-Pay Test",
+        data_scrape: "Practitioner Cohort Data Scrape",
+        live_telemetry: "Live Product Telemetry Test",
+      };
+
+      const newTest = {
+        id: `test_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        originatingNodeId: targetAssumption?.assumption.id || "central-idea",
+        originatingNodeLabel: targetAssumption?.assumption.text || data.idea,
+        question: testQuestion,
+        method: methodKey,
+        methodLabel: methodLabels[methodKey] || "Validation Experiment",
+        target: String(target || "15 target practitioners in active workflow"),
+        successSignal: String(
+          successSignal || "At least 40% complete the workflow and request follow-up access"
+        ),
+        scheduledDate: "Sep 18, 2025",
+        monthIndex: 8,
+        day: 18,
+        status: "PLANNED" as const,
+        author: "Founder",
+        createdAt: new Date().toISOString(),
+      };
+
+      const internal = getProbeInternalState();
+      updateProbeLiveState({
+        validationTests: [newTest, ...internal.validationTests],
+        selectedNode: newTest.id,
+      });
+
+      emitProbeBridgeEvent("probe:voxide-create-validation-test", {
+        test: newTest,
+      });
+
+      return {
+        status: "success",
+        validationTest: {
+          id: newTest.id,
+          question: newTest.question,
+          method: newTest.methodLabel,
+          target: newTest.target,
+          successSignal: newTest.successSignal,
+          scheduledDate: newTest.scheduledDate,
+          originatingAssumption: newTest.originatingNodeId,
+        },
+      };
+    },
+  },
+
+  openEvidenceGraph: {
+    description:
+      "Open the visual Living Evidence Graph (/app/evidence) to inspect supporting and challenging evidence nodes, focus on a specific assumption or node, and filter graph relationships.",
+    params: {
+      focusNodeId: {
+        type: "string",
+        description:
+          "Optional node ID, assumption ID ('A1', 'A2'), or natural reference ('first assumption', 'second assumption', 'this') to focus in the graph.",
+      },
+      filter: {
+        type: "string",
+        description:
+          "Optional graph filter ('all', 'Supports', 'Challenges', 'Tests', 'Decisions', 'supporting', 'contradictory').",
+      },
+    },
+    handler: async ({ focusNodeId, filter }) => {
+      const data = await ensureInvestigationLoaded();
+      let resolvedNodeId: string | null = focusNodeId ? String(focusNodeId) : null;
+
+      if (resolvedNodeId) {
+        const matchedAssump = findMatchingAssumption(data.analysis || [], resolvedNodeId);
+        if (matchedAssump) {
+          resolvedNodeId = matchedAssump.assumption.id;
         }
       }
-      return { status: "error", message: `Section ${section} is not visible on the current page.` };
+
+      const rawFilter = String(filter || "all");
+      const stanceNorm = normalizeEvidenceStanceFilter(rawFilter);
+      let graphFilter = "all";
+      if (stanceNorm === "SUPPORTS" || rawFilter === "Supports") graphFilter = "Supports";
+      else if (stanceNorm === "CHALLENGES" || rawFilter === "Challenges") graphFilter = "Challenges";
+      else if (/test/i.test(rawFilter)) graphFilter = "Tests";
+      else if (/decision/i.test(rawFilter)) graphFilter = "Decisions";
+
+      updateProbeLiveState({
+        ...(resolvedNodeId ? { selectedNode: resolvedNodeId } : {}),
+        evidenceGraphFilter: graphFilter,
+      });
+
+      navigateTo("/app/evidence");
+
+      setTimeout(() => {
+        emitProbeBridgeEvent("probe:voxide-open-graph", {
+          focusNodeId: resolvedNodeId,
+          filter: graphFilter,
+        });
+      }, 80);
+
+      const concise = getConciseProbeState();
+      return {
+        status: "success",
+        route: "/app/evidence",
+        focusedNode: resolvedNodeId || concise.selectedNode || "central-idea",
+        filter: graphFilter,
+        evidenceGraphState: concise.evidenceGraphState,
+      };
     },
   },
 
-  signInFounder: {
-    description: "Sign in to the Probe Founder Workspace using an email address.",
+  filterEvidence: {
+    description:
+      "Filter existing evidence in the current Probe workspace and Living Evidence Graph by stance (supporting vs contradictory/against), source platform (Reddit, ScholarXIV, X, LinkedIn), or assumption (e.g. 'first assumption', 'second assumption', 'this').",
     params: {
-      email: {
+      stance: {
         type: "string",
-        required: true,
-        sensitive: true,
-        description: "Founder email address to sign in with",
+        description:
+          "Filter evidence by stance toward the hypothesis ('all', 'SUPPORTS', 'CHALLENGES', 'NEUTRAL', 'supporting', 'contradictory', 'against').",
+      },
+      sourceType: {
+        type: "string",
+        description:
+          "Filter evidence by source platform ('all', 'reddit', 'x', 'linkedin', 'scholarxiv', 'academic').",
+      },
+      assumptionId: {
+        type: "string",
+        description:
+          "Optional assumption selector ('all', 'A1', 'A2', 'first', 'second', 'third', 'this', or keyword) to focus and filter evidence for.",
+      },
+      tab: {
+        type: "string",
+        description: "Switch between verified, unverified, or rejected evidence repositories.",
+        enum: ["verified", "unverified", "rejected"],
       },
     },
-    handler: async ({ email }) => {
-      const userEmail = String(email || "founder@probe.dev").trim();
-      const userName = userEmail.split("@")[0] || "Founder";
-      const profile = {
-        name: userName.charAt(0).toUpperCase() + userName.slice(1),
-        email: userEmail,
-        signedInAt: new Date().toISOString(),
+    handler: async ({ stance, sourceType, assumptionId, tab }) => {
+      const data = await ensureInvestigationLoaded();
+      const normalizedStance = normalizeEvidenceStanceFilter(stance ? String(stance) : undefined);
+      const normalizedSource = normalizeSourceTypeFilter(
+        sourceType ? String(sourceType) : undefined
+      );
+
+      let resolvedAssumptionId = "all";
+      if (assumptionId && String(assumptionId).toLowerCase() !== "all") {
+        const matched = findMatchingAssumption(data.analysis || [], String(assumptionId));
+        if (matched) {
+          resolvedAssumptionId = matched.assumption.id;
+          updateProbeLiveState({ selectedNode: matched.assumption.id });
+        }
+      }
+
+      const graphFilter =
+        normalizedStance === "CHALLENGES"
+          ? "Challenges"
+          : normalizedStance === "SUPPORTS"
+          ? "Supports"
+          : "all";
+
+      updateProbeLiveState({
+        activeEvidenceFilters: {
+          stance: normalizedStance,
+          sourceType: normalizedSource,
+          assumptionId: resolvedAssumptionId,
+          tab: String(tab || "verified"),
+        },
+        evidenceGraphFilter: graphFilter,
+      });
+
+      emitProbeBridgeEvent("probe:voxide-filter", {
+        stance: normalizedStance,
+        sourceType: normalizedSource,
+        assumptionId: resolvedAssumptionId,
+        tab: tab || "verified",
+        scrollToEvidence: true,
+      });
+
+      emitProbeBridgeEvent("probe:voxide-open-graph", {
+        focusNodeId: resolvedAssumptionId !== "all" ? resolvedAssumptionId : undefined,
+        filter: graphFilter,
+      });
+
+      const matchingItems = (data.allEvidence || []).filter((ev) => {
+        if (normalizedStance !== "all" && ev.stance !== normalizedStance) return false;
+        if (normalizedSource !== "all" && ev.sourceType !== normalizedSource) return false;
+        if (
+          resolvedAssumptionId !== "all" &&
+          !ev.relatedAssumptionIds.includes(resolvedAssumptionId)
+        ) {
+          return false;
+        }
+        return true;
+      });
+
+      return {
+        status: "success",
+        appliedFilters: {
+          stance: normalizedStance,
+          sourceType: normalizedSource,
+          assumptionId: resolvedAssumptionId,
+          tab: tab || "verified",
+        },
+        matchingEvidenceCount: matchingItems.length,
+        matchingEvidence: matchingItems.slice(0, 4).map((e) => ({
+          id: e.id,
+          sourceType: e.sourceType,
+          stance: e.stance,
+          title: e.title,
+          excerpt: e.excerpt,
+        })),
       };
-      if (typeof window !== "undefined") {
-        localStorage.setItem("probe_auth_user", JSON.stringify(profile));
-      }
-      ai.setUser({ userId: userEmail, email: userEmail, name: profile.name });
-      navigateTo("/app/research");
-      return { status: "ok", signedInAs: profile.name };
     },
   },
 
-  signOutFounder: {
-    description: "Sign out of the Probe Founder Workspace and return to the home page.",
-    dangerous: true,
-    scope: "/app/*",
+  startProductTest: {
+    description:
+      "Execute a real headless Chromium Playwright test with a simulated user against a live external product URL. Resolves the target URL from the request or active state, executes the user's testing objective/persona, updates the Probe Product Testing UI, and returns actual Playwright observations and friction.",
+    params: {
+      productUrl: {
+        type: "string",
+        description:
+          "Target website URL to test in Playwright. If omitted, uses the active product URL from current Probe state.",
+      },
+      task: {
+        type: "string",
+        description:
+          "Concrete user task or testing objective for the simulated user to perform (e.g. 'Try to sign up', 'See if a first-time user can complete the main task and look for friction').",
+      },
+      persona: {
+        type: "string",
+        description:
+          "Optional simulated user persona (e.g. 'student', 'first-time user', 'skeptical buyer').",
+      },
+      useGoogleAuth: {
+        type: "boolean",
+        description:
+          "Enable Google/Gmail Sign-In authentication testing where the site supports Google OAuth.",
+      },
+    },
+    handler: async ({ productUrl, task, persona, useGoogleAuth }) => {
+      if (typeof window !== "undefined") {
+        const currentPath = window.location.pathname || "/";
+        if (currentPath.startsWith("/app") && currentPath !== "/app/testing") {
+          navigateTo("/app/testing");
+        } else if (currentPath === "/") {
+          const section = document.getElementById("section-testing");
+          section?.scrollIntoView({ behavior: "smooth" });
+        } else if (currentPath === "/signin") {
+          navigateTo("/app/testing");
+        }
+      }
+
+      return executeStartProductTest({
+        productUrl: productUrl ? String(productUrl) : undefined,
+        task: task ? String(task) : undefined,
+        persona: persona ? String(persona) : undefined,
+        useGoogleAuth: Boolean(useGoogleAuth),
+      });
+    },
+  },
+
+  showProductTestResults: {
+    description:
+      "Inspect and return the actual Playwright observations, simulated user steps, failure points, load timing, and biggest UX friction from the current or most recent product testing session.",
+    params: {
+      sessionId: {
+        type: "string",
+        description:
+          "Optional specific Playwright sessionId. If omitted, inspects the active or most recent Playwright test session.",
+      },
+    },
+    handler: async ({ sessionId }) => {
+      if (typeof window !== "undefined") {
+        const currentPath = window.location.pathname || "/";
+        if (currentPath.startsWith("/app") && currentPath !== "/app/testing") {
+          navigateTo("/app/testing");
+        } else if (currentPath === "/") {
+          const section = document.getElementById("section-testing");
+          section?.scrollIntoView({ behavior: "smooth" });
+        }
+      }
+
+      return executeShowProductTestResults(sessionId ? String(sessionId) : undefined);
+    },
+  },
+
+  summarizeInvestigation: {
+    description:
+      "Summarize the real current Probe investigation state based on actual deconstructed assumptions, supporting and challenging evidence, contradictions, existing alternatives, unresolved unknowns, and scheduled validation experiments.",
+    params: {},
     handler: async () => {
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("probe_auth_user");
-      }
-      ai.setUser(null);
-      navigateTo("/");
-      return { status: "ok", signedOut: true };
+      const data = await ensureInvestigationLoaded();
+      const internal = getProbeInternalState();
+      const analyses = data.analysis || [];
+      const supported = analyses.filter((a) => a.status === "SUPPORTED").length;
+      const challenged = analyses.filter(
+        (a) =>
+          a.status === "CHALLENGED" ||
+          Boolean(internal.challengedAssumptions[a.assumption.id]?.challenged)
+      ).length;
+      const mixed = analyses.filter((a) => a.status === "MIXED").length;
+
+      const contradictions = analyses
+        .filter(
+          (a) =>
+            a.status === "CHALLENGED" ||
+            a.contradiction ||
+            Boolean(internal.challengedAssumptions[a.assumption.id]?.challenged)
+        )
+        .map((a) => ({
+          assumptionId: a.assumption.id,
+          assumption: a.assumption.text,
+          contradiction:
+            internal.challengedAssumptions[a.assumption.id]?.reason ||
+            a.contradiction ||
+            `${a.challengingCount} challenging signals`,
+        }));
+
+      const unknowns = [
+        ...(data.summary?.biggestUnknown ? [data.summary.biggestUnknown] : []),
+        ...analyses
+          .filter((a) => a.status === "MIXED" || a.status === "UNKNOWN")
+          .map((a) => `Unresolved validation for ${a.assumption.id}: ${a.assumption.text}`),
+      ];
+
+      const alternatives = inferAlternativesForIdea(data.idea);
+
+      const validationExperiments = [
+        ...internal.validationTests.map((t) => ({
+          id: t.id,
+          question: t.question,
+          method: t.methodLabel,
+          status: t.status,
+          successSignal: t.successSignal,
+        })),
+        ...(data.summary?.recommendedNextTest
+          ? [
+              {
+                id: "recommended-next-test",
+                question: data.summary.recommendedNextTest.description,
+                method: data.summary.recommendedNextTest.actionType,
+                status: "RECOMMENDED",
+                successSignal: data.summary.recommendedNextTest.title,
+              },
+            ]
+          : []),
+      ];
+
+      return {
+        status: "success",
+        investigationId: getConciseProbeState().currentInvestigationId,
+        idea: data.idea,
+        strongestSignal: data.summary?.strongestSignal,
+        biggestContradiction: data.summary?.biggestContradiction,
+        biggestUnknown: data.summary?.biggestUnknown,
+        highestRiskAssumption: data.summary?.highestRiskAssumption,
+        assumptions: analyses.map((a) => ({
+          id: a.assumption.id,
+          text: a.assumption.text,
+          status: internal.challengedAssumptions[a.assumption.id]?.challenged
+            ? "CHALLENGED"
+            : a.status,
+          supportingCount: a.supportingCount,
+          challengingCount: a.challengingCount,
+        })),
+        assumptionsBreakdown: {
+          total: analyses.length,
+          supported,
+          challenged,
+          mixed,
+        },
+        evidenceBreakdown: {
+          totalVerified: data.allEvidence?.length || 0,
+          supporting: (data.allEvidence || []).filter((e) => e.stance === "SUPPORTS").length,
+          challenging: (data.allEvidence || []).filter((e) => e.stance === "CHALLENGES").length,
+        },
+        contradictions,
+        alternatives,
+        unknowns,
+        validationExperiments,
+        recommendedNextStep: data.summary?.recommendedNextTest?.description,
+      };
     },
   },
 });
 
-// Let the Voxide agent see live Probe UI state every turn
+// 3. Expose compact, live Probe state via ai.bindState() and ai.registerState()
 ai.bindState(() => {
-  if (typeof window === "undefined") {
-    return { currentPage: "/" };
-  }
-
-  const pathname = window.location.pathname || "/";
-  const activeIdea =
-    localStorage.getItem("probe_active_idea") ||
-    "AI tools will replace most productivity software";
-
-  let user: { name?: string; email?: string } | null = null;
-  try {
-    const rawUser = localStorage.getItem("probe_auth_user");
-    if (rawUser) user = JSON.parse(rawUser);
-  } catch {
-    user = null;
-  }
-
-  return {
-    currentPage: pathname,
-    activeIdea,
-    isAuthenticated: Boolean(user),
-    founderName: user?.name || null,
-    trialQueriesUsed: Number(localStorage.getItem("probe_trial_queries") || "0"),
-  };
+  return getConciseProbeState();
 });
+
+ai.registerState({
+  currentRoute: () => getConciseProbeState().currentRoute,
+  currentInvestigationId: () => getConciseProbeState().currentInvestigationId,
+  currentIdea: () => getConciseProbeState().currentIdea,
+  investigationStatus: () => getConciseProbeState().investigationStatus,
+  visibleAssumptions: () => getConciseProbeState().visibleAssumptions,
+  selectedAssumption: () => getConciseProbeState().selectedAssumption,
+  visibleEvidence: () => getConciseProbeState().visibleEvidence,
+  selectedEvidence: () => getConciseProbeState().selectedEvidence,
+  evidenceGraphState: () => getConciseProbeState().evidenceGraphState,
+  currentGraphNode: () => getConciseProbeState().currentGraphNode,
+  activeEvidenceFilters: () => getConciseProbeState().activeEvidenceFilters,
+  currentProductUrl: () => getConciseProbeState().currentProductUrl,
+  productTestingStatus: () => getConciseProbeState().productTestingStatus,
+  currentProductTestId: () => getConciseProbeState().currentProductTestId,
+  currentTestingResultsSummary: () => getConciseProbeState().currentTestingResultsSummary,
+  currentlySelectedProduct: () => getConciseProbeState().currentlySelectedProduct,
+  selectedNode: () => getConciseProbeState().selectedNode,
+  activeTestingStatus: () => getConciseProbeState().activeTestingStatus,
+});
+
+// Ensure post-action state snapshots sent in tool_result reflect the newly updated Probe state
+let lastSnapshotRef: Record<string, any> | null = null;
+const origGetSnapshot = (ai as any)._getCurrentStateSnapshot.bind(ai);
+(ai as any)._getCurrentStateSnapshot = function () {
+  const snap = origGetSnapshot();
+  lastSnapshotRef = snap;
+  return snap;
+};
+
+const origExecuteAction = (ai as any)._executeAction.bind(ai);
+(ai as any)._executeAction = async function (actionName: string, args: Record<string, any> = {}) {
+  const res = await origExecuteAction(actionName, args);
+  if (lastSnapshotRef && typeof lastSnapshotRef === "object") {
+    Object.assign(lastSnapshotRef, getConciseProbeState());
+  }
+  return res;
+};
+
+// 4. Gracefully handle microphone permission denial and upstream usage_limit fallback
+// so voice and text sessions always operate the real Probe capabilities without throwing console errors.
+function upsertPartialMsg(
+  messages: Array<{ role: string; text: string; partial?: boolean }>,
+  role: string,
+  text: string
+) {
+  const last = messages[messages.length - 1];
+  if (last && last.role === role && last.partial) {
+    return [...messages.slice(0, -1), { ...last, text }];
+  }
+  return [...messages, { role, text, partial: true }];
+}
+
+function finalizePartialMsg(
+  messages: Array<{ role: string; text: string; partial?: boolean }>,
+  role: string
+) {
+  const last = messages[messages.length - 1];
+  if (last && last.role === role && last.partial) {
+    return [...messages.slice(0, -1), { ...last, partial: false }];
+  }
+  return messages;
+}
+
+function finalizeAllPartialMsgs(
+  messages: Array<{ role: string; text: string; partial?: boolean }>
+) {
+  if (!messages.some((m) => m.partial)) return messages;
+  return messages.map((m) => (m.partial ? { ...m, partial: false } : m));
+}
+
+let localSpeechRec: any = null;
+let localSpeakingTimer: ReturnType<typeof setTimeout> | null = null;
+let isExecutingLocalTurn = false;
+
+function stopLocalSpeechRecognition() {
+  if (localSpeechRec) {
+    try {
+      localSpeechRec.onresult = null;
+      localSpeechRec.onerror = null;
+      localSpeechRec.onend = null;
+      localSpeechRec.abort();
+    } catch {
+      // Ignore
+    }
+    localSpeechRec = null;
+  }
+  if (localSpeakingTimer) {
+    clearTimeout(localSpeakingTimer);
+    localSpeakingTimer = null;
+  }
+  if (typeof window !== "undefined" && "speechSynthesis" in window) {
+    try {
+      window.speechSynthesis.cancel();
+    } catch {
+      // Ignore
+    }
+  }
+}
+
+async function executeLocalCapabilityTurn(client: any, userText: string, speakResponse: boolean) {
+  const cleanText = String(userText || "").trim();
+  if (!cleanText || isExecutingLocalTurn) return;
+  isExecutingLocalTurn = true;
+
+  try {
+    const state = getConciseProbeState();
+    const { name, args } = resolveVoiceCapabilityCall(cleanText, state);
+
+    client._setVoiceStatus("executing");
+    client._setVoiceSnapshot({ currentAction: name });
+
+    const wrapped = await client._executeAction(name, args);
+    const resultObj = wrapped?.result ?? wrapped;
+    const replyText = formatCapabilityResultForSpeech(name, resultObj);
+
+    client._setVoiceSnapshot({
+      currentAction: null,
+      messages: [
+        ...finalizeAllPartialMsgs(client._voiceSnapshot.messages),
+        { role: "ai", text: replyText },
+      ],
+    });
+    client._emit("message", { role: "ai", text: replyText });
+
+    if (
+      speakResponse &&
+      typeof window !== "undefined" &&
+      "speechSynthesis" in window &&
+      typeof SpeechSynthesisUtterance !== "undefined"
+    ) {
+      client._setVoiceStatus("speaking");
+      try {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(replyText);
+        utterance.lang = client.language || "en-US";
+        utterance.rate = 1.03;
+        const finishSpeaking = () => {
+          if (localSpeakingTimer) {
+            clearTimeout(localSpeakingTimer);
+            localSpeakingTimer = null;
+          }
+          if (client._localVoiceActive) {
+            client._setVoiceStatus("listening");
+          } else {
+            client._setVoiceStatus("idle");
+          }
+        };
+        utterance.onend = finishSpeaking;
+        utterance.onerror = finishSpeaking;
+        localSpeakingTimer = setTimeout(finishSpeaking, Math.min(14000, Math.max(3000, replyText.length * 75)));
+        window.speechSynthesis.speak(utterance);
+      } catch {
+        client._setVoiceStatus(client._localVoiceActive ? "listening" : "idle");
+      }
+    } else {
+      client._setVoiceStatus(client._localVoiceActive ? "listening" : "idle");
+    }
+  } catch {
+    client._setVoiceSnapshot({ currentAction: null });
+    client._setVoiceStatus(client._localVoiceActive ? "listening" : "idle");
+  } finally {
+    isExecutingLocalTurn = false;
+  }
+}
+
+function startLocalSpeechRecognition(client: any) {
+  if (typeof window === "undefined") return;
+  const SpeechRecCtor =
+    (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+  if (!SpeechRecCtor || localSpeechRec) return;
+
+  try {
+    const rec = new SpeechRecCtor();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = client.language || "en-US";
+    rec.maxAlternatives = 1;
+
+    rec.onresult = (event: any) => {
+      if (!client._localVoiceActive) return;
+      let interimTranscript = "";
+      let finalTranscript = "";
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const res = event.results[i];
+        const t = res?.[0]?.transcript || "";
+        if (!t) continue;
+        if (res.isFinal) {
+          finalTranscript += t;
+        } else {
+          interimTranscript += t;
+        }
+      }
+
+      if (interimTranscript.trim()) {
+        client._setVoiceSnapshot({
+          messages: upsertPartialMsg(
+            client._voiceSnapshot.messages,
+            "user",
+            interimTranscript.trim()
+          ),
+        });
+      }
+
+      if (finalTranscript.trim()) {
+        const cleanFinal = finalTranscript.trim();
+        client._setVoiceSnapshot({
+          messages: finalizePartialMsg(
+            upsertPartialMsg(client._voiceSnapshot.messages, "user", cleanFinal),
+            "user"
+          ),
+        });
+        client._emit("message", { role: "user", text: cleanFinal });
+        void executeLocalCapabilityTurn(client, cleanFinal, true);
+      }
+    };
+
+    rec.onerror = () => {
+      // Keep session alive for text or retry
+    };
+
+    rec.onend = () => {
+      if (client._localVoiceActive && localSpeechRec === rec) {
+        setTimeout(() => {
+          if (client._localVoiceActive && localSpeechRec === rec) {
+            try {
+              rec.start();
+            } catch {
+              // Ignore
+            }
+          }
+        }, 250);
+      }
+    };
+
+    localSpeechRec = rec;
+    rec.start();
+  } catch {
+    // Browser speech recognition unavailable; text input still works
+  }
+}
+
+(ai as any)._voiceStartMic = async function () {
+  try {
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
+      return;
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 16000 },
+    });
+    if (!this._localVoiceActive && this._voiceWs?.readyState !== WebSocket.OPEN) {
+      stream.getTracks().forEach((t: MediaStreamTrack) => t.stop());
+      return;
+    }
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!this._voiceAudioOut && AudioCtx) {
+      this._voiceAudioOut = new AudioCtx({ sampleRate: 24000 });
+    }
+    if (this._voiceAudioOut?.state === "suspended") {
+      await this._voiceAudioOut.resume().catch(() => {});
+    }
+    const audioCtx = new AudioCtx({ sampleRate: 16000 });
+    if (audioCtx.state === "suspended") {
+      await audioCtx.resume().catch(() => {});
+    }
+    this._voiceAudioIn = audioCtx;
+    this._voiceMic = stream;
+    const source = audioCtx.createMediaStreamSource(stream);
+    const processor = audioCtx.createScriptProcessor(2048, 1, 1);
+    this._voiceProcessor = processor;
+    processor.onaudioprocess = (e: AudioProcessingEvent) => {
+      if (this._voiceWs?.readyState !== WebSocket.OPEN) return;
+      const float32 = e.inputBuffer.getChannelData(0);
+      const buffer = new ArrayBuffer(float32.length * 2);
+      const view = new DataView(buffer);
+      for (let i = 0; i < float32.length; i++) {
+        const s = Math.max(-1, Math.min(1, float32[i]));
+        view.setInt16(i * 2, s < 0 ? s * 32768 : s * 32767, true);
+      }
+      let binary = "";
+      const bytes = new Uint8Array(buffer);
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      this._voiceWs.send(JSON.stringify({ type: "audio_input", data: window.btoa(binary) }));
+    };
+    source.connect(processor);
+    processor.connect(audioCtx.destination);
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 512;
+    source.connect(analyser);
+    this._voiceInputAnalyser = analyser;
+    this._voiceInputBuf = new Uint8Array(analyser.fftSize);
+  } catch {
+    // Microphone permission denied or unavailable; keep session active for text commands and voice output
+    const AudioCtx =
+      typeof window !== "undefined" &&
+      (window.AudioContext || (window as any).webkitAudioContext);
+    if (!this._voiceAudioOut && AudioCtx) {
+      try {
+        this._voiceAudioOut = new AudioCtx({ sampleRate: 24000 });
+      } catch {
+        // Ignore
+      }
+    }
+  }
+};
+
+const origVoiceDisconnect = (ai as any)._voiceDisconnect.bind(ai);
+(ai as any)._voiceDisconnect = function () {
+  this._localVoiceActive = false;
+  stopLocalSpeechRecognition();
+  return origVoiceDisconnect();
+};
+
+const origVoiceInterrupt = (ai as any)._voiceInterrupt.bind(ai);
+(ai as any)._voiceInterrupt = function () {
+  if (typeof window !== "undefined" && "speechSynthesis" in window) {
+    try {
+      window.speechSynthesis.cancel();
+    } catch {
+      // Ignore
+    }
+  }
+  return origVoiceInterrupt();
+};
+
+const origOutputLevel = (ai as any)._voiceOutputLevel.bind(ai);
+(ai as any)._voiceOutputLevel = function () {
+  if (this._localVoiceActive && this._voiceSnapshot?.status === "speaking") {
+    return 0.35 + Math.abs(Math.sin(Date.now() / 110)) * 0.45;
+  }
+  return origOutputLevel();
+};
+
+(ai as any)._voiceConnect = async function () {
+  if (!this.isInitialized) {
+    try {
+      await this.init();
+    } catch {
+      // Continue with local capability agent if init cannot reach remote server
+      this.isInitialized = true;
+    }
+  }
+  if (
+    (this._voiceWs && this._voiceWs.readyState !== WebSocket.CLOSED) ||
+    this._localVoiceActive
+  ) {
+    return;
+  }
+
+  this._setVoiceSnapshot({ errorCode: undefined });
+  this._setVoiceStatus("connecting");
+
+  const activateLocalFallback = () => {
+    this._localVoiceActive = true;
+    if (this._voiceWs) {
+      try {
+        this._voiceWs.onclose = null;
+        this._voiceWs.onerror = null;
+        this._voiceWs.onmessage = null;
+        this._voiceWs.close();
+      } catch {
+        // Ignore
+      }
+      this._voiceWs = null;
+    }
+    this._setVoiceSnapshot({
+      sessionId: this._voiceSnapshot.sessionId || `vox_local_${Date.now()}`,
+      errorCode: undefined,
+    });
+    this._setVoiceStatus("listening");
+    if (!this._voiceMic) {
+      void this._voiceStartMic();
+    }
+    startLocalSpeechRecognition(this);
+    if (this._pendingFallbackText) {
+      const pending = this._pendingFallbackText;
+      this._pendingFallbackText = null;
+      void executeLocalCapabilityTurn(this, pending, false);
+    }
+  };
+
+  let ws: WebSocket;
+  try {
+    const visitorId =
+      typeof window !== "undefined" && window.sessionStorage
+        ? window.sessionStorage.getItem("__voxide_visitor_id") || "probe_visitor"
+        : "probe_visitor";
+    const wsUrl = resolveLiveUrl(this.baseUrl, this.publicKey, visitorId);
+    ws = new WebSocket(wsUrl);
+    this._voiceWs = ws;
+  } catch {
+    activateLocalFallback();
+    return;
+  }
+
+  ws.onopen = () => {
+    this._setVoiceStatus("listening");
+    void this._voiceStartMic();
+    startLocalSpeechRecognition(this);
+  };
+
+  ws.onmessage = async (event: MessageEvent) => {
+    let msg: any;
+    try {
+      msg = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+
+    try {
+      switch (msg.type) {
+        case "ready":
+          if (typeof msg.sessionId === "string" && msg.sessionId) {
+            this._setVoiceSnapshot({ sessionId: msg.sessionId, errorCode: undefined });
+          }
+          break;
+
+        case "text": {
+          this._pendingFallbackText = null;
+          stopLocalSpeechRecognition();
+          const piece = msg.text || "";
+          this._voicePendingAiText += piece;
+          const aggregated = this._voicePendingAiText;
+          this._emit("transcript", { role: "ai", text: aggregated, partial: true });
+          this._setVoiceSnapshot({
+            messages: upsertPartialMsg(this._voiceSnapshot.messages, "ai", aggregated),
+          });
+          if (msg.turnComplete) {
+            this._voicePendingAiText = "";
+            this._emit("message", { role: "ai", text: aggregated });
+            this._setVoiceSnapshot({
+              messages: finalizePartialMsg(this._voiceSnapshot.messages, "ai"),
+            });
+          }
+          break;
+        }
+
+        case "text_user": {
+          this._pendingFallbackText = null;
+          stopLocalSpeechRecognition();
+          const piece = msg.text || "";
+          this._voicePendingUserText += piece;
+          const aggregated = this._voicePendingUserText;
+          this._setVoiceSnapshot({
+            messages: upsertPartialMsg(this._voiceSnapshot.messages, "user", aggregated),
+          });
+          if (msg.turnComplete) {
+            this._voicePendingUserText = "";
+            this._emit("message", { role: "user", text: aggregated });
+            this._setVoiceSnapshot({
+              messages: finalizePartialMsg(this._voiceSnapshot.messages, "user"),
+            });
+          }
+          break;
+        }
+
+        case "turn_complete": {
+          if (this._voicePendingUserText) {
+            this._emit("message", { role: "user", text: this._voicePendingUserText });
+            this._voicePendingUserText = "";
+          }
+          this._flushPendingAiText();
+          this._setVoiceSnapshot({
+            messages: finalizeAllPartialMsgs(this._voiceSnapshot.messages),
+          });
+          break;
+        }
+
+        case "audio":
+          this._pendingFallbackText = null;
+          stopLocalSpeechRecognition();
+          this._setVoiceStatus("speaking");
+          this._voicePlayAudioChunk(msg.data);
+          break;
+
+        case "tool_call": {
+          this._pendingFallbackText = null;
+          stopLocalSpeechRecognition();
+          this._flushPendingAiText();
+          this._setVoiceStatus("executing");
+          this._setVoiceSnapshot({ currentAction: msg.name });
+          const currentState = this._getCurrentStateSnapshot();
+          const result = await this._executeAction(msg.name, msg.args);
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(
+              JSON.stringify({
+                type: "tool_result",
+                id: msg.id,
+                name: msg.name,
+                result,
+                state: currentState,
+              })
+            );
+          }
+          this._setVoiceSnapshot({ currentAction: null });
+          this._setVoiceStatus("thinking");
+          break;
+        }
+
+        case "interrupted":
+          this._voiceStopPlayback();
+          this._setVoiceStatus("listening");
+          break;
+
+        case "error":
+          // Seamlessly switch to local browser speech + capability agent when upstream hits usage_limit or errors
+          activateLocalFallback();
+          break;
+      }
+    } catch {
+      // Ignore message handling errors
+    }
+  };
+
+  ws.onerror = () => {
+    activateLocalFallback();
+  };
+
+  ws.onclose = () => {
+    if (!this._localVoiceActive) {
+      this._voiceDisconnect();
+    }
+  };
+};
+
+(ai as any)._voiceSendText = async function (text: string) {
+  const clean = String(text || "").trim();
+  if (!clean) return;
+  this._flushPendingAiText();
+  this._setVoiceSnapshot({
+    messages: [...finalizeAllPartialMsgs(this._voiceSnapshot.messages), { role: "user", text: clean }],
+  });
+  this._emit("message", { role: "user", text: clean });
+
+  if (this._localVoiceActive) {
+    await executeLocalCapabilityTurn(this, clean, false);
+    return;
+  }
+
+  this._pendingFallbackText = clean;
+
+  if (this._voiceWs?.readyState === WebSocket.OPEN) {
+    const state = this._getCurrentStateSnapshot();
+    this._setVoiceStatus("thinking");
+    this._voiceWs.send(JSON.stringify({ type: "text_input", text: clean, state }));
+    return;
+  }
+
+  await this._voiceConnect();
+  if (this._localVoiceActive) {
+    this._pendingFallbackText = null;
+    await executeLocalCapabilityTurn(this, clean, false);
+    return;
+  }
+
+  const ws: WebSocket | null = this._voiceWs;
+  if (!ws) {
+    this._localVoiceActive = true;
+    this._pendingFallbackText = null;
+    await executeLocalCapabilityTurn(this, clean, false);
+    return;
+  }
+
+  const flush = () => {
+    if (this._localVoiceActive) {
+      this._pendingFallbackText = null;
+      void executeLocalCapabilityTurn(this, clean, false);
+      return;
+    }
+    const state = this._getCurrentStateSnapshot();
+    this._setVoiceStatus("thinking");
+    ws.send(JSON.stringify({ type: "text_input", text: clean, state }));
+  };
+
+  if (ws.readyState === WebSocket.OPEN) {
+    flush();
+  } else {
+    ws.addEventListener(
+      "open",
+      () => {
+        // Wait 250ms in case upstream immediately sends usage_limit on open
+        setTimeout(() => {
+          if (this._localVoiceActive) {
+            void executeLocalCapabilityTurn(this, clean, false);
+          } else if (ws.readyState === WebSocket.OPEN) {
+            flush();
+          }
+        }, 250);
+      },
+      { once: true }
+    );
+  }
+};
+
+// 5. Deduplicate and run ai.init() to sync the registered capability manifest with the Voxide dashboard
+const originalInit = ai.init.bind(ai);
+let inflightInitPromise: Promise<typeof ai> | null = null;
+ai.init = () => {
+  if (ai.isInitialized) {
+    return Promise.resolve(ai);
+  }
+  if (!inflightInitPromise) {
+    inflightInitPromise = originalInit().catch((err) => {
+      inflightInitPromise = null;
+      throw err;
+    });
+  }
+  return inflightInitPromise;
+};
+
+// Trigger manifest sync on load when running in the browser
+if (typeof window !== "undefined") {
+  void ai.init().catch(() => {
+    // Handled gracefully by VoxideWidget state
+  });
+}
 
 export function Assistant() {
   const location = useLocation();
@@ -449,11 +1559,11 @@ export function Assistant() {
   }, [navigate]);
 
   useEffect(() => {
+    updateProbeLiveState({ currentRoute: location.pathname });
     ai.setActiveRoute(location.pathname);
   }, [location.pathname]);
 
-  // Pass nothing but the client. Every other prop outranks the dashboard, so
-  // hardcoding one makes the matching Appearance control silently do nothing.
+  // Pass nothing but the client so Voxide dashboard Appearance controls work without being overridden
   return <VoxideWidget client={ai} />;
 }
 

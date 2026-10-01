@@ -21,6 +21,11 @@ import { EvidenceSource } from '../types';
 import { DynamicGraphData } from '../types/evidenceGraph';
 import { ProbeLogo } from '../components/ProbeLogo';
 import { generateDynamicInvestigation } from '../lib/research/dynamicInvestigationResolver';
+import {
+  buildGraphDataFromPressureTest,
+  getProbeInternalState,
+  updateProbeLiveState
+} from '../lib/voxide/probeVoxideBridge';
 
 export const WorkspacePage: React.FC = () => {
   const location = useLocation();
@@ -34,19 +39,32 @@ export const WorkspacePage: React.FC = () => {
   else if (path.includes('/app/calendar')) activeTab = 'calendar';
   else activeTab = 'research';
 
-  // Idea initialized from localStorage or default
+  // Idea initialized from localStorage or live bridge state
   const [investigationIdea, setInvestigationIdea] = useState<string>(() => {
-    return localStorage.getItem('probe_active_idea') || 'I want to build a cooking app';
+    return (
+      getProbeInternalState().currentIdea ||
+      localStorage.getItem('probe_active_idea') ||
+      'I want to build a cooking app'
+    );
   });
 
   // State
   const [selectedSource, setSelectedSource] = useState<EvidenceSource | null>(null);
   const [isTryModalOpen, setIsTryModalOpen] = useState<boolean>(false);
   const [activeGraphData, setActiveGraphData] = useState<DynamicGraphData | null>(() => {
-    const initial = localStorage.getItem('probe_active_idea') || 'I want to build a cooking app';
+    const internal = getProbeInternalState();
+    if (internal.latestPressureTest) {
+      return buildGraphDataFromPressureTest(internal.latestPressureTest, internal.customEvidence);
+    }
+    const initial =
+      internal.currentIdea ||
+      localStorage.getItem('probe_active_idea') ||
+      'I want to build a cooking app';
     return generateDynamicInvestigation(initial).graphData;
   });
-  const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
+  const [focusNodeId, setFocusNodeId] = useState<string | null>(() => {
+    return getProbeInternalState().selectedNode;
+  });
 
   const [isEditingIdea, setIsEditingIdea] = useState(false);
   const [tempIdea, setTempIdea] = useState(investigationIdea);
@@ -68,9 +86,69 @@ export const WorkspacePage: React.FC = () => {
       setInvestigationIdea(clean);
       localStorage.setItem('probe_active_idea', clean);
       setActiveGraphData(generateDynamicInvestigation(clean).graphData);
+      updateProbeLiveState({ currentIdea: clean });
     }
     setIsEditingIdea(false);
   };
+
+  useEffect(() => {
+    const onVoxideInvestigate = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (!detail) return;
+      if (detail.idea) {
+        setInvestigationIdea(detail.idea);
+        setTempIdea(detail.idea);
+      }
+      if (detail.pressureTest) {
+        const extra = getProbeInternalState().customEvidence;
+        setActiveGraphData(buildGraphDataFromPressureTest(detail.pressureTest, extra));
+      } else if (detail.idea) {
+        setActiveGraphData(generateDynamicInvestigation(detail.idea).graphData);
+      }
+    };
+
+    const onVoxideAddEvidence = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (!detail?.evidence) return;
+      const newSource = detail.evidence;
+      setActiveGraphData((prev) => {
+        const existing = prev ? prev.sources : [];
+        const updated = [newSource, ...existing.filter((s: any) => s.id !== newSource.id)];
+        return {
+          query: prev?.query || investigationIdea,
+          coreAssumption: prev?.coreAssumption || investigationIdea,
+          productName: prev?.productName || 'PROBE INVESTIGATION',
+          sources: updated,
+          summary: {
+            supportingCount: updated.filter((s: any) => s.relationship === 'Supports').length,
+            challengingCount: updated.filter((s: any) => s.relationship === 'Challenges').length,
+            total: updated.length
+          }
+        };
+      });
+    };
+
+    const onVoxideOpenGraph = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (detail?.focusNodeId) {
+        setFocusNodeId(detail.focusNodeId);
+      }
+    };
+
+    window.addEventListener('probe:voxide-investigate-start', onVoxideInvestigate);
+    window.addEventListener('probe:voxide-investigate', onVoxideInvestigate);
+    window.addEventListener('probe:voxide-investigation-updated', onVoxideInvestigate);
+    window.addEventListener('probe:voxide-add-evidence', onVoxideAddEvidence);
+    window.addEventListener('probe:voxide-open-graph', onVoxideOpenGraph);
+
+    return () => {
+      window.removeEventListener('probe:voxide-investigate-start', onVoxideInvestigate);
+      window.removeEventListener('probe:voxide-investigate', onVoxideInvestigate);
+      window.removeEventListener('probe:voxide-investigation-updated', onVoxideInvestigate);
+      window.removeEventListener('probe:voxide-add-evidence', onVoxideAddEvidence);
+      window.removeEventListener('probe:voxide-open-graph', onVoxideOpenGraph);
+    };
+  }, [investigationIdea]);
 
   // Convert SearchResult or DynamicEvidenceSource to EvidenceSource for modal
   const handleOpenSourceDetail = (source: any) => {

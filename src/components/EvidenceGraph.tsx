@@ -44,6 +44,11 @@ import { useInvestigationRoom } from '../lib/collaboration/useInvestigationRoom'
 import { ShareInvestigationModal } from './collaboration/ShareInvestigationModal';
 import { NodeDetailDrawer, SelectedNodeContext } from './collaboration/NodeDetailDrawer';
 import { ValidationTest, NodeDecision } from '../types/collaboration';
+import {
+  updateProbeLiveState,
+  getProbeInternalState,
+  findMatchingAssumption,
+} from '../lib/voxide/probeVoxideBridge';
 
 interface EvidenceGraphProps {
   onSelectSource?: (source: any) => void;
@@ -284,7 +289,18 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
   onTestCreated,
   focusNodeId
 }) => {
-  const [filterRelationship, setFilterRelationship] = useState<'all' | 'Supports' | 'Challenges' | 'Tests' | 'Decisions'>('all');
+  const [filterRelationship, setFilterRelationship] = useState<'all' | 'Supports' | 'Challenges' | 'Tests' | 'Decisions'>(() => {
+    const initialFilter = getProbeInternalState().evidenceGraphFilter;
+    if (
+      initialFilter === 'Supports' ||
+      initialFilter === 'Challenges' ||
+      initialFilter === 'Tests' ||
+      initialFilter === 'Decisions'
+    ) {
+      return initialFilter;
+    }
+    return 'all';
+  });
   const [isLayoutCalculating, setIsLayoutCalculating] = useState<boolean>(false);
   const [activeToast, setActiveToast] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
@@ -320,6 +336,29 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
   // Modals state
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [selectedNodeContext, setSelectedNodeContext] = useState<SelectedNodeContext | null>(null);
+
+  useEffect(() => {
+    updateProbeLiveState({
+      selectedNode: selectedNodeContext?.id || getProbeInternalState().selectedNode || null,
+      evidenceGraphFilter: filterRelationship,
+    });
+  }, [selectedNodeContext, filterRelationship]);
+
+  useEffect(() => {
+    const onVoxideOpenGraph = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (detail?.filter) {
+        const f = String(detail.filter);
+        if (f === 'Supports' || f === 'SUPPORTS') setFilterRelationship('Supports');
+        else if (f === 'Challenges' || f === 'CHALLENGES') setFilterRelationship('Challenges');
+        else if (f === 'Tests') setFilterRelationship('Tests');
+        else if (f === 'Decisions') setFilterRelationship('Decisions');
+        else setFilterRelationship('all');
+      }
+    };
+    window.addEventListener('probe:voxide-open-graph', onVoxideOpenGraph);
+    return () => window.removeEventListener('probe:voxide-open-graph', onVoxideOpenGraph);
+  }, []);
 
   const toggleFullscreen = useCallback(() => {
     setIsFullscreen((prev) => {
@@ -498,21 +537,60 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
     });
   }, []);
 
-  // Handle focusNodeId navigation from calendar
+  // Handle focusNodeId navigation from calendar or Voxide voice commands
   useEffect(() => {
     if (!focusNodeId) return;
-    if (focusNodeId === 'center') {
+    if (focusNodeId === 'center' || focusNodeId === 'central-idea') {
       handleSelectCentralNode();
-    } else {
-      const foundSource = filteredSources.find((s) => s.id === focusNodeId);
-      if (foundSource) {
-        handleSelectSourceNode(foundSource);
-      } else {
-        const foundTest = tests.find((t) => t.id === focusNodeId);
-        if (foundTest) {
-          handleSelectTestNode(foundTest);
-        }
-      }
+      return;
+    }
+    const foundSource = filteredSources.find((s) => s.id === focusNodeId);
+    if (foundSource) {
+      handleSelectSourceNode(foundSource);
+      return;
+    }
+    const foundTest = tests.find((t) => t.id === focusNodeId);
+    if (foundTest) {
+      handleSelectTestNode(foundTest);
+      return;
+    }
+    const analyses = getProbeInternalState().latestPressureTest?.analysis || [];
+    const matchedAssumption = findMatchingAssumption(analyses, focusNodeId);
+    if (matchedAssumption) {
+      const supporting = filteredSources
+        .filter((s) => s.relationship === 'Supports')
+        .map((s) => ({
+          id: s.id,
+          source: s.sourceIdentifier,
+          excerpt: s.excerpt,
+          date: s.date,
+          url: s.url,
+        }));
+      const contradicting = filteredSources
+        .filter((s) => s.relationship === 'Challenges')
+        .map((s) => ({
+          id: s.id,
+          source: s.sourceIdentifier,
+          excerpt: s.excerpt,
+          date: s.date,
+          url: s.url,
+        }));
+      setSelectedNodeContext({
+        id: matchedAssumption.assumption.id,
+        type: 'centralNode',
+        category: 'ASSUMPTION',
+        title: `${matchedAssumption.assumption.id}: ${matchedAssumption.assumption.text}`,
+        subtitle: `${matchedAssumption.assumption.category.replace(/_/g, ' ').toUpperCase()} · ${matchedAssumption.status}`,
+        excerpt:
+          matchedAssumption.contradiction ||
+          matchedAssumption.assumption.text,
+        confidence: 85,
+        whyItMatters:
+          matchedAssumption.contradiction ||
+          'Critical product assumption under empirical pressure testing.',
+        supportingEvidence: supporting,
+        contradictingEvidence: contradicting,
+      });
     }
   }, [focusNodeId, filteredSources, tests, handleSelectCentralNode, handleSelectSourceNode, handleSelectTestNode]);
 

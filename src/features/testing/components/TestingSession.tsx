@@ -11,6 +11,7 @@ import {
   BrowserSessionData,
   ScreenshotRecord
 } from '../../../lib/testing/testing.types';
+import { updateProbeLiveState } from '../../../lib/voxide/probeVoxideBridge';
 import { BrowserViewport } from './BrowserViewport';
 import { TaskProgress } from './TaskProgress';
 import { ActionTimeline } from './ActionTimeline';
@@ -86,6 +87,10 @@ export const TestingSession: React.FC<TestingSessionProps> = ({
           setPollingError(null);
           const data: BrowserSessionData = await res.json();
           setSessionData(data);
+          updateProbeLiveState({
+            activeTestingSessionId: data.sessionId,
+            activeTestingStatus: data.status
+          });
 
           if (!isTerminalSessionStatus(data.status) && !cancelled) {
             timerRef.current = setTimeout(pollSnapshot, BASE_INTERVAL_MS);

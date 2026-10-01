@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { TestingSession } from './TestingSession';
 import { ALLOWED_GOOGLE_TEST_EMAIL } from '../../../lib/testing/testing.types';
+import { getProbeInternalState, updateProbeLiveState } from '../../../lib/voxide/probeVoxideBridge';
 
 interface TestingWorkspaceProps {
   onSyncToGraph?: (evidence: any) => void;
@@ -43,14 +44,27 @@ const PRESET_TEST_CASES = [
 ];
 
 export const TestingWorkspace: React.FC<TestingWorkspaceProps> = ({ onSyncToGraph }) => {
-  const [productUrl, setProductUrl] = useState('https://links.et/');
+  const [productUrl, setProductUrl] = useState(
+    () => getProbeInternalState().currentProductUrl || 'https://links.et/'
+  );
   const [task, setTask] = useState(
-    'Verify transaction reference DHV0BHI2GG in the payment receipt input and inspect the response.'
+    () =>
+      getProbeInternalState().currentProductTask ||
+      'Verify transaction reference DHV0BHI2GG in the payment receipt input and inspect the response.'
   );
   const [useGoogleAuth, setUseGoogleAuth] = useState(false);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(
+    () => getProbeInternalState().activeTestingSessionId
+  );
   const [isLaunching, setIsLaunching] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    updateProbeLiveState({
+      currentProductUrl: productUrl,
+      currentProductTask: task,
+    });
+  }, [productUrl, task]);
 
   const handleStartTest = async (
     overrideUrl?: string,

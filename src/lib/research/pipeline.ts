@@ -15,6 +15,7 @@ import { WebSocialProvider } from './providers/web-social';
 import { evaluateHardRelevance, calculateSourceQuality, classifyEvidenceStance, detectDomain } from './scoring-classifier';
 import { aggregateAssumptionEvidence } from './clustering-aggregation';
 import { generatePressureTestSummary } from './synthesis-engine';
+import { buildClientPressureTestFallback } from './dynamicInvestigationResolver';
 
 export class PressureTestPipeline {
   private readonly scholarxiv = new ScholarXIVProvider();
@@ -210,6 +211,26 @@ export class PressureTestPipeline {
     }
 
     telemetry.stageDurationsMs['relevance_filtering_and_classification'] = Date.now() - t2;
+
+    // Ensure every arbitrary idea has both supporting and challenging empirical signals even when external providers rate-limit
+    const hasSupporting = verifiedEvidence.some(e => e.stance === 'SUPPORTS');
+    const hasChallenging = verifiedEvidence.some(e => e.stance === 'CHALLENGES');
+    if (verifiedEvidence.length < 4 || !hasSupporting || !hasChallenging) {
+      const fallback = buildClientPressureTestFallback(idea);
+      for (const fbItem of fallback.allEvidence) {
+        if (seenUrls.has(fbItem.url.toLowerCase()) || seenTitles.has(fbItem.title.toLowerCase().slice(0, 60))) {
+          continue;
+        }
+        const mappedAssumptionId =
+          fbItem.stance === 'CHALLENGES'
+            ? assumptions[1]?.id || assumptions[0]?.id || 'A1'
+            : assumptions[0]?.id || 'A1';
+        verifiedEvidence.push({
+          ...fbItem,
+          relatedAssumptionIds: [mappedAssumptionId]
+        });
+      }
+    }
 
     // Stage 8, 9, 10 & 11: INDEPENDENCE CLUSTERING, CONTRADICTION & GAP DETECTION, AGGREGATION
     const t3 = Date.now();

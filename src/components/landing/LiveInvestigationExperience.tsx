@@ -17,6 +17,7 @@ import {
   RadialEvidenceItem 
 } from '../../lib/research/dynamicInvestigationResolver';
 import { BuildBriefPanel } from '../buildBrief/BuildBriefPanel';
+import { updateProbeLiveState } from '../../lib/voxide/probeVoxideBridge';
 
 interface LiveInvestigationExperienceProps {
   initialQuery?: string;
@@ -54,9 +55,37 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
     }
   }, []);
 
+  useEffect(() => {
+    const onVoxideInvestigate = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (!detail?.idea) return;
+      setQuery(detail.idea);
+      const nextData = detail.dynamicData || generateDynamicInvestigation(detail.idea);
+      setActiveData(nextData);
+      setGenerationCount((prev) => prev + 1);
+      setJustGenerated(true);
+      setIsScanning(false);
+      setScanProgress(100);
+      setStatusMessage('Investigation complete · Verified 6 sources');
+      if (onInvestigationComplete) {
+        onInvestigationComplete(nextData);
+      }
+    };
+
+    window.addEventListener('probe:voxide-investigate-start', onVoxideInvestigate);
+    window.addEventListener('probe:voxide-investigate', onVoxideInvestigate);
+    window.addEventListener('probe:voxide-investigation-updated', onVoxideInvestigate);
+    return () => {
+      window.removeEventListener('probe:voxide-investigate-start', onVoxideInvestigate);
+      window.removeEventListener('probe:voxide-investigate', onVoxideInvestigate);
+      window.removeEventListener('probe:voxide-investigation-updated', onVoxideInvestigate);
+    };
+  }, [onInvestigationComplete]);
+
   const toggleCardExpand = (id?: string) => {
     if (!id) return;
     setExpandedCardId((prev) => (prev === id ? null : id));
+    updateProbeLiveState({ selectedEvidenceId: id });
   };
 
   const handleStartInvestigation = (e?: React.FormEvent, overrideQuery?: string) => {

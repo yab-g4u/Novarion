@@ -30,6 +30,7 @@ import {
 import { DynamicGraphData, DynamicEvidenceSource } from '../types/evidenceGraph';
 import { BuildBriefPanel } from './buildBrief/BuildBriefPanel';
 import { buildClientPressureTestFallback } from '../lib/research/dynamicInvestigationResolver';
+import { getProbeInternalState, updateProbeLiveState } from '../lib/voxide/probeVoxideBridge';
 
 interface PressureTestWorkspaceProps {
   initialIdea?: string;
@@ -46,20 +47,37 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
   onPressureTestUpdated,
   onFocusProductTest
 }) => {
-  const [ideaInput, setIdeaInput] = useState(externalIdea || initialIdea);
+  const [ideaInput, setIdeaInput] = useState(
+    externalIdea || getProbeInternalState().currentIdea || initialIdea
+  );
   const [isInvestigating, setIsInvestigating] = useState(false);
-  const [testResult, setTestResult] = useState<PressureTestResponse | null>(null);
+  const [testResult, setTestResult] = useState<PressureTestResponse | null>(() => {
+    const internal = getProbeInternalState();
+    return internal.latestPressureTest || null;
+  });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [generationCycle, setGenerationCycle] = useState(0);
-  const [expandedEvidenceId, setExpandedEvidenceId] = useState<string | null>(null);
+  const [expandedEvidenceId, setExpandedEvidenceId] = useState<string | null>(
+    () => getProbeInternalState().selectedEvidenceId
+  );
 
-  // Filter & interaction state
-  const [activeRepoTab, setActiveRepoTab] = useState<'verified' | 'unverified' | 'rejected'>('verified');
-  const [selectedAssumptionId, setSelectedAssumptionId] = useState<string>('all');
-  const [selectedStance, setSelectedStance] = useState<'all' | 'SUPPORTS' | 'CHALLENGES' | 'NEUTRAL'>('all');
-  const [selectedSourceType, setSelectedSourceType] = useState<'all' | ResearchSourceType>('all');
+  // Filter & interaction state initialized from live bridge state
+  const [activeRepoTab, setActiveRepoTab] = useState<'verified' | 'unverified' | 'rejected'>(
+    () => (getProbeInternalState().activeEvidenceFilters.tab as any) || 'verified'
+  );
+  const [selectedAssumptionId, setSelectedAssumptionId] = useState<string>(
+    () => getProbeInternalState().activeEvidenceFilters.assumptionId || 'all'
+  );
+  const [selectedStance, setSelectedStance] = useState<'all' | 'SUPPORTS' | 'CHALLENGES' | 'NEUTRAL'>(
+    () => (getProbeInternalState().activeEvidenceFilters.stance as any) || 'all'
+  );
+  const [selectedSourceType, setSelectedSourceType] = useState<'all' | ResearchSourceType>(
+    () => (getProbeInternalState().activeEvidenceFilters.sourceType as any) || 'all'
+  );
   const [showTelemetryDebug, setShowTelemetryDebug] = useState<boolean>(false);
-  const [expandedWhyAssumptionId, setExpandedWhyAssumptionId] = useState<string | null>(null);
+  const [expandedWhyAssumptionId, setExpandedWhyAssumptionId] = useState<string | null>(
+    () => getProbeInternalState().selectedNode
+  );
 
   const runInvestigation = async (customIdea?: string) => {
     const target = (customIdea ?? ideaInput).trim();
@@ -89,6 +107,11 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
 
       setTestResult(data);
       setGenerationCycle((prev) => prev + 1);
+      updateProbeLiveState({
+        currentIdea: data.idea || target,
+        latestPressureTest: data,
+        investigationStatus: 'READY'
+      });
 
       // Automatically update Living Evidence Graph with verified evidence
       if (onPressureTestUpdated && data.allEvidence.length > 0) {
@@ -136,9 +159,167 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
   };
 
   useEffect(() => {
-    runInvestigation(externalIdea || initialIdea);
+    const target = (externalIdea || initialIdea).trim();
+    const cached = getProbeInternalState().latestPressureTest;
+    if (cached && cached.idea.toLowerCase() === target.toLowerCase()) {
+      setIdeaInput(cached.idea);
+      setTestResult(cached);
+      return;
+    }
+    void runInvestigation(target);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [externalIdea]);
+
+  useEffect(() => {
+    const onVoxideInvestigateStart = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (!detail) return;
+      if (detail.idea) {
+        setIdeaInput(detail.idea);
+      }
+      if (detail.pressureTest) {
+        setTestResult(detail.pressureTest);
+      }
+      setIsInvestigating(true);
+      setErrorMessage(null);
+    };
+
+    const onVoxideInvestigate = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (!detail) return;
+      if (detail.idea) {
+        setIdeaInput(detail.idea);
+      }
+      if (detail.pressureTest) {
+        setTestResult(detail.pressureTest);
+        setGenerationCycle((prev) => prev + 1);
+        setIsInvestigating(false);
+      } else if (detail.idea) {
+        void runInvestigation(detail.idea);
+      }
+    };
+
+    const onVoxideShowAssumptions = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      const targetAssumpId = detail?.assumptionId || 'all';
+      setSelectedAssumptionId(targetAssumpId);
+      if (targetAssumpId !== 'all') {
+        setExpandedWhyAssumptionId(targetAssumpId);
+      }
+      const el = document.getElementById('section-assumptions');
+      el?.scrollIntoView({ behavior: 'smooth' });
+    };
+
+    const onVoxideChallengeAssumption = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (!detail?.assumptionId) return;
+      const targetId = String(detail.assumptionId);
+      setSelectedAssumptionId(targetId);
+      setSelectedStance('CHALLENGES');
+      setExpandedWhyAssumptionId(targetId);
+      setTestResult((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          analysis: prev.analysis.map((item) =>
+            item.assumption.id === targetId
+              ? {
+                  ...item,
+                  status: 'CHALLENGED',
+                  contradiction: detail.reason || item.contradiction
+                }
+              : item
+          )
+        };
+      });
+      const el = document.getElementById('section-assumptions');
+      el?.scrollIntoView({ behavior: 'smooth' });
+    };
+
+    const onVoxideFilter = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (!detail) return;
+      if (detail.stance) setSelectedStance(detail.stance);
+      if (detail.sourceType) setSelectedSourceType(detail.sourceType);
+      if (detail.assumptionId) setSelectedAssumptionId(detail.assumptionId);
+      if (detail.tab) setActiveRepoTab(detail.tab);
+      if (detail.scrollToEvidence) {
+        const el =
+          document.getElementById('section-evidence-repository') ||
+          document.getElementById('section-assumptions');
+        el?.scrollIntoView({ behavior: 'smooth' });
+      }
+    };
+
+    const onVoxideAddEvidence = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (!detail?.evidence) return;
+      const ev = detail.evidence;
+      setTestResult((prev) => {
+        if (!prev) return prev;
+        const defaultAssumpId = prev.assumptions?.[0]?.id || 'A1';
+        const newEvidenceItem: EvidenceItem = {
+          id: ev.id,
+          sourceType: ev.sourceType === 'docs' ? 'reddit' : ev.sourceType,
+          provider: ev.sourceType === 'docs' ? 'reddit' : ev.sourceType,
+          title: ev.sourceName || 'Founder Field Evidence',
+          excerpt: ev.excerpt,
+          url: ev.url || 'https://novarion.ethiodeploy.com',
+          author: ev.sourceName || 'Founder',
+          publishedAt: 'Just now',
+          stance: ev.relationship === 'Challenges' ? 'CHALLENGES' : 'SUPPORTS',
+          confidence: 0.9,
+          relevanceScore: 95,
+          sourceQualityScore: 90,
+          independenceScore: 90,
+          noveltyScore: 88,
+          evidenceStrength: 92,
+          relatedAssumptionIds: [defaultAssumpId],
+          whyItMatters: 'Direct empirical observation added to the investigation.',
+          implication:
+            ev.relationship === 'Challenges'
+              ? 'Challenges core hypothesis assumption.'
+              : 'Reinforces core hypothesis assumption.'
+        };
+        return {
+          ...prev,
+          allEvidence: [newEvidenceItem, ...prev.allEvidence]
+        };
+      });
+    };
+
+    window.addEventListener('probe:voxide-investigate-start', onVoxideInvestigateStart);
+    window.addEventListener('probe:voxide-investigate', onVoxideInvestigate);
+    window.addEventListener('probe:voxide-investigation-updated', onVoxideInvestigate);
+    window.addEventListener('probe:voxide-show-assumptions', onVoxideShowAssumptions);
+    window.addEventListener('probe:voxide-challenge-assumption', onVoxideChallengeAssumption);
+    window.addEventListener('probe:voxide-filter', onVoxideFilter);
+    window.addEventListener('probe:voxide-add-evidence', onVoxideAddEvidence);
+
+    return () => {
+      window.removeEventListener('probe:voxide-investigate-start', onVoxideInvestigateStart);
+      window.removeEventListener('probe:voxide-investigate', onVoxideInvestigate);
+      window.removeEventListener('probe:voxide-investigation-updated', onVoxideInvestigate);
+      window.removeEventListener('probe:voxide-show-assumptions', onVoxideShowAssumptions);
+      window.removeEventListener('probe:voxide-challenge-assumption', onVoxideChallengeAssumption);
+      window.removeEventListener('probe:voxide-filter', onVoxideFilter);
+      window.removeEventListener('probe:voxide-add-evidence', onVoxideAddEvidence);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    updateProbeLiveState({
+      ...(selectedAssumptionId !== 'all' ? { selectedNode: selectedAssumptionId } : {}),
+      ...(expandedEvidenceId ? { selectedEvidenceId: expandedEvidenceId } : {}),
+      activeEvidenceFilters: {
+        stance: selectedStance,
+        sourceType: selectedSourceType,
+        assumptionId: selectedAssumptionId,
+        tab: activeRepoTab
+      }
+    });
+  }, [selectedAssumptionId, selectedStance, selectedSourceType, activeRepoTab, expandedEvidenceId]);
 
   const getStatusBadge = (status: AssumptionStatus) => {
     switch (status) {
@@ -366,7 +547,7 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
 
       {/* STAGE 3: TESTABLE ASSUMPTIONS DECONSTRUCTION */}
       {testResult?.analysis && (
-        <div className="space-y-4 mb-8">
+        <div id="section-assumptions" className="space-y-4 mb-8">
           <div className="flex items-center justify-between text-xs font-mono font-bold text-[#868C98] uppercase tracking-wider">
             <span>DECONSTRUCTED TESTABLE ASSUMPTIONS ({testResult.analysis.length})</span>
             <span>Filter by assumption</span>
@@ -410,7 +591,11 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
 
                       <button
                         type="button"
-                        onClick={() => setSelectedAssumptionId(isSelected ? 'all' : a.id)}
+                        onClick={() => {
+                          const nextId = isSelected ? 'all' : a.id;
+                          setSelectedAssumptionId(nextId);
+                          updateProbeLiveState({ selectedNode: nextId === 'all' ? null : nextId });
+                        }}
                         className={`px-3 py-1.5 rounded-xl text-xs font-mono transition-colors cursor-pointer ${
                           isSelected ? 'bg-[#0F52BA] text-white font-bold' : 'bg-[#F1F5F9] text-[#334155] hover:bg-[#E2E8F0]'
                         }`}

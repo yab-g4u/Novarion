@@ -23,6 +23,7 @@ import {
   updateSharedInvestigationInSupabase,
   resolveSharedInvestigationFromSupabase,
 } from './investigationStore';
+import { getProbeInternalState, updateProbeLiveState } from '../voxide/probeVoxideBridge';
 
 export { generateOpaqueShareId, generateInvestigationId, validateShareId };
 
@@ -169,8 +170,12 @@ export const useInvestigationRoom = (
 
   const [comments, setComments] = useState<Record<string, NodeComment[]>>({});
   const [decisions, setDecisions] = useState<Record<string, NodeDecision>>({});
-  const [tests, setTests] = useState<ValidationTest[]>([]);
-  const [challenges, setChallenges] = useState<Record<string, EvidenceChallenge>>({});
+  const [tests, setTests] = useState<ValidationTest[]>(() => [
+    ...getProbeInternalState().validationTests,
+  ]);
+  const [challenges, setChallenges] = useState<Record<string, EvidenceChallenge>>(() => ({
+    ...getProbeInternalState().challengedAssumptions,
+  }));
 
   const channelRef = useRef<InvestigationRoomChannel | null>(null);
   const stateRef = useRef<{
@@ -201,7 +206,47 @@ export const useInvestigationRoom = (
       tests,
       challenges,
     };
+    updateProbeLiveState({
+      currentInvestigationId: roomId,
+      validationTests: tests,
+      challengedAssumptions: challenges,
+    });
   }, [roomId, shareId, investigation, comments, decisions, tests, challenges]);
+
+  useEffect(() => {
+    const onVoxideChallenge = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (!detail?.assumptionId) return;
+      const challengeUpdate: EvidenceChallenge = {
+        nodeId: detail.assumptionId,
+        challenged: true,
+        reason: detail.reason || 'Challenged via Voxide live stress-test',
+        author: currentUser.name,
+        timestamp: 'Just now',
+      };
+      setChallenges((prev) => ({
+        ...prev,
+        [detail.assumptionId]: challengeUpdate,
+      }));
+    };
+
+    const onVoxideValidationTest = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (!detail?.test) return;
+      const newTest: ValidationTest = detail.test;
+      setTests((prev) => {
+        if (prev.some((t) => t.id === newTest.id)) return prev;
+        return [newTest, ...prev];
+      });
+    };
+
+    window.addEventListener('probe:voxide-challenge-assumption', onVoxideChallenge);
+    window.addEventListener('probe:voxide-create-validation-test', onVoxideValidationTest);
+    return () => {
+      window.removeEventListener('probe:voxide-challenge-assumption', onVoxideChallenge);
+      window.removeEventListener('probe:voxide-create-validation-test', onVoxideValidationTest);
+    };
+  }, [currentUser.name]);
 
   // Creator workspace mode: keep investigation payload synced when creator changes idea or graphData
   useEffect(() => {

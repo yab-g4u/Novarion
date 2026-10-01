@@ -8,12 +8,14 @@ import { FinalCTARefined } from '../components/landing/FinalCTARefined';
 import { ShapeWavesFooter } from '../components/landing/ShapeWavesFooter';
 import { safeRefreshScrollTrigger } from '../motion/gsapConfig';
 import { InvestigationResultData, generateDynamicInvestigation } from '../lib/research/dynamicInvestigationResolver';
+import { updateProbeLiveState } from '../lib/voxide/probeVoxideBridge';
 
 export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
-  const [currentInvestigation, setCurrentInvestigation] = useState<InvestigationResultData>(() =>
-    generateDynamicInvestigation('AI tools will replace most productivity software')
-  );
+  const [currentInvestigation, setCurrentInvestigation] = useState<InvestigationResultData>(() => {
+    const stored = typeof window !== 'undefined' ? window.localStorage.getItem('probe_active_idea') : null;
+    return generateDynamicInvestigation(stored || 'AI tools will replace most productivity software');
+  });
 
   useEffect(() => {
     // Refresh ScrollTrigger calculations after initial layout stabilizes
@@ -24,8 +26,33 @@ export const LandingPage: React.FC = () => {
     return () => clearTimeout(timer);
   }, []);
 
+  useEffect(() => {
+    const onVoxideInvestigate = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (!detail) return;
+      if (detail.dynamicData) {
+        setCurrentInvestigation(detail.dynamicData);
+      } else if (detail.idea) {
+        setCurrentInvestigation(generateDynamicInvestigation(detail.idea));
+      }
+    };
+
+    window.addEventListener('probe:voxide-investigate-start', onVoxideInvestigate);
+    window.addEventListener('probe:voxide-investigate', onVoxideInvestigate);
+    window.addEventListener('probe:voxide-investigation-updated', onVoxideInvestigate);
+    return () => {
+      window.removeEventListener('probe:voxide-investigate-start', onVoxideInvestigate);
+      window.removeEventListener('probe:voxide-investigate', onVoxideInvestigate);
+      window.removeEventListener('probe:voxide-investigation-updated', onVoxideInvestigate);
+    };
+  }, []);
+
   const handleInvestigationComplete = (data: InvestigationResultData) => {
     setCurrentInvestigation(data);
+    updateProbeLiveState({
+      currentIdea: data.query,
+      latestDynamicData: data
+    });
     safeRefreshScrollTrigger(150);
   };
 

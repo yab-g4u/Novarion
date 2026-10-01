@@ -1,6 +1,7 @@
 [variables]
 PLAYWRIGHT_BROWSERS_PATH = "0"
 NODE_ENV = "production"
+VITE_VOXIDE_KEY = "vox_pub_6e58205fd999454d834a51f6d2e4eee8b7cbc475cbe1521e"
 
 [phases.setup]
 nixPkgs = ["nodejs_22", "pnpm_9", "chromium"]

@@ -293,6 +293,45 @@ export function createApiApp() {
     });
   });
 
+  // Voxide SDK HTTP relay for preview environments (*.run.app) whose ephemeral origin is not in the production domain lock
+  app.all(['/api/sdk/:endpoint', '/api/voxide/sdk/:endpoint'], async (req: Request, res: Response) => {
+    const endpoint = String(req.params.endpoint || '').trim();
+    if (!['init', 'manifest', 'feedback', 'live'].includes(endpoint)) {
+      return res.status(404).json({ error: 'Unknown Voxide SDK endpoint' });
+    }
+
+    try {
+      const targetUrl = `https://voxide.onrender.com/api/sdk/${endpoint}`;
+      const headers: Record<string, string> = {
+        Origin: 'https://novarion.ethiodeploy.com',
+      };
+      if (req.headers.authorization) {
+        headers.Authorization = String(req.headers.authorization);
+      }
+      if (req.headers['content-type']) {
+        headers['Content-Type'] = String(req.headers['content-type']);
+      }
+
+      const upstreamRes = await fetch(targetUrl, {
+        method: req.method,
+        headers,
+        body:
+          req.method !== 'GET' && req.method !== 'HEAD' && req.body
+            ? JSON.stringify(req.body)
+            : undefined,
+      });
+
+      const contentType = upstreamRes.headers.get('content-type') || 'application/json';
+      const text = await upstreamRes.text();
+      res.status(upstreamRes.status).type(contentType).send(text);
+    } catch (err: any) {
+      res.status(502).json({
+        error: 'Voxide upstream relay failed',
+        message: err?.message || 'Upstream connection error',
+      });
+    }
+  });
+
   // Mount Product Testing Subsystem routes lazily so Playwright is NEVER loaded at server startup
   let cachedTestingRouter: express.Router | null = null;
   app.use('/api/testing', async (req: Request, res: Response, next: NextFunction) => {

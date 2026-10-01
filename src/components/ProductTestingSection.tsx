@@ -20,6 +20,7 @@ import {
   WifiOff
 } from 'lucide-react';
 import { ALLOWED_GOOGLE_TEST_EMAIL, type BrowserSessionData } from '../lib/testing/testing.types';
+import { updateProbeLiveState } from '../lib/voxide/probeVoxideBridge';
 
 const PRESET_PRODUCTS = [
   {
@@ -120,6 +121,170 @@ export const ProductTestingSection: React.FC = () => {
     }
   };
 
+  const startPollingForSession = (
+    newSessionId: string,
+    finalUrl: string,
+    initialPayload?: BrowserSessionData
+  ) => {
+    stopPolling();
+    const currentRunId = activePollRunIdRef.current;
+
+    setIsLaunchingPlaywright(true);
+    setLaunchError(null);
+
+    const applySessionSnapshot = (sess: BrowserSessionData): boolean => {
+      if (activePollRunIdRef.current !== currentRunId) return true;
+
+      setSessionData(sess);
+      setPlaywrightStatus(sess.status);
+      updateProbeLiveState({
+        activeTestingSessionId: sess.sessionId,
+        activeTestingStatus: sess.status
+      });
+
+      if (sess.events && sess.events.length > 0) {
+        const lastEv = sess.events[sess.events.length - 1];
+        setActiveStepDescription(
+          `Step ${sess.events.length}: [${lastEv.type}] ${lastEv.target || ''}${
+            !lastEv.success && lastEv.error ? ` — Error: ${lastEv.error}` : ''
+          }`
+        );
+      } else if (sess.errors && sess.errors.length > 0) {
+        setActiveStepDescription(sess.errors[0]);
+      } else if (sess.status === 'QUEUED' || sess.status === 'STARTING') {
+        setActiveStepDescription(`Starting headless Chromium and opening ${finalUrl}...`);
+      }
+
+      if (sess.screenshots && sess.screenshots.length > 0) {
+        const latest = sess.screenshots[sess.screenshots.length - 1];
+        setCurrentScreenshot((prev) => prev || latest.dataUrl);
+        if (!isTerminalStatus(sess.status)) {
+          setCurrentScreenshot(latest.dataUrl);
+        }
+      }
+
+      if (isTerminalStatus(sess.status)) {
+        stopPolling();
+        setIsLaunchingPlaywright(false);
+        if (sess.screenshots && sess.screenshots.length > 0) {
+          setCurrentScreenshot(sess.screenshots[sess.screenshots.length - 1].dataUrl);
+        }
+        if (sess.status === 'FAILED' && sess.errors && sess.errors.length > 0) {
+          setLaunchError(sess.errors[0]);
+        }
+        return true;
+      }
+      return false;
+    };
+
+    if (initialPayload && applySessionSnapshot(initialPayload)) {
+      return;
+    }
+
+    const pollStartedAt = Date.now();
+    const MAX_POLL_DURATION_MS = 75000;
+    const MAX_CONSECUTIVE_ERRORS = 4;
+    const BASE_POLL_INTERVAL_MS = 1200;
+    let consecutiveErrors = 0;
+
+    const pollOnce = async () => {
+      if (activePollRunIdRef.current !== currentRunId) return;
+
+      if (Date.now() - pollStartedAt > MAX_POLL_DURATION_MS) {
+        stopPolling();
+        setIsLaunchingPlaywright(false);
+        setPlaywrightStatus('TIMEOUT');
+        const timeoutMsg =
+          'Playwright session timed out after 75 seconds while testing the target URL.';
+        setLaunchError(timeoutMsg);
+        setActiveStepDescription(`Timeout: ${timeoutMsg}`);
+        return;
+      }
+
+      try {
+        const checkRes = await fetchWithTimeout(
+          `/api/testing/session/${encodeURIComponent(newSessionId)}`,
+          { method: 'GET' },
+          10000
+        );
+
+        if (activePollRunIdRef.current !== currentRunId) return;
+
+        if (checkRes.ok) {
+          consecutiveErrors = 0;
+          const sess: BrowserSessionData = await checkRes.json();
+          const done = applySessionSnapshot(sess);
+          if (!done && activePollRunIdRef.current === currentRunId) {
+            pollingTimerRef.current = setTimeout(pollOnce, BASE_POLL_INTERVAL_MS);
+          }
+          return;
+        }
+
+        const errBody = await checkRes.json().catch(() => ({}));
+        if (checkRes.status === 404) {
+          consecutiveErrors += 1;
+          if (consecutiveErrors >= 2) {
+            stopPolling();
+            setIsLaunchingPlaywright(false);
+            setPlaywrightStatus('FAILED');
+            const notFoundMsg =
+              errBody?.message ||
+              'Testing session expired or the server restarted while loading the target page.';
+            setLaunchError(notFoundMsg);
+            setActiveStepDescription(`Error: ${notFoundMsg}`);
+            return;
+          }
+        } else {
+          consecutiveErrors += 1;
+        }
+
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          stopPolling();
+          setIsLaunchingPlaywright(false);
+          setPlaywrightStatus('FAILED');
+          const failMsg =
+            errBody?.message ||
+            errBody?.error ||
+            `Playwright session failed after ${MAX_CONSECUTIVE_ERRORS} retries (HTTP ${checkRes.status}). The target site may be unreachable or exceeded container memory limits.`;
+          setLaunchError(failMsg);
+          setActiveStepDescription(`Error: ${failMsg}`);
+          return;
+        }
+
+        const backoffMs = Math.min(1500 * Math.pow(2, consecutiveErrors - 1), 10000);
+        setActiveStepDescription(
+          `Waiting for browser session response (HTTP ${checkRes.status}, retry ${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS})...`
+        );
+        if (activePollRunIdRef.current === currentRunId) {
+          pollingTimerRef.current = setTimeout(pollOnce, backoffMs);
+        }
+      } catch (pollErr: any) {
+        if (activePollRunIdRef.current !== currentRunId) return;
+        consecutiveErrors += 1;
+
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          stopPolling();
+          setIsLaunchingPlaywright(false);
+          setPlaywrightStatus('FAILED');
+          const netMsg =
+            pollErr?.message ||
+            'Lost connection to Playwright testing backend after multiple retries.';
+          setLaunchError(netMsg);
+          setActiveStepDescription(`Error: ${netMsg}`);
+          return;
+        }
+
+        const backoffMs = Math.min(1500 * Math.pow(2, consecutiveErrors - 1), 10000);
+        setActiveStepDescription(
+          `Reconnecting to browser session (retry ${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS})...`
+        );
+        pollingTimerRef.current = setTimeout(pollOnce, backoffMs);
+      }
+    };
+
+    pollingTimerRef.current = setTimeout(pollOnce, BASE_POLL_INTERVAL_MS);
+  };
+
   const handleLaunchPlaywrightStudy = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const finalUrl = normalizeUrl(inputUrl);
@@ -129,8 +294,6 @@ export const ProductTestingSection: React.FC = () => {
     }
 
     stopPolling();
-    const currentRunId = activePollRunIdRef.current;
-
     setIsLaunchingPlaywright(true);
     setPlaywrightStatus('STARTING');
     setLaunchError(null);
@@ -171,153 +334,7 @@ export const ProductTestingSection: React.FC = () => {
         throw new Error('Server did not return a valid testing session ID.');
       }
 
-      const applySessionSnapshot = (sess: BrowserSessionData): boolean => {
-        if (activePollRunIdRef.current !== currentRunId) return true;
-
-        setSessionData(sess);
-        setPlaywrightStatus(sess.status);
-
-        if (sess.events && sess.events.length > 0) {
-          const lastEv = sess.events[sess.events.length - 1];
-          setActiveStepDescription(
-            `Step ${sess.events.length}: [${lastEv.type}] ${lastEv.target || ''}${
-              !lastEv.success && lastEv.error ? ` — Error: ${lastEv.error}` : ''
-            }`
-          );
-        } else if (sess.errors && sess.errors.length > 0) {
-          setActiveStepDescription(sess.errors[0]);
-        } else if (sess.status === 'QUEUED' || sess.status === 'STARTING') {
-          setActiveStepDescription(`Starting headless Chromium and opening ${finalUrl}...`);
-        }
-
-        if (sess.screenshots && sess.screenshots.length > 0) {
-          const latest = sess.screenshots[sess.screenshots.length - 1];
-          setCurrentScreenshot((prev) => prev || latest.dataUrl);
-          if (!isTerminalStatus(sess.status)) {
-            setCurrentScreenshot(latest.dataUrl);
-          }
-        }
-
-        if (isTerminalStatus(sess.status)) {
-          stopPolling();
-          setIsLaunchingPlaywright(false);
-          if (sess.screenshots && sess.screenshots.length > 0) {
-            setCurrentScreenshot(sess.screenshots[sess.screenshots.length - 1].dataUrl);
-          }
-          if (sess.status === 'FAILED' && sess.errors && sess.errors.length > 0) {
-            setLaunchError(sess.errors[0]);
-          }
-          return true;
-        }
-        return false;
-      };
-
-      if (applySessionSnapshot(payload)) {
-        return;
-      }
-
-      const pollStartedAt = Date.now();
-      const MAX_POLL_DURATION_MS = 75000;
-      const MAX_CONSECUTIVE_ERRORS = 4;
-      const BASE_POLL_INTERVAL_MS = 1200;
-      let consecutiveErrors = 0;
-
-      const pollOnce = async () => {
-        if (activePollRunIdRef.current !== currentRunId) return;
-
-        if (Date.now() - pollStartedAt > MAX_POLL_DURATION_MS) {
-          stopPolling();
-          setIsLaunchingPlaywright(false);
-          setPlaywrightStatus('TIMEOUT');
-          const timeoutMsg =
-            'Playwright session timed out after 75 seconds while testing the target URL.';
-          setLaunchError(timeoutMsg);
-          setActiveStepDescription(`Timeout: ${timeoutMsg}`);
-          return;
-        }
-
-        try {
-          const checkRes = await fetchWithTimeout(
-            `/api/testing/session/${encodeURIComponent(newSessionId)}`,
-            { method: 'GET' },
-            10000
-          );
-
-          if (activePollRunIdRef.current !== currentRunId) return;
-
-          if (checkRes.ok) {
-            consecutiveErrors = 0;
-            const sess: BrowserSessionData = await checkRes.json();
-            const done = applySessionSnapshot(sess);
-            if (!done && activePollRunIdRef.current === currentRunId) {
-              pollingTimerRef.current = setTimeout(pollOnce, BASE_POLL_INTERVAL_MS);
-            }
-            return;
-          }
-
-          const errBody = await checkRes.json().catch(() => ({}));
-          if (checkRes.status === 404) {
-            consecutiveErrors += 1;
-            if (consecutiveErrors >= 2) {
-              stopPolling();
-              setIsLaunchingPlaywright(false);
-              setPlaywrightStatus('FAILED');
-              const notFoundMsg =
-                errBody?.message ||
-                'Testing session expired or the server restarted while loading the target page.';
-              setLaunchError(notFoundMsg);
-              setActiveStepDescription(`Error: ${notFoundMsg}`);
-              return;
-            }
-          } else {
-            consecutiveErrors += 1;
-          }
-
-          if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-            stopPolling();
-            setIsLaunchingPlaywright(false);
-            setPlaywrightStatus('FAILED');
-            const failMsg =
-              errBody?.message ||
-              errBody?.error ||
-              `Playwright session failed after ${MAX_CONSECUTIVE_ERRORS} retries (HTTP ${checkRes.status}). The target site may be unreachable or exceeded container memory limits.`;
-            setLaunchError(failMsg);
-            setActiveStepDescription(`Error: ${failMsg}`);
-            return;
-          }
-
-          const backoffMs = Math.min(1500 * Math.pow(2, consecutiveErrors - 1), 10000);
-          setActiveStepDescription(
-            `Waiting for browser session response (HTTP ${checkRes.status}, retry ${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS})...`
-          );
-          if (activePollRunIdRef.current === currentRunId) {
-            pollingTimerRef.current = setTimeout(pollOnce, backoffMs);
-          }
-        } catch (pollErr: any) {
-          if (activePollRunIdRef.current !== currentRunId) return;
-          consecutiveErrors += 1;
-
-          if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-            stopPolling();
-            setIsLaunchingPlaywright(false);
-            setPlaywrightStatus('FAILED');
-            const netMsg =
-              pollErr?.message ||
-              'Lost connection to Playwright testing backend after multiple retries.';
-            setLaunchError(netMsg);
-            setActiveStepDescription(`Error: ${netMsg}`);
-            return;
-          }
-
-          const backoffMs = Math.min(1500 * Math.pow(2, consecutiveErrors - 1), 10000);
-          setActiveStepDescription(
-            `Reconnecting to browser session (retry ${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS})...`
-          );
-          pollingTimerRef.current = setTimeout(pollOnce, backoffMs);
-        }
-      };
-
-      pollingTimerRef.current = setTimeout(pollOnce, BASE_POLL_INTERVAL_MS);
+      startPollingForSession(newSessionId, finalUrl, payload);
     } catch (err: any) {
       stopPolling();
       setIsLaunchingPlaywright(false);
@@ -329,9 +346,26 @@ export const ProductTestingSection: React.FC = () => {
   };
 
   useEffect(() => {
+    const onVoxideProductTest = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (!detail) return;
+      if (detail.productUrl) setInputUrl(detail.productUrl);
+      if (detail.task) setInputTask(detail.task);
+      if (typeof detail.useGoogleAuth === 'boolean') setEnableGoogleAuth(detail.useGoogleAuth);
+      if (detail.sessionId) {
+        startPollingForSession(
+          detail.sessionId,
+          detail.productUrl || inputUrl,
+          detail.initialSnapshot
+        );
+      }
+    };
+    window.addEventListener('probe:voxide-product-test', onVoxideProductTest);
     return () => {
+      window.removeEventListener('probe:voxide-product-test', onVoxideProductTest);
       stopPolling();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const screenshots = sessionData?.screenshots || [];

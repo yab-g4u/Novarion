@@ -71,7 +71,7 @@ export class ScholarXIVProvider implements SearchProvider {
           'Accept': 'application/atom+xml, text/xml',
           'User-Agent': 'ProbeResearchEngine/1.0 (https://github.com/yab-g4u/Novarion.git; academic paper discovery)'
         },
-        signal: AbortSignal.timeout(8000)
+        signal: AbortSignal.timeout(2500)
       });
 
       if (!res.ok) {

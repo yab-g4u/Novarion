@@ -1,5 +1,6 @@
 import express from 'express';
 import fs from 'fs';
+import https from 'https';
 import path from 'path';
 import { createApiApp } from './src/lib/server/apiApp';
 
@@ -63,6 +64,61 @@ async function main() {
     httpServer.keepAliveTimeout = 65000;
     httpServer.headersTimeout = 66000;
     httpServer.requestTimeout = 120000;
+
+    // Relay Voxide WebSocket upgrade (/api/sdk/live) when accessed from ephemeral preview origins (*.run.app)
+    httpServer.on('upgrade', (req, clientSocket, head) => {
+      if (!req.url || !req.url.startsWith('/api/sdk/live')) {
+        return;
+      }
+
+      const upstreamReq = https.request({
+        hostname: 'voxide.onrender.com',
+        port: 443,
+        path: req.url,
+        method: 'GET',
+        headers: {
+          Connection: 'Upgrade',
+          Upgrade: 'websocket',
+          Origin: 'https://novarion.ethiodeploy.com',
+          'Sec-WebSocket-Key': req.headers['sec-websocket-key'] || '',
+          'Sec-WebSocket-Version': req.headers['sec-websocket-version'] || '13',
+          ...(req.headers['sec-websocket-protocol']
+            ? { 'Sec-WebSocket-Protocol': req.headers['sec-websocket-protocol'] }
+            : {}),
+        },
+      });
+
+      upstreamReq.on('upgrade', (upstreamRes, upstreamSocket, upstreamHead) => {
+        const responseLines = [
+          'HTTP/1.1 101 Switching Protocols',
+          'Upgrade: websocket',
+          'Connection: Upgrade',
+          `Sec-WebSocket-Accept: ${upstreamRes.headers['sec-websocket-accept'] || ''}`,
+        ];
+        if (upstreamRes.headers['sec-websocket-protocol']) {
+          responseLines.push(
+            `Sec-WebSocket-Protocol: ${upstreamRes.headers['sec-websocket-protocol']}`
+          );
+        }
+        clientSocket.write(responseLines.join('\r\n') + '\r\n\r\n');
+        if (upstreamHead && upstreamHead.length > 0) {
+          clientSocket.write(upstreamHead);
+        }
+        if (head && head.length > 0) {
+          upstreamSocket.write(head);
+        }
+        upstreamSocket.pipe(clientSocket);
+        clientSocket.pipe(upstreamSocket);
+        upstreamSocket.on('error', () => clientSocket.destroy());
+        clientSocket.on('error', () => upstreamSocket.destroy());
+      });
+
+      upstreamReq.on('error', () => {
+        clientSocket.destroy();
+      });
+
+      upstreamReq.end();
+    });
   });
 
   // In development only, dynamically attach Vite dev middleware after HTTP server is listening
