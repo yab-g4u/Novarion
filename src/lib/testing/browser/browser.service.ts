@@ -113,7 +113,7 @@ export class BrowserService {
       '--mute-audio',
       '--renderer-process-limit=1',
       '--num-raster-threads=1',
-      '--js-flags=--max-old-space-size=96'
+      '--js-flags=--max-old-space-size=192'
     ];
 
     // Single-process mode cuts Chromium memory usage from ~800MB (4 processes) down to ~280MB (1 process)

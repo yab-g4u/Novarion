@@ -50,7 +50,7 @@ export class TaskPlanner {
           },
           {
             id: 'm2',
-            description: 'Initiate Google authentication with g4uforlife@gmail.com',
+            description: 'Initiate Google/Gmail authentication flow',
             expectedKeywords: ['email', 'identifier', 'g4uforlife@gmail.com'],
             actionType: 'TYPE_DATA',
             completed: false

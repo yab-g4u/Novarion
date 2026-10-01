@@ -509,7 +509,7 @@ export class BrowserSession extends EventEmitter {
     if (currentEmailSelector && !observation.authDetection?.hasPasswordInput) {
       await this.executeAction(
         'TYPE',
-        `Google account email (${emailToUse})`,
+        'Google account email identifier',
         currentEmailSelector,
         emailToUse
       );
@@ -536,7 +536,8 @@ export class BrowserSession extends EventEmitter {
       textAfter.includes('2-step verification');
 
     if (requiresPasswordOrChallenge || postAuth?.authRequired) {
-      const msg = `Initiated Google/Gmail authentication with ${emailToUse}, but interactive password or OAuth verification is required to complete login (Probe never hardcodes or stores passwords).`;
+      const msg =
+        'Initiated Google/Gmail authentication, but interactive password or OAuth verification is required to complete login (Probe never hardcodes or stores passwords).';
       this.authDetection = {
         ...(postAuth || {
           authRequired: true,
@@ -561,13 +562,13 @@ export class BrowserSession extends EventEmitter {
       }),
       authAccountAttempted: emailToUse,
       authOutcome: 'AUTHENTICATED',
-      reason: `Authenticated flow proceeded with ${emailToUse}`
+      reason: 'Authenticated flow proceeded via Google/Gmail Sign-In'
     };
 
     return {
       attempted: true,
       authenticated: true,
-      explanation: `Google/Gmail authentication flow executed with ${emailToUse}.`
+      explanation: 'Google/Gmail authentication flow executed.'
     };
   }
 

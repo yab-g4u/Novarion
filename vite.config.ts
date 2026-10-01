@@ -28,6 +28,8 @@ export default defineConfig({
       'clsx',
       'tailwind-merge',
       '@supabase/supabase-js',
+      '@voxide/react',
+      'framer-motion',
     ],
   },
   server: {

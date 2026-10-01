@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Compass,
   ArrowRight,
@@ -114,6 +114,22 @@ export const TestingWorkspace: React.FC<TestingWorkspaceProps> = ({ onSyncToGrap
     setTask(preset.task);
     setUseGoogleAuth(preset.useGoogleAuth);
   };
+
+  useEffect(() => {
+    const onVoxideTest = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (!detail) return;
+      if (detail.productUrl) setProductUrl(detail.productUrl);
+      if (detail.task) setTask(detail.task);
+      if (typeof detail.useGoogleAuth === 'boolean') setUseGoogleAuth(detail.useGoogleAuth);
+      if (detail.sessionId) {
+        setErrorMessage(null);
+        setActiveSessionId(detail.sessionId);
+      }
+    };
+    window.addEventListener('probe:voxide-product-test', onVoxideTest);
+    return () => window.removeEventListener('probe:voxide-product-test', onVoxideTest);
+  }, []);
 
   return (
     <section id="section-product-testing" className="py-16 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto text-left font-['Geist',sans-serif]">
