@@ -74,11 +74,9 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
 
     window.addEventListener('probe:voxide-investigate-start', onVoxideInvestigate);
     window.addEventListener('probe:voxide-investigate', onVoxideInvestigate);
-    window.addEventListener('probe:voxide-investigation-updated', onVoxideInvestigate);
     return () => {
       window.removeEventListener('probe:voxide-investigate-start', onVoxideInvestigate);
       window.removeEventListener('probe:voxide-investigate', onVoxideInvestigate);
-      window.removeEventListener('probe:voxide-investigation-updated', onVoxideInvestigate);
     };
   }, [onInvestigationComplete]);
 

@@ -3,7 +3,7 @@ import { ProbeRealtimeEvent, CollaboratorPresence } from '../types/collaboration
 
 /**
  * Sanitizes a Supabase project URL so accidental path suffixes in deployment env vars
- * (e.g. `https://xhxgbqwytmzwnzswelln.supabase.co/rest/v1/`) never cause `@supabase/supabase-js`
+ * (e.g. `https://your-project.supabase.co/rest/v1/`) never cause `@supabase/supabase-js`
  * to request `/rest/v1/rest/v1` (404) or `/rest/v1/realtime/v1` (404).
  */
 export const sanitizeSupabaseProjectUrl = (rawUrl: string): string => {
@@ -40,11 +40,11 @@ export const resolveSupabaseConfig = () => {
     '';
 
   const cleanedEnvUrl = sanitizeSupabaseProjectUrl(rawEnvUrl);
+  const cleanedEnvKey = rawEnvKey.trim();
 
-  // Connected production Supabase project origin ONLY (never /rest/v1 or /realtime/v1)
-  const supabaseUrl = cleanedEnvUrl || 'https://xhxgbqwytmzwnzswelln.supabase.co';
-  const supabasePublishableKey =
-    rawEnvKey.trim() || 'sb_publishable_ac2r1Xx3s62t68b6Bfnm9Q_vOofu63P';
+  // Read strictly from environment variables; use inert placeholder if not configured in .env
+  const supabaseUrl = cleanedEnvUrl || 'https://placeholder.supabase.co';
+  const supabasePublishableKey = cleanedEnvKey || 'sb_publishable_unconfigured';
 
   return {
     supabaseUrl,
@@ -52,7 +52,7 @@ export const resolveSupabaseConfig = () => {
     supabaseAnonKey: supabasePublishableKey,
     rawEnvUrl,
     wasUrlSanitized: Boolean(rawEnvUrl && cleanedEnvUrl !== rawEnvUrl.replace(/\/+$/, '')),
-    isConfigured: Boolean(supabaseUrl && supabasePublishableKey),
+    isConfigured: Boolean(cleanedEnvUrl && cleanedEnvKey),
   };
 };
 

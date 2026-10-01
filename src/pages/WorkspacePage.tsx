@@ -107,6 +107,17 @@ export const WorkspacePage: React.FC = () => {
       }
     };
 
+    const onVoxideEvidenceUpdated = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (!detail) return;
+      if (detail.pressureTest) {
+        const extra = getProbeInternalState().customEvidence;
+        setActiveGraphData(buildGraphDataFromPressureTest(detail.pressureTest, extra));
+      } else if (detail.graphData) {
+        setActiveGraphData(detail.graphData);
+      }
+    };
+
     const onVoxideAddEvidence = (e: Event) => {
       const detail = (e as CustomEvent)?.detail;
       if (!detail?.evidence) return;
@@ -137,14 +148,14 @@ export const WorkspacePage: React.FC = () => {
 
     window.addEventListener('probe:voxide-investigate-start', onVoxideInvestigate);
     window.addEventListener('probe:voxide-investigate', onVoxideInvestigate);
-    window.addEventListener('probe:voxide-investigation-updated', onVoxideInvestigate);
+    window.addEventListener('probe:voxide-investigation-updated', onVoxideEvidenceUpdated);
     window.addEventListener('probe:voxide-add-evidence', onVoxideAddEvidence);
     window.addEventListener('probe:voxide-open-graph', onVoxideOpenGraph);
 
     return () => {
       window.removeEventListener('probe:voxide-investigate-start', onVoxideInvestigate);
       window.removeEventListener('probe:voxide-investigate', onVoxideInvestigate);
-      window.removeEventListener('probe:voxide-investigation-updated', onVoxideInvestigate);
+      window.removeEventListener('probe:voxide-investigation-updated', onVoxideEvidenceUpdated);
       window.removeEventListener('probe:voxide-add-evidence', onVoxideAddEvidence);
       window.removeEventListener('probe:voxide-open-graph', onVoxideOpenGraph);
     };

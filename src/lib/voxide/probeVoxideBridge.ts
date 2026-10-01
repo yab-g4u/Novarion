@@ -134,12 +134,101 @@ function deriveInvestigationId(idea: string): string {
   return generateInvestigationId(hexMatch ? hexMatch[1] : undefined);
 }
 
+export type VoiceState = 'idle' | 'listening' | 'processing' | 'speaking';
+
+let currentVoiceState: VoiceState = 'idle';
+const voiceStateListeners = new Set<(state: VoiceState) => void>();
+const recentAgentSpokenTexts: string[] = [];
+
+function normalizeSpeechForComparison(text: string): string {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/["'“”‘’.,!?;:()[\]{}-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function getVoiceState(): VoiceState {
+  return currentVoiceState;
+}
+
+export function setVoiceState(next: VoiceState): void {
+  if (currentVoiceState === next) return;
+  currentVoiceState = next;
+  for (const listener of voiceStateListeners) {
+    try {
+      listener(next);
+    } catch {
+      // Ignore listener errors
+    }
+  }
+}
+
+export function subscribeVoiceState(listener: (state: VoiceState) => void): () => void {
+  voiceStateListeners.add(listener);
+  return () => {
+    voiceStateListeners.delete(listener);
+  };
+}
+
+export function canAcceptUserSpeech(): boolean {
+  return currentVoiceState === 'listening';
+}
+
+export function registerAgentSpokenText(text: string): void {
+  const norm = normalizeSpeechForComparison(text);
+  if (!norm) return;
+  recentAgentSpokenTexts.unshift(norm);
+  if (recentAgentSpokenTexts.length > 20) {
+    recentAgentSpokenTexts.length = 20;
+  }
+}
+
+export function isAgentTtsEcho(transcript: string): boolean {
+  const raw = String(transcript || '').trim();
+  const norm = normalizeSpeechForComparison(raw);
+  if (!norm) return true;
+
+  for (const spoken of recentAgentSpokenTexts) {
+    if (norm === spoken) return true;
+    if (norm.length >= 6 && (spoken.includes(norm) || norm.includes(spoken))) {
+      return true;
+    }
+  }
+
+  // Match standard Voxide / Probe spoken response phrasing so TTS output can never re-trigger commands
+  if (
+    /^(?:i\s+opened|opened)\s+(?:the\s+)?(?:living\s+)?evidence\s+graph\b/i.test(raw) ||
+    /^i\s+(?:opened|challenged|filtered|started|scheduled|displayed|found|summarized|navigated)\b/i.test(
+      raw
+    ) ||
+    /^opened\s+\/(?:app|signin)\b/i.test(raw) ||
+    /^investigated\s+["'“]?.+["'”]?\.\s*deconstructed\b/i.test(raw) ||
+    /^deconstructed\s+\d+\s+core\s+assumptions\b/i.test(raw) ||
+    /^displaying\s+\d+\s+deconstructed\s+assumptions\b/i.test(raw) ||
+    /^focused\s+assumption\s+a\d+\b/i.test(raw) ||
+    /^challenged\s+assumption\s+a\d+\b/i.test(raw) ||
+    /^retrieved\s+\d+\s+empirical\s+evidence\s+signals\b/i.test(raw) ||
+    /^filtered\s+evidence\s+to\b/i.test(raw) ||
+    /^scheduled\s+.+\s+validation\s+experiment\b/i.test(raw) ||
+    /^started\s+live\s+playwright\s+test\s+on\b/i.test(raw) ||
+    /^playwright\s+test\s+on\s+.+\s+is\b/i.test(raw) ||
+    /^summary\s+for\s+["'“]?.+["'”]?:/i.test(raw) ||
+    /^action\s+completed\s+in\s+probe\b/i.test(raw) ||
+    /^executed\s+command\s+in\s+probe\b/i.test(raw)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 export function cleanNaturalIdeaInput(raw: string): string {
   const trimmed = String(raw || '').trim();
   if (!trimmed) return '';
   return trimmed
     .replace(
-      /^(?:please\s+)?(?:can\s+you\s+|could\s+you\s+)?(?:start\s+an?\s+investigation\s+(?:on|for|about|into)|investigate|research|pressure[\s-]test|analyze|explore|probe)\s+(?:an?\s+idea\s+(?:for|about|to\s+build)\s+)?/i,
+      /^(?:please\s+)?(?:can\s+you\s+|could\s+you\s+|let'?s\s+|help\s+me\s+)?(?:start\s+an?\s+investigation\s+(?:on|for|about|into)|run\s+an?\s+investigation\s+(?:on|for|about|into)|investigate|research|pressure[\s-]test|stress[\s-]test|analyze|explore|probe|search\s+for\s+an?\s+idea\s+(?:for|about|on)|search\s+for|i\s+want\s+to\s+build|my\s+(?:product\s+|startup\s+)?idea\s+is(?:\s+to\s+build)?)\s+(?:an?\s+idea\s+(?:for|about|to\s+build)\s+)?/i,
       ''
     )
     .replace(/[.?!]+$/, '')
@@ -455,18 +544,23 @@ export async function ensureInvestigationLoaded(
   ideaOverride?: string,
   forceRefresh = false
 ): Promise<PressureTestResponse> {
-  const rawTarget = ideaOverride
-    ? cleanNaturalIdeaInput(ideaOverride) || ideaOverride.trim()
-    : getConciseProbeState().currentIdea || DEFAULT_IDEA;
-  const targetIdea = rawTarget.trim() || DEFAULT_IDEA;
+  // Only an explicit startInvestigation call passes forceRefresh = true with ideaOverride.
+  // All other capabilities inspect the existing active investigation without modifying
+  // currentIdea, localStorage, or the UI search input field.
+  const isExplicitNewInvestigation = Boolean(forceRefresh && ideaOverride && ideaOverride.trim());
 
-  if (
-    !forceRefresh &&
-    bridgeState.latestPressureTest &&
-    bridgeState.latestPressureTest.idea.toLowerCase() === targetIdea.toLowerCase()
-  ) {
-    return bridgeState.latestPressureTest;
+  if (!isExplicitNewInvestigation) {
+    if (bridgeState.latestPressureTest) {
+      return bridgeState.latestPressureTest;
+    }
+    const existingIdea = bridgeState.currentIdea || DEFAULT_IDEA;
+    const fallback = buildClientPressureTestFallback(existingIdea);
+    bridgeState.latestPressureTest = fallback;
+    return fallback;
   }
+
+  const rawTarget = cleanNaturalIdeaInput(ideaOverride!) || ideaOverride!.trim();
+  const targetIdea = rawTarget.trim() || DEFAULT_IDEA;
 
   const immediateDynamic = generateDynamicInvestigation(targetIdea);
   const immediateFallback = buildClientPressureTestFallback(targetIdea);
@@ -536,13 +630,6 @@ export async function ensureInvestigationLoaded(
     graphData,
   });
 
-  emitProbeBridgeEvent('probe:voxide-investigation-updated', {
-    idea: data.idea || targetIdea,
-    pressureTest: data,
-    dynamicData: updatedDynamic,
-    graphData,
-  });
-
   return data;
 }
 
@@ -565,10 +652,8 @@ export async function executeFindEvidence(params: {
   const activeIdea = getConciseProbeState().currentIdea || DEFAULT_IDEA;
   const targetQuery = isGenericFilterPhrase ? activeIdea : cleanNaturalIdeaInput(rawQuery) || rawQuery;
 
-  // 1. Ensure base investigation is loaded
-  const investigation = await ensureInvestigationLoaded(
-    isGenericFilterPhrase ? undefined : targetQuery
-  );
+  // 1. Ensure current investigation is loaded WITHOUT changing currentIdea or overwriting the UI search input
+  const investigation = await ensureInvestigationLoaded();
 
   // 2. Also query /api/search for targeted multi-source signals
   const sourcesToSearch: ResearchSourceType[] =

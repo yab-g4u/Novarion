@@ -1,5 +1,5 @@
 -- Probe Authoritative Shared Investigations Schema & Scoped RLS
--- Run this migration in the Supabase SQL Editor for project: xhxgbqwytmzwnzswelln
+-- Run this migration in the Supabase SQL Editor for your configured Supabase project
 
 create table if not exists public.investigations (
   id text primary key,

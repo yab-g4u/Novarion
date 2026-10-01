@@ -2,6 +2,7 @@ import {
   ConciseProbeState,
   cleanNaturalIdeaInput,
   extractUrlFromText,
+  isAgentTtsEcho,
 } from './probeVoxideBridge';
 
 export interface ResolvedCapabilityCall {
@@ -10,44 +11,105 @@ export interface ResolvedCapabilityCall {
 }
 
 /**
- * Resolves a natural-language user utterance (spoken or typed) + live ConciseProbeState
- * into the exact registered Voxide capability name and arguments.
+ * Extracts the product idea ONLY when the user explicitly asks to investigate,
+ * research, pressure-test, analyze, or search for an idea.
+ * Returns null for navigation, graph, assumptions, testing, questions, or TTS echo.
  */
-export function resolveVoiceCapabilityCall(
-  rawUtterance: string,
-  state: ConciseProbeState
-): ResolvedCapabilityCall {
+export function extractExplicitInvestigationIdea(rawUtterance: string): string | null {
   const text = String(rawUtterance || '').trim();
+  if (!text || isAgentTtsEcho(text)) return null;
+
   const lower = text.toLowerCase().replace(/[.?!]+$/, '').trim();
 
-  // 1. Direct route navigation commands
+  // Reject UI navigation, evidence graph, assumptions, testing, or summary phrases
   if (
-    /^(?:go\s+to|navigate\s+to|open|take\s+me\s+to|switch\s+to)\s+(?:the\s+)?(?:calendar|validation\s+calendar|schedule|timeline)$/i.test(
+    /^(?:open|go\s+to|navigate\s+to|switch\s+to|take\s+me\s+to|show|view|display|list|challenge|dispute|test|summarize|what\s+did\s+we\s+find|what\s+is\s+this|how\s+does\s+this\s+work|go\s+back|back)\b/i.test(
+      lower
+    )
+  ) {
+    return null;
+  }
+
+  const match = text.match(
+    /^(?:please\s+)?(?:can\s+you\s+|could\s+you\s+|let'?s\s+|help\s+me\s+)?(?:start\s+an?\s+investigation\s+(?:on|for|about|into)\s+|run\s+an?\s+investigation\s+(?:on|for|about|into)\s+|investigate\s+|research\s+|pressure[\s-]test\s+|stress[\s-]test\s+|probe\s+|analyze\s+|explore\s+|validate\s+(?:the\s+idea\s+(?:of|for|that)\s+|my\s+idea\s+(?:for|about|to\s+build)\s+)|search\s+for\s+an?\s+idea\s+(?:for|about|on)\s+|search\s+for\s+|i\s+want\s+to\s+(?:build|create|launch|investigate|research)\s+|i(?:'m|\s+am)\s+building\s+|my\s+(?:product\s+|startup\s+)?idea\s+is\s+(?:to\s+build\s+)?|what\s+if\s+we\s+build\s+)(.+)$/i
+  );
+
+  if (!match || !match[1]) return null;
+
+  const candidate = cleanNaturalIdeaInput(match[1]) || match[1].replace(/[.?!]+$/, '').trim();
+  if (!candidate || candidate.length < 2) return null;
+
+  // Guard against generic UI nouns masquerading as ideas
+  if (
+    /^(?:the\s+)?(?:research\s+page|research\s+workspace|workspace|evidence\s+graph|graph|assumptions?|this\s+assumption|this\s+product|this\s+evidence|the\s+investigation|testing|calendar)$/i.test(
+      candidate.trim()
+    )
+  ) {
+    return null;
+  }
+
+  return candidate.trim();
+}
+
+export function hasExplicitInvestigationIntent(rawUtterance: string): boolean {
+  return extractExplicitInvestigationIdea(rawUtterance) !== null;
+}
+
+/**
+ * Checks whether a string is a non-investigation command or question (e.g. "Open the evidence graph",
+ * "Show assumptions", "Challenge this assumption", "Go to testing", "What did we find?", etc.).
+ */
+export function matchNonInvestigationCapability(
+  rawUtterance: string,
+  state: ConciseProbeState
+): ResolvedCapabilityCall | null {
+  const text = String(rawUtterance || '').trim();
+  if (!text) return null;
+
+  if (isAgentTtsEcho(text)) {
+    return { name: 'noop', args: { reason: 'tts_echo' } };
+  }
+
+  const lower = text.toLowerCase().replace(/[.?!]+$/, '').trim();
+
+  // 1. Direct route navigation commands ("Go to testing", "Open the research page", "Go back", etc.)
+  if (/^(?:go\s+back|navigate\s+back|take\s+me\s+back|back)$/i.test(lower)) {
+    return { name: 'navigate', args: { route: 'back' } };
+  }
+  if (
+    /^(?:go\s+to|navigate\s+to|open|take\s+me\s+to|switch\s+to)\s+(?:the\s+)?(?:calendar|validation\s+calendar|schedule|timeline)(?:\s+page)?$/i.test(
       lower
     )
   ) {
     return { name: 'navigate', args: { route: '/app/calendar' } };
   }
   if (
-    /^(?:go\s+to|navigate\s+to|open|take\s+me\s+to)\s+(?:the\s+)?(?:sign\s*in|login|log\s*in|auth)\s*(?:page)?$/i.test(
+    /^(?:go\s+to|navigate\s+to|open|take\s+me\s+to|switch\s+to)\s+(?:the\s+)?(?:sign\s*in|login|log\s*in|auth)(?:\s+page)?$/i.test(
       lower
     )
   ) {
     return { name: 'navigate', args: { route: '/signin' } };
   }
   if (
-    /^(?:go\s+to|navigate\s+to|open|take\s+me\s+to)\s+(?:the\s+)?(?:home|landing\s+page|main\s+page|start\s+page)$/i.test(
+    /^(?:go\s+to|navigate\s+to|open|take\s+me\s+to|switch\s+to)\s+(?:the\s+)?(?:home|landing|main|start)(?:\s+page)?$/i.test(
       lower
     )
   ) {
     return { name: 'navigate', args: { route: '/' } };
   }
   if (
-    /^(?:go\s+to|navigate\s+to|open|take\s+me\s+to)\s+(?:the\s+)?(?:research|research\s+workspace|workspace)$/i.test(
+    /^(?:go\s+to|navigate\s+to|open|take\s+me\s+to|switch\s+to)\s+(?:the\s+)?(?:research|research\s+workspace|research\s+page|workspace)(?:\s+page)?$/i.test(
       lower
     )
   ) {
     return { name: 'navigate', args: { route: '/app/research' } };
+  }
+  if (
+    /^(?:go\s+to|navigate\s+to|open|take\s+me\s+to|switch\s+to)\s+(?:the\s+)?(?:testing|product\s+testing|playwright|testing\s+workspace|testing\s+page)(?:\s+page)?$/i.test(
+      lower
+    )
+  ) {
+    return { name: 'navigate', args: { route: '/app/testing' } };
   }
 
   // 2. Product test results inspection ("What happened?", "What did the simulated user do?", "Where did it fail?", "Show me the biggest friction", "Open the test results", "Summarize this test")
@@ -105,7 +167,7 @@ export function resolveVoiceCapabilityCall(
 
   // 4. Open Evidence Graph ("Open the evidence graph", "Show me the evidence", "Open the graph", "Open this evidence")
   if (
-    /(?:open\s+(?:the\s+)?(?:living\s+)?evidence\s+graph|show\s+(?:me\s+)?(?:the\s+)?evidence\s+graph|open\s+(?:the\s+)?graph|view\s+(?:the\s+)?evidence\s+graph|^show\s+(?:me\s+)?the\s+evidence$|^open\s+this\s+evidence$)/i.test(
+    /(?:open\s+(?:the\s+)?(?:living\s+)?evidence\s+graph|show\s+(?:me\s+)?(?:the\s+)?(?:living\s+)?evidence\s+graph|go\s+to\s+(?:the\s+)?evidence\s+graph|open\s+(?:the\s+)?graph|view\s+(?:the\s+)?evidence\s+graph|^show\s+(?:me\s+)?the\s+evidence$|^open\s+this\s+evidence$)/i.test(
       lower
     )
   ) {
@@ -144,9 +206,9 @@ export function resolveVoiceCapabilityCall(
     };
   }
 
-  // 6. Focus or show assumptions ("Show me the assumptions", "Focus on the second assumption", "What are the assumptions?")
+  // 6. Focus or show assumptions ("Show me the assumptions", "Show assumptions", "Focus on the second assumption", "What are the assumptions?")
   if (
-    /(?:show\s+(?:me\s+)?(?:the\s+)?assumptions|list\s+(?:the\s+)?assumptions|what\s+are\s+the\s+assumptions|(?:focus|select|inspect|open)\s+(?:on\s+)?(?:the\s+)?(?:first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th|a[1-5])\s+assumption)/i.test(
+    /(?:show\s+(?:me\s+)?(?:the\s+)?assumptions|list\s+(?:the\s+)?assumptions|view\s+(?:the\s+)?assumptions|open\s+(?:the\s+)?assumptions|what\s+are\s+(?:the|our)\s+assumptions|(?:focus|select|inspect|open)\s+(?:on\s+)?(?:the\s+)?(?:first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th|a[1-5])\s+assumption)/i.test(
       lower
     )
   ) {
@@ -165,7 +227,7 @@ export function resolveVoiceCapabilityCall(
     };
   }
 
-  // 7. Filter existing evidence ("Show contradictory evidence", "Show me evidence supporting this", "Show me evidence against this")
+  // 7. Filter existing evidence ("Show contradictory evidence", "Show me contradictory evidence", "Show me evidence supporting this", "Show me evidence against this")
   if (
     /^(?:show|filter|display|view)\s+(?:me\s+)?(?:only\s+)?(?:the\s+)?(?:contradictory|challenging|conflicting|supporting|positive|negative|counter)\s+evidence/i.test(
       lower
@@ -189,7 +251,7 @@ export function resolveVoiceCapabilityCall(
     };
   }
 
-  // 8. Find / search real evidence ("Find evidence that challenges the idea", "Find Reddit discussions about cooking apps", "Find academic evidence about food-planning applications", "Find evidence that university students actually have this problem")
+  // 8. Find / search real evidence ("Find evidence that challenges the idea", "Find Reddit discussions about cooking apps", "Find academic evidence about food-planning applications", "Find evidence about whether students would use this product")
   if (
     /^(?:find|search\s+for|get|retrieve|look\s+for)\s+(?:me\s+)?(?:real\s+)?(?:reddit|academic|scholar|scholarxiv|x|twitter|linkedin|supporting|contradictory|challenging)?\s*(?:evidence|discussions|papers|studies|signals|posts)/i.test(
       lower
@@ -205,9 +267,7 @@ export function resolveVoiceCapabilityCall(
     if (/challeng|contradict|against|conflict|counter/i.test(lower)) evidenceType = 'CHALLENGES';
     else if (/support|confirm|validat/i.test(lower)) evidenceType = 'SUPPORTS';
 
-    const topicMatch = text.match(
-      /(?:about|for|on|that|whether)\s+(.+?)$/i
-    );
+    const topicMatch = text.match(/(?:about|for|on|that|whether)\s+(.+?)$/i);
     const extractedQuery = topicMatch ? topicMatch[1].replace(/[.?!]+$/, '').trim() : '';
     const isGenericQuery =
       !extractedQuery ||
@@ -237,9 +297,9 @@ export function resolveVoiceCapabilityCall(
     };
   }
 
-  // 10. Summarize investigation ("Summarize what we found", "Summarize the investigation", "Give me a summary")
+  // 10. Summarize investigation or answer questions about current findings/evidence ("Summarize what we found", "Summarize the investigation", "What did we find?", "What is this evidence?", "How does this work?")
   if (
-    /(?:summarize\s+(?:what\s+we\s+found|the\s+investigation|this\s+investigation|findings|results)|give\s+me\s+a\s+summary|what\s+did\s+we\s+find)/i.test(
+    /(?:summarize\s+(?:what\s+we\s+found|the\s+investigation|this\s+investigation|findings|results)|give\s+me\s+a\s+summary|what\s+did\s+we\s+find|what\s+is\s+this\s+evidence|explain\s+this\s+evidence|how\s+does\s+this\s+work|what\s+are\s+the\s+findings)/i.test(
       lower
     )
   ) {
@@ -249,13 +309,47 @@ export function resolveVoiceCapabilityCall(
     };
   }
 
-  // 11. Default / explicit investigation command ("Research cooking apps", "Investigate ...", or an arbitrary product idea)
-  const cleanedIdea = cleanNaturalIdeaInput(text) || text;
+  return null;
+}
+
+/**
+ * Resolves a natural-language user utterance (spoken or typed) + live ConciseProbeState
+ * into the exact registered Voxide capability name and arguments.
+ *
+ * CORE RULE: Only explicitly identified investigation requests call `startInvestigation`.
+ * Non-investigation commands and questions NEVER fall back to `startInvestigation`.
+ */
+export function resolveVoiceCapabilityCall(
+  rawUtterance: string,
+  state: ConciseProbeState
+): ResolvedCapabilityCall {
+  const text = String(rawUtterance || '').trim();
+  if (!text || isAgentTtsEcho(text)) {
+    return { name: 'noop', args: { reason: 'tts_echo' } };
+  }
+
+  // 1. Check all non-investigation capabilities first (navigation, testing, graph, assumptions, filtering, evidence search, summary)
+  const matchedCapability = matchNonInvestigationCapability(text, state);
+  if (matchedCapability) {
+    return matchedCapability;
+  }
+
+  // 2. Check if the user explicitly asked to start/research/investigate/pressure-test an idea
+  const explicitIdea = extractExplicitInvestigationIdea(text);
+  if (explicitIdea) {
+    return {
+      name: 'startInvestigation',
+      args: {
+        idea: explicitIdea,
+      },
+    };
+  }
+
+  // 3. For any other question or conversational utterance ("How does this work?", "What is this evidence?"),
+  // summarize the active investigation state without modifying the search input.
   return {
-    name: 'startInvestigation',
-    args: {
-      idea: cleanedIdea,
-    },
+    name: 'summarizeInvestigation',
+    args: {},
   };
 }
 
@@ -265,6 +359,9 @@ export function resolveVoiceCapabilityCall(
 export function formatCapabilityResultForSpeech(actionName: string, result: any): string {
   if (!result || typeof result !== 'object') {
     return 'Action completed in Probe.';
+  }
+  if (result.status === 'ignored') {
+    return '';
   }
   if (result.status === 'error') {
     return result.message || 'The operation encountered an error.';

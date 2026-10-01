@@ -49,12 +49,12 @@ async function runTests() {
 
   // 3. Supabase URL sanitization (fixes /rest/v1/ suffix in production env vars)
   assert.equal(
-    sanitizeSupabaseProjectUrl('https://xhxgbqwytmzwnzswelln.supabase.co/rest/v1/'),
-    'https://xhxgbqwytmzwnzswelln.supabase.co'
+    sanitizeSupabaseProjectUrl('https://example-project.supabase.co/rest/v1/'),
+    'https://example-project.supabase.co'
   );
   assert.equal(
-    sanitizeSupabaseProjectUrl('https://xhxgbqwytmzwnzswelln.supabase.co/realtime/v1'),
-    'https://xhxgbqwytmzwnzswelln.supabase.co'
+    sanitizeSupabaseProjectUrl('https://example-project.supabase.co/realtime/v1'),
+    'https://example-project.supabase.co'
   );
   console.log('[PASS] 3. VITE_SUPABASE_URL /rest/v1/ suffix sanitization verified');
 

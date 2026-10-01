@@ -199,6 +199,13 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
       }
     };
 
+    const onVoxideEvidenceUpdated = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (!detail?.pressureTest) return;
+      // Update evidence data ONLY; never modify ideaInput
+      setTestResult(detail.pressureTest);
+    };
+
     const onVoxideShowAssumptions = (e: Event) => {
       const detail = (e as CustomEvent)?.detail;
       const targetAssumpId = detail?.assumptionId || 'all';
@@ -290,7 +297,7 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
 
     window.addEventListener('probe:voxide-investigate-start', onVoxideInvestigateStart);
     window.addEventListener('probe:voxide-investigate', onVoxideInvestigate);
-    window.addEventListener('probe:voxide-investigation-updated', onVoxideInvestigate);
+    window.addEventListener('probe:voxide-investigation-updated', onVoxideEvidenceUpdated);
     window.addEventListener('probe:voxide-show-assumptions', onVoxideShowAssumptions);
     window.addEventListener('probe:voxide-challenge-assumption', onVoxideChallengeAssumption);
     window.addEventListener('probe:voxide-filter', onVoxideFilter);
@@ -299,7 +306,7 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
     return () => {
       window.removeEventListener('probe:voxide-investigate-start', onVoxideInvestigateStart);
       window.removeEventListener('probe:voxide-investigate', onVoxideInvestigate);
-      window.removeEventListener('probe:voxide-investigation-updated', onVoxideInvestigate);
+      window.removeEventListener('probe:voxide-investigation-updated', onVoxideEvidenceUpdated);
       window.removeEventListener('probe:voxide-show-assumptions', onVoxideShowAssumptions);
       window.removeEventListener('probe:voxide-challenge-assumption', onVoxideChallengeAssumption);
       window.removeEventListener('probe:voxide-filter', onVoxideFilter);

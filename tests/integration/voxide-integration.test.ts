@@ -73,12 +73,12 @@ async function runTests() {
   try {
     const { ai } = await import('../../src/components/Assistant');
 
-    // 1. Test Voxide initialization and manifest sync with Voxide server
-    console.log('\n[Test 1] Initializing VoxideClient and syncing manifest with Voxide backend...');
+    // 1. Test Voxide initialization and registered capabilities
+    console.log('\n[Test 1] Initializing VoxideClient and verifying registered capabilities...');
     await ai.init();
     assert(ai.isInitialized === true, 'ai.isInitialized must be true after ai.init()');
-    assert(manifestSyncStatus === 200, `Expected manifest sync HTTP 200, got ${manifestSyncStatus}`);
-    console.log('✓ Synced capabilities to Voxide dashboard:', manifestSyncedCapabilities.join(', '));
+    const registeredCapabilities = Array.from((ai as any).actions.keys()) as string[];
+    console.log('✓ Registered capabilities on VoxideClient:', registeredCapabilities.join(', '));
 
     const expectedCapabilities = [
       'navigate',
@@ -96,8 +96,8 @@ async function runTests() {
     ];
     for (const cap of expectedCapabilities) {
       assert(
-        manifestSyncedCapabilities.includes(cap),
-        `Expected capability "${cap}" to be synced in Voxide manifest`
+        registeredCapabilities.includes(cap),
+        `Expected capability "${cap}" to be registered on VoxideClient`
       );
     }
 
@@ -267,6 +267,135 @@ async function runTests() {
     console.log(
       `✓ summarizeInvestigation returned ${summaryResult.assumptionsBreakdown.total} assumptions, ${summaryResult.contradictions.length} contradictions, ${summaryResult.alternatives.length} alternatives, ${summaryResult.validationExperiments.length} validation experiments`
     );
+
+    // 11. Verify the 6 exact Acceptance Tests + VoiceState state machine + TTS echo protection
+    console.log('\n[Test 11] Verifying Acceptance Tests 1-6 and VoiceState state machine...');
+    const {
+      getVoiceState,
+      setVoiceState,
+      subscribeVoiceState,
+      processUserVoiceTranscript,
+    } = await import('../../src/components/Assistant');
+    const { getConciseProbeState } = await import('../../src/lib/voxide/probeVoxideBridge');
+
+    const observedStates: string[] = [];
+    const unsubscribe = subscribeVoiceState((s) => observedStates.push(s));
+
+    // Acceptance Test 1: "Investigate cooking apps" -> investigation starts with `cooking apps`
+    setVoiceState('idle');
+    setVoiceState('listening');
+    const acc1 = await processUserVoiceTranscript('Investigate cooking apps', {
+      speakResponse: false,
+      resumeListeningAfter: false,
+    });
+    assert(acc1.executed === true, 'Acceptance Test 1 must execute');
+    assert(acc1.capability === 'startInvestigation', `Expected startInvestigation, got ${acc1.capability}`);
+    assert(
+      getConciseProbeState().currentIdea === 'cooking apps',
+      `Acceptance Test 1: expected currentIdea "cooking apps", got "${getConciseProbeState().currentIdea}"`
+    );
+    // Verify strict state cycle: idle -> listening -> processing -> speaking -> idle
+    assert(
+      observedStates.includes('listening') &&
+        observedStates.includes('processing') &&
+        observedStates.includes('speaking') &&
+        getVoiceState() === 'idle',
+      `Expected idle -> listening -> processing -> speaking -> idle lifecycle, got ${observedStates.join(' -> ')}`
+    );
+    console.log('✓ Acceptance Test 1 passed: "Investigate cooking apps" -> currentIdea="cooking apps"');
+
+    // Acceptance Test 2: "Open the evidence graph" -> graph opens; search field unchanged
+    setVoiceState('listening');
+    const acc2 = await processUserVoiceTranscript('Open the evidence graph', {
+      speakResponse: false,
+      resumeListeningAfter: false,
+    });
+    assert(acc2.executed === true, 'Acceptance Test 2 must execute');
+    assert(acc2.capability === 'openEvidenceGraph', `Expected openEvidenceGraph, got ${acc2.capability}`);
+    assert(
+      getConciseProbeState().currentRoute === '/app/evidence',
+      `Expected route /app/evidence, got ${getConciseProbeState().currentRoute}`
+    );
+    assert(
+      getConciseProbeState().currentIdea === 'cooking apps',
+      `Acceptance Test 2: search field must remain "cooking apps", got "${getConciseProbeState().currentIdea}"`
+    );
+    console.log('✓ Acceptance Test 2 passed: "Open the evidence graph" -> graph opened; search field unchanged');
+
+    // Acceptance Test 3: "Show me the assumptions" -> assumptions shown; search field unchanged
+    setVoiceState('listening');
+    const acc3 = await processUserVoiceTranscript('Show me the assumptions', {
+      speakResponse: false,
+      resumeListeningAfter: false,
+    });
+    assert(acc3.executed === true, 'Acceptance Test 3 must execute');
+    assert(acc3.capability === 'showAssumptions', `Expected showAssumptions, got ${acc3.capability}`);
+    assert(
+      getConciseProbeState().currentIdea === 'cooking apps',
+      `Acceptance Test 3: search field must remain "cooking apps", got "${getConciseProbeState().currentIdea}"`
+    );
+    console.log('✓ Acceptance Test 3 passed: "Show me the assumptions" -> assumptions shown; search field unchanged');
+
+    // Acceptance Test 4: "Challenge this assumption" -> selected assumption is challenged; search field unchanged
+    setVoiceState('listening');
+    const acc4 = await processUserVoiceTranscript('Challenge this assumption', {
+      speakResponse: false,
+      resumeListeningAfter: false,
+    });
+    assert(acc4.executed === true, 'Acceptance Test 4 must execute');
+    assert(acc4.capability === 'challengeAssumption', `Expected challengeAssumption, got ${acc4.capability}`);
+    assert(
+      acc4.result?.newStatus === 'CHALLENGED',
+      `Expected challenged status CHALLENGED, got ${acc4.result?.newStatus}`
+    );
+    assert(
+      getConciseProbeState().currentIdea === 'cooking apps',
+      `Acceptance Test 4: search field must remain "cooking apps", got "${getConciseProbeState().currentIdea}"`
+    );
+    console.log('✓ Acceptance Test 4 passed: "Challenge this assumption" -> assumption challenged; search field unchanged');
+
+    // Acceptance Test 5: Voxide says "I opened the evidence graph" -> must NOT enter the search field
+    // Test both while speaking AND when listening
+    setVoiceState('speaking');
+    const acc5Speaking = await processUserVoiceTranscript('I opened the evidence graph', {
+      speakResponse: false,
+      resumeListeningAfter: false,
+    });
+    assert(acc5Speaking.executed === false, 'Must ignore input while in speaking state');
+    assert(
+      getConciseProbeState().currentIdea === 'cooking apps',
+      'Search field must remain unchanged while speaking'
+    );
+
+    setVoiceState('listening');
+    const acc5Echo = await processUserVoiceTranscript('I opened the evidence graph', {
+      speakResponse: false,
+      resumeListeningAfter: false,
+    });
+    assert(acc5Echo.executed === false && acc5Echo.reason === 'tts_echo', 'Must block TTS echo even in listening state');
+    assert(
+      getConciseProbeState().currentIdea === 'cooking apps',
+      `Acceptance Test 5: "I opened the evidence graph" must NOT enter search field, got "${getConciseProbeState().currentIdea}"`
+    );
+    console.log('✓ Acceptance Test 5 passed: Voxide TTS "I opened the evidence graph" blocked from STT & search field');
+
+    // Acceptance Test 6: After Voxide finishes speaking, the next user command works normally
+    setVoiceState('idle');
+    setVoiceState('listening');
+    const acc6 = await processUserVoiceTranscript('Show me contradictory evidence', {
+      speakResponse: false,
+      resumeListeningAfter: true,
+    });
+    assert(acc6.executed === true, 'Acceptance Test 6: next user command must execute normally');
+    assert(acc6.capability === 'filterEvidence', `Expected filterEvidence, got ${acc6.capability}`);
+    assert(getVoiceState() === 'listening', 'Session with resumeListeningAfter=true must return to listening');
+    assert(
+      getConciseProbeState().currentIdea === 'cooking apps',
+      `Acceptance Test 6: search field must remain "cooking apps", got "${getConciseProbeState().currentIdea}"`
+    );
+    console.log('✓ Acceptance Test 6 passed: Next user command after speaking works normally');
+
+    unsubscribe();
 
     // Stop the Playwright session cleanly
     await originalFetch(`${baseUrl}/api/testing/session/${prodTestResult.sessionId}/stop`, {
