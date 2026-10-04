@@ -139,6 +139,7 @@ const SourceItemNodeComponent: React.FC<NodeProps> = ({ data }) => {
   const isSupport = source.relationship === 'Supports';
   const isChallenges = source.relationship === 'Challenges';
   const isUnknown = source.relationship === 'Unknown' || (source as any).relationship === 'unknown';
+  const isAcademic = source.sourceType === 'scholarxiv';
 
   return (
     <div
@@ -146,6 +147,12 @@ const SourceItemNodeComponent: React.FC<NodeProps> = ({ data }) => {
       className={`bg-white border rounded-2xl p-3.5 shadow-2xs hover:shadow-md transition-all cursor-pointer w-64 text-left group select-none relative ${
         isChallenged
           ? 'border-[#FDA4AF] ring-2 ring-[#FFE4E6]'
+          : isAcademic
+          ? isSupport
+            ? 'border-[#818CF8] bg-[#F5F3FF]/60 hover:border-[#6366F1] ring-1 ring-[#EEF2FF]'
+            : isChallenges
+            ? 'border-[#FDA4AF] bg-[#FFF1F2]/60 hover:border-[#E11D48] ring-1 ring-[#FFE4E6]'
+            : 'border-[#C7D2FE] bg-[#EEF2FF]/40 hover:border-[#818CF8]'
           : isSupport
           ? 'border-[#E2E8F0] hover:border-[#10B981]'
           : isChallenges
@@ -159,7 +166,17 @@ const SourceItemNodeComponent: React.FC<NodeProps> = ({ data }) => {
         type="target"
         position={isSupport ? Position.Right : isChallenges ? Position.Left : Position.Top}
         className={`!w-2 !h-2 !border-2 !border-white ${
-          isSupport ? '!bg-[#10B981]' : isChallenges ? '!bg-[#F43F5E]' : isUnknown ? '!bg-[#F59E0B]' : '!bg-[#94A3B8]'
+          isAcademic
+            ? isSupport
+              ? '!bg-[#6366F1]'
+              : '!bg-[#E11D48]'
+            : isSupport
+            ? '!bg-[#10B981]'
+            : isChallenges
+            ? '!bg-[#F43F5E]'
+            : isUnknown
+            ? '!bg-[#F59E0B]'
+            : '!bg-[#94A3B8]'
         }`}
       />
 
@@ -168,7 +185,7 @@ const SourceItemNodeComponent: React.FC<NodeProps> = ({ data }) => {
         <div className="flex items-center gap-1.5 min-w-0">
           <SourceIconSelector type={source.sourceType as any} size={16} />
           <span className="text-[11px] font-bold text-[#0A0D14] truncate max-w-[110px]">
-            {(source.sourceIdentifier || source.sourceName || 'Evidence').split('·')[0]}
+            {(source.sourceIdentifier || source.sourceName || (isAcademic ? 'ScholarXIV Paper' : 'Evidence')).split('·')[0]}
           </span>
         </div>
         
@@ -181,7 +198,13 @@ const SourceItemNodeComponent: React.FC<NodeProps> = ({ data }) => {
           )}
 
           <span className={`text-[9px] font-mono px-2 py-0.5 rounded-full font-semibold ${
-            isSupport
+            isAcademic
+              ? isSupport
+                ? 'bg-[#EEF2FF] text-[#4338CA] border border-[#C7D2FE]'
+                : isChallenges
+                ? 'bg-[#FFF1F2] text-[#BE123C] border border-[#FECDD3]'
+                : 'bg-[#F5F3FF] text-[#6D28D9] border border-[#DDD6FE]'
+              : isSupport
               ? 'bg-[#ECFDF5] text-[#059669]'
               : isChallenges
               ? 'bg-[#FFF1F2] text-[#E11D48]'
@@ -189,7 +212,19 @@ const SourceItemNodeComponent: React.FC<NodeProps> = ({ data }) => {
               ? 'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]'
               : 'bg-[#F1F3F5] text-[#525866]'
           }`}>
-            {isSupport ? '↑ Supports' : isChallenges ? '↓ Challenges' : isUnknown ? '? Blind Spot' : 'Signal'}
+            {isAcademic
+              ? isSupport
+                ? '↑ Academic Supports'
+                : isChallenges
+                ? '↓ Academic Challenges'
+                : 'Academic Context'
+              : isSupport
+              ? '↑ Supports'
+              : isChallenges
+              ? '↓ Challenges'
+              : isUnknown
+              ? '? Blind Spot'
+              : 'Signal'}
           </span>
         </div>
       </div>

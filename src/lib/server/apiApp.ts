@@ -27,6 +27,14 @@ const PressureTestRequestSchema = z.object({
     .max(1000, { message: 'Idea cannot exceed 1000 characters' }),
 });
 
+const ResearchAssumptionSchema = z.object({
+  assumptionId: z.string().optional().default('A1'),
+  assumptionText: z.string().trim().min(3, { message: 'Assumption text must be at least 3 characters' }),
+  idea: z.string().optional(),
+  forceRefresh: z.boolean().optional().default(false),
+  limit: z.number().int().min(1).max(10).optional().default(4),
+});
+
 const VoxideRequestSchema = z.object({
   command: z.string().trim().min(2),
   context: z.record(z.string(), z.unknown()).optional(),
@@ -243,6 +251,37 @@ export function createApiApp() {
       return res.status(500).json({
         error: 'Pressure-test pipeline failed',
         message: err.message || 'Internal server error',
+      });
+    }
+  });
+
+  // REST API: POST /api/research/assumption (Researches an assumption via ScholarXIV)
+  app.post(['/api/research/assumption', '/api/scholarxiv/research-assumption'], async (req: Request, res: Response) => {
+    const parseResult = ResearchAssumptionSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({
+        error: 'Invalid research assumption request',
+        details: parseResult.error.format(),
+      });
+    }
+
+    try {
+      const { scholarXIVService } = await import('./integrations/scholarxiv');
+      const { assumptionId, assumptionText, idea, forceRefresh, limit } = parseResult.data;
+      const result = await scholarXIVService.researchAssumption({
+        assumptionId,
+        assumptionText,
+        idea,
+        forceRefresh,
+        limit,
+      });
+      return res.json(result);
+    } catch (err: any) {
+      console.error('[API /api/research/assumption Error]:', err);
+      return res.status(500).json({
+        status: 'unavailable',
+        error: 'Academic research is temporarily unavailable.',
+        message: 'Academic research is temporarily unavailable.',
       });
     }
   });

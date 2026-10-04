@@ -184,10 +184,10 @@ export function evaluateHardRelevance(
   let decision: 'ACCEPT' | 'REJECT' | 'UNCERTAIN' = 'REJECT';
   let reason = '';
 
-  if (score >= 60 && (matchedEntities.length > 0 || matchedConcepts.length > 0)) {
+  if (score >= 50 && (matchedEntities.length > 0 || matchedConcepts.length > 0)) {
     decision = 'ACCEPT';
     reason = `Verified relevance (${score}/100): Matched ${matchedEntities.length} entities and ${matchedConcepts.length} core concepts.`;
-  } else if (score >= 40 && (matchedEntities.length > 0 || keywordHits > 0 || matchedConcepts.length > 0)) {
+  } else if (score >= 35 && (matchedEntities.length > 0 || keywordHits > 0 || matchedConcepts.length > 0)) {
     decision = 'UNCERTAIN';
     reason = `Moderate relevance score (${score}/100) with partial concept alignment.`;
   } else {

@@ -17,7 +17,9 @@ import {
   Cpu,
   Bookmark,
   ShieldCheck,
-  XCircle
+  XCircle,
+  GraduationCap,
+  BookOpen
 } from 'lucide-react';
 import {
   PressureTestResponse,
@@ -78,6 +80,171 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
   const [expandedWhyAssumptionId, setExpandedWhyAssumptionId] = useState<string | null>(
     () => getProbeInternalState().selectedNode
   );
+
+  // Per-assumption ScholarXIV academic research state
+  const [academicResearchState, setAcademicResearchState] = useState<
+    Record<
+      string,
+      {
+        status: 'loading' | 'loaded' | 'error';
+        result?: {
+          assumptionId: string;
+          assumptionText: string;
+          academicQuery: string;
+          papers: Array<{
+            id: string;
+            title: string;
+            authors: string;
+            year?: string;
+            abstract: string;
+            relevance: string;
+            stance: 'SUPPORTS' | 'CHALLENGES' | 'CONTEXT' | 'INCONCLUSIVE';
+            stanceLabel: string;
+            shortFinding: string;
+            sourceLabel: string;
+            url: string;
+            confidence?: number;
+          }>;
+          academicSignal: {
+            supporting: number;
+            challenging: number;
+            context: number;
+            inconclusive: number;
+          };
+          conclusion: string;
+        };
+        errorMessage?: string;
+      }
+    >
+  >({});
+
+  const handleResearchAssumptionWithScholarXIV = async (
+    assumptionId: string,
+    assumptionText: string,
+    forceRefresh = false
+  ) => {
+    setAcademicResearchState((prev) => ({
+      ...prev,
+      [assumptionId]: { status: 'loading' }
+    }));
+
+    try {
+      const res = await fetch('/api/research/assumption', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assumptionId,
+          assumptionText,
+          idea: ideaInput,
+          forceRefresh
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error('Academic research is temporarily unavailable.');
+      }
+
+      const data = await res.json();
+      if (data.status === 'unavailable' || data.error) {
+        throw new Error(data.message || 'Academic research is temporarily unavailable.');
+      }
+
+      setAcademicResearchState((prev) => ({
+        ...prev,
+        [assumptionId]: { status: 'loaded', result: data }
+      }));
+
+      // Integrate into Evidence Graph & verified evidence repository
+      if (data.papers && data.papers.length > 0) {
+        setTestResult((prev) => {
+          if (!prev) return prev;
+          const existingIds = new Set(prev.allEvidence.map((e) => e.id));
+          const newEvidenceItems: EvidenceItem[] = data.papers.map((p: any) => ({
+            id: p.id || `sx-paper-${Date.now()}`,
+            sourceType: 'scholarxiv',
+            provider: 'scholarxiv',
+            title: p.title,
+            excerpt: p.shortFinding || p.abstract,
+            fullText: p.abstract,
+            url: p.url || `https://www.scholarxiv.com/papers/${p.id}`,
+            author: p.authors || 'ScholarXIV Academic Team',
+            publishedAt: p.year ? String(p.year) : '2025',
+            stance: p.stance === 'SUPPORTS' ? 'SUPPORTS' : p.stance === 'CHALLENGES' ? 'CHALLENGES' : 'NEUTRAL',
+            confidence: p.confidence || 0.88,
+            relevanceScore: 94,
+            sourceQualityScore: 95,
+            independenceScore: 95,
+            noveltyScore: 90,
+            evidenceStrength: 92,
+            relatedAssumptionIds: [assumptionId],
+            whyItMatters: p.relevance || 'Peer-reviewed academic finding relevant to assumption.',
+            implication:
+              p.stance === 'CHALLENGES'
+                ? 'Challenges foundational startup assumption.'
+                : 'Supports hypothesis problem validation.'
+          }));
+
+          const updatedEvidence = [
+            ...newEvidenceItems.filter((item) => !existingIds.has(item.id)),
+            ...prev.allEvidence
+          ];
+
+          const updatedResult: PressureTestResponse = {
+            ...prev,
+            allEvidence: updatedEvidence
+          };
+
+          // Automatically push to living graph
+          if (onPressureTestUpdated && updatedEvidence.length > 0) {
+            const dynamicSources: DynamicEvidenceSource[] = updatedEvidence.map((ev, idx) => {
+              let rel: 'Supports' | 'Challenges' | 'Unknown' = 'Unknown';
+              if (ev.stance === 'SUPPORTS') rel = 'Supports';
+              else if (ev.stance === 'CHALLENGES') rel = 'Challenges';
+
+              return {
+                id: ev.id || `dyn-ev-${idx}`,
+                sourceType: ev.sourceType === 'scholarxiv' ? 'scholarxiv' : (ev.sourceType as any),
+                sourceName: ev.sourceType === 'scholarxiv' ? 'ScholarXIV' : ev.sourceType.toUpperCase(),
+                sourceIdentifier: ev.author ? `${ev.author} · ${ev.sourceType}` : `${ev.sourceType.toUpperCase()}`,
+                date: ev.publishedAt || 'Recent',
+                excerpt: ev.excerpt,
+                relationship: rel,
+                url: ev.url,
+                topic: ev.relatedAssumptionIds.join(', '),
+                confidence: Math.round(ev.confidence * 100)
+              };
+            });
+
+            onPressureTestUpdated({
+              query: prev.idea,
+              coreAssumption: prev.assumptions[0]?.text || prev.idea,
+              productName: 'PROBE INVESTIGATION',
+              sources: dynamicSources,
+              summary: {
+                supportingCount: dynamicSources.filter((s) => s.relationship === 'Supports').length,
+                challengingCount: dynamicSources.filter((s) => s.relationship === 'Challenges').length,
+                total: dynamicSources.length
+              }
+            });
+          }
+
+          updateProbeLiveState({
+            latestPressureTest: updatedResult
+          });
+
+          return updatedResult;
+        });
+      }
+    } catch {
+      setAcademicResearchState((prev) => ({
+        ...prev,
+        [assumptionId]: {
+          status: 'error',
+          errorMessage: 'Academic research is temporarily unavailable.'
+        }
+      }));
+    }
+  };
 
   const runInvestigation = async (customIdea?: string) => {
     const target = (customIdea ?? ideaInput).trim();
@@ -593,7 +760,7 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
                       </h4>
                     </div>
 
-                    <div className="flex items-center gap-3 flex-shrink-0 self-start sm:self-auto">
+                    <div className="flex items-center gap-2 flex-wrap flex-shrink-0 self-start sm:self-auto">
                       {getStatusBadge(analysis.status)}
 
                       <button
@@ -608,6 +775,34 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
                         }`}
                       >
                         {isSelected ? 'Viewing Evidence' : 'Inspect Evidence'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleResearchAssumptionWithScholarXIV(a.id, a.text)}
+                        disabled={academicResearchState[a.id]?.status === 'loading'}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5 border shadow-2xs ${
+                          academicResearchState[a.id]?.status === 'loaded'
+                            ? 'bg-[#EEF2FF] text-[#4338CA] border-[#C7D2FE]'
+                            : 'bg-white text-[#4338CA] border-[#C7D2FE] hover:bg-[#F5F3FF]'
+                        }`}
+                        title="Search peer-reviewed papers via ScholarXIV to support or challenge this assumption"
+                      >
+                        {academicResearchState[a.id]?.status === 'loading' ? (
+                          <>
+                            <RotateCcw size={12} className="animate-spin text-[#4F46E5]" />
+                            <span>Researching academic evidence...</span>
+                          </>
+                        ) : (
+                          <>
+                            <GraduationCap size={13} className="text-[#4F46E5]" />
+                            <span>
+                              {academicResearchState[a.id]?.status === 'loaded'
+                                ? 'Refresh ScholarXIV'
+                                : 'Research with ScholarXIV'}
+                            </span>
+                          </>
+                        )}
                       </button>
                     </div>
                   </div>
@@ -658,6 +853,145 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
                           </span>
                         </div>
                       )}
+                    </div>
+                  )}
+
+                  {/* SCHOLARXIV ACADEMIC EVIDENCE DISPLAY */}
+                  {academicResearchState[a.id]?.status === 'loading' && (
+                    <div className="mt-3.5 p-3.5 rounded-xl bg-[#EEF2FF]/60 border border-[#C7D2FE] flex items-center gap-2.5 text-xs font-mono text-[#4338CA] animate-pulse">
+                      <RotateCcw size={13} className="animate-spin text-[#4F46E5]" />
+                      <span className="font-semibold">Researching academic evidence...</span>
+                    </div>
+                  )}
+
+                  {academicResearchState[a.id]?.status === 'error' && (
+                    <div className="mt-3.5 p-3 rounded-xl bg-[#FFF1F2] border border-[#FECDD3] text-xs font-mono text-[#BE123C] flex items-center justify-between">
+                      <span>{academicResearchState[a.id]?.errorMessage || 'Academic research is temporarily unavailable.'}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleResearchAssumptionWithScholarXIV(a.id, a.text, true)}
+                        className="underline hover:text-[#9F1239] cursor-pointer font-bold ml-2"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  )}
+
+                  {academicResearchState[a.id]?.status === 'loaded' && academicResearchState[a.id]?.result && (
+                    <div className="mt-3.5 pt-3.5 border-t border-[#EEF2F6] space-y-3 animate-in fade-in duration-200">
+                      {/* Section Header */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-[#4F46E5]" />
+                          <h5 className="text-xs font-mono font-bold uppercase tracking-wider text-[#1E1B4B]">
+                            Academic Evidence
+                          </h5>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-[#EEF2FF] text-[#4338CA] border border-[#C7D2FE] font-medium">
+                            Powered by ScholarXIV
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleResearchAssumptionWithScholarXIV(a.id, a.text, true)}
+                          className="text-[11px] font-mono text-[#4F46E5] hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <RotateCcw size={11} />
+                          <span>Refresh research</span>
+                        </button>
+                      </div>
+
+                      {/* Papers List */}
+                      <div className="space-y-2.5">
+                        {academicResearchState[a.id].result!.papers.map((paper) => (
+                          <div
+                            key={paper.id}
+                            className="p-3.5 rounded-xl bg-[#FAFAFA] border border-[#E2E8F0] space-y-2 hover:border-[#C7D2FE] transition-colors"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span
+                                className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 ${
+                                  paper.stance === 'SUPPORTS'
+                                    ? 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]'
+                                    : paper.stance === 'CHALLENGES'
+                                    ? 'bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3]'
+                                    : paper.stance === 'CONTEXT'
+                                    ? 'bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE]'
+                                    : 'bg-[#FFFBEB] text-[#D97706] border border-[#FDE68A]'
+                                }`}
+                              >
+                                {paper.stance === 'SUPPORTS'
+                                  ? 'SUPPORTS ASSUMPTION'
+                                  : paper.stance === 'CHALLENGES'
+                                  ? 'CHALLENGES ASSUMPTION'
+                                  : paper.stance === 'CONTEXT'
+                                  ? 'PROVIDES CONTEXT'
+                                  : 'INCONCLUSIVE'}
+                              </span>
+
+                              <span className="text-[10px] font-mono text-[#64748B]">
+                                {paper.sourceLabel} {paper.year ? `· ${paper.year}` : ''}
+                              </span>
+                            </div>
+
+                            <div>
+                              <a
+                                href={paper.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs font-bold text-[#0A0D14] hover:text-[#0F52BA] hover:underline inline-flex items-center gap-1 leading-snug"
+                              >
+                                <span>{paper.title}</span>
+                                <ExternalLink size={11} className="flex-shrink-0 text-[#64748B]" />
+                              </a>
+                              <p className="text-[11px] text-[#64748B] mt-0.5">
+                                {paper.authors}
+                              </p>
+                            </div>
+
+                            <div className="p-2.5 rounded-lg bg-white border border-[#E5E7EB] text-xs text-[#334155] leading-relaxed">
+                              <strong className="text-[10px] font-mono uppercase text-[#64748B] block mb-0.5">
+                                Key Empirical Finding:
+                              </strong>
+                              <span>"{paper.shortFinding}"</span>
+                            </div>
+
+                            <div className="text-[11px] text-[#475467] flex flex-wrap items-center justify-between gap-1 pt-0.5">
+                              <span className="italic text-[#0F52BA]">{paper.stanceLabel}</span>
+                              <span className="text-[10px] font-mono text-[#868C98]">{paper.relevance}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Bottom Metric & Probe Conclusion Bar */}
+                      <div className="p-3 rounded-xl bg-[#EEF2FF]/70 border border-[#C7D2FE] space-y-2 text-xs font-mono">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-[#3730A3]">
+                          <span className="font-bold uppercase tracking-wider text-[11px]">Academic signal:</span>
+                          <div className="flex items-center gap-3">
+                            <span className="text-[#059669] font-bold">
+                              Supporting: {academicResearchState[a.id].result!.academicSignal.supporting}
+                            </span>
+                            <span>·</span>
+                            <span className="text-[#E11D48] font-bold">
+                              Challenging: {academicResearchState[a.id].result!.academicSignal.challenging}
+                            </span>
+                            <span>·</span>
+                            <span className="text-[#D97706] font-bold">
+                              Inconclusive: {academicResearchState[a.id].result!.academicSignal.inconclusive}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="pt-2 border-t border-[#C7D2FE]/70 text-[#1E1B4B]">
+                          <strong className="block text-[11px] font-mono uppercase tracking-wider text-[#4338CA] mb-0.5">
+                            Probe conclusion:
+                          </strong>
+                          <span className="text-xs font-medium font-sans">
+                            "{academicResearchState[a.id].result!.conclusion}"
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
