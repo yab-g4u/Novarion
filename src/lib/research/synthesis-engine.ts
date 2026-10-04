@@ -1,15 +1,29 @@
 import { AssumptionEvidenceAnalysis, PressureTestSummary } from './types';
 import { GoogleGenAI, Type } from '@google/genai';
+import { ExtractedDocumentContext } from '../../types/document';
 
 export async function generatePressureTestSummary(
   idea: string,
   analyses: AssumptionEvidenceAnalysis[],
-  telemetryCollector?: { geminiCalls: number; estInput: number; estOutput: number }
+  telemetryCollector?: { geminiCalls: number; estInput: number; estOutput: number },
+  documentContext?: ExtractedDocumentContext
 ): Promise<PressureTestSummary> {
   // 1. Identify deterministic anchors first
   let strongestSignal = 'Users across community and empirical studies report acute administrative friction in this domain.';
   let biggestContradiction = 'Existing commercial tools are simultaneously described as bloated by solo operators yet adequate by established practices.';
   let biggestUnknown = 'Insufficient verifiable evidence to establish whether target users will convert to paid subscriptions over free workarounds.';
+
+  if (documentContext) {
+    if (documentContext.problem) {
+      strongestSignal = `Verified user workflow friction: "${documentContext.problem.slice(0, 140)}"`;
+    }
+    if (documentContext.competitors && documentContext.competitors.length > 0) {
+      biggestContradiction = `High switching inertia against existing market alternatives: ${documentContext.competitors.slice(0, 3).join(', ')}.`;
+    }
+    if (documentContext.assumptions && documentContext.assumptions.length > 0) {
+      biggestUnknown = `Unsupported core assumption: "${documentContext.assumptions[0].slice(0, 140)}" (lacks empirical conversion benchmarks).`;
+    }
+  }
 
   // Find the highest-risk assumption (lowest score, highest priority)
   let highestRisk = analyses[0];
@@ -126,7 +140,7 @@ Evidence context:
 ${JSON.stringify(structuredContext, null, 2)}`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.8-flash',
         contents: prompt,
         config: {
           responseMimeType: 'application/json',

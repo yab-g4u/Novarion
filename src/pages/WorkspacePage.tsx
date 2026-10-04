@@ -60,7 +60,14 @@ export const WorkspacePage: React.FC = () => {
       internal.currentIdea ||
       localStorage.getItem('probe_active_idea') ||
       'I want to build a cooking app';
-    return generateDynamicInvestigation(initial).graphData;
+
+    let savedDoc: any = undefined;
+    try {
+      const raw = localStorage.getItem('probe_active_document_context');
+      if (raw) savedDoc = JSON.parse(raw);
+    } catch {}
+
+    return generateDynamicInvestigation(initial, savedDoc).graphData;
   });
   const [focusNodeId, setFocusNodeId] = useState<string | null>(() => {
     return getProbeInternalState().selectedNode;
@@ -85,7 +92,12 @@ export const WorkspacePage: React.FC = () => {
     if (clean) {
       setInvestigationIdea(clean);
       localStorage.setItem('probe_active_idea', clean);
-      setActiveGraphData(generateDynamicInvestigation(clean).graphData);
+      let savedDoc: any = undefined;
+      try {
+        const raw = localStorage.getItem('probe_active_document_context');
+        if (raw) savedDoc = JSON.parse(raw);
+      } catch {}
+      setActiveGraphData(generateDynamicInvestigation(clean, savedDoc).graphData);
       updateProbeLiveState({ currentIdea: clean });
     }
     setIsEditingIdea(false);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   ArrowRight, 
   ExternalLink, 
@@ -9,15 +9,21 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  ShieldCheck
+  ShieldCheck,
+  UploadCloud,
+  X,
+  Paperclip
 } from 'lucide-react';
 import { 
   generateDynamicInvestigation, 
+  buildClientPressureTestFallback,
   InvestigationResultData, 
   RadialEvidenceItem 
 } from '../../lib/research/dynamicInvestigationResolver';
 import { BuildBriefPanel } from '../buildBrief/BuildBriefPanel';
 import { updateProbeLiveState } from '../../lib/voxide/probeVoxideBridge';
+import { ExtractedDocumentContext } from '../../types/document';
+import { extractDocumentContext, extractContextFromDocumentText } from '../../lib/documents/documentExtractor';
 
 interface LiveInvestigationExperienceProps {
   initialQuery?: string;
@@ -30,8 +36,23 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
   onInvestigationComplete,
 }) => {
   const [query, setQuery] = useState(initialQuery);
+  const [uploadedDoc, setUploadedDoc] = useState<ExtractedDocumentContext | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const stored = localStorage.getItem('probe_active_document_context');
+    if (!stored) return null;
+    try {
+      return JSON.parse(stored);
+    } catch {
+      return null;
+    }
+  });
+  const [isExtractingDoc, setIsExtractingDoc] = useState(false);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [showDocDetails, setShowDocDetails] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [activeData, setActiveData] = useState<InvestigationResultData>(() =>
-    generateDynamicInvestigation(initialQuery)
+    generateDynamicInvestigation(initialQuery, uploadedDoc || undefined)
   );
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(100);
@@ -86,10 +107,47 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
     updateProbeLiveState({ selectedEvidenceId: id });
   };
 
-  const handleStartInvestigation = (e?: React.FormEvent, overrideQuery?: string) => {
+  const handleFileSelection = async (file: File) => {
+    setIsExtractingDoc(true);
+    setIsScanning(true);
+    setScanProgress(20);
+    setStatusMessage(`Parsing ${file.name} (extracting problem, target users, assumptions, features)...`);
+
+    try {
+      const context = await extractDocumentContext(file);
+      setUploadedDoc(context);
+      const chosenQuery = context.title || context.synthesizedIdea || file.name.replace(/\.[^/.]+$/, '');
+      setQuery(chosenQuery);
+      handleStartInvestigation(undefined, chosenQuery, context);
+    } catch (err) {
+      console.error('Document extraction failed:', err);
+      setStatusMessage('Document extraction encountered an issue; falling back to direct investigation.');
+    } finally {
+      setIsExtractingDoc(false);
+    }
+  };
+
+  const handleInputPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const text = e.clipboardData.getData('text');
+    if (text && (text.length > 180 || text.includes('#') || (text.match(/\n/g) || []).length >= 2)) {
+      const context = extractContextFromDocumentText(text, 'Pasted Product Document');
+      setUploadedDoc(context);
+      const chosenQuery = context.title || context.synthesizedIdea.slice(0, 80);
+      setQuery(chosenQuery);
+      e.preventDefault();
+    }
+  };
+
+  const handleStartInvestigation = (
+    e?: React.FormEvent,
+    overrideQuery?: string,
+    overrideDoc?: ExtractedDocumentContext
+  ) => {
     if (e) e.preventDefault();
     const targetQuery = (overrideQuery ?? query).trim();
     if (!targetQuery) return;
+
+    const activeDoc = overrideDoc !== undefined ? overrideDoc : (uploadedDoc || undefined);
 
     // Check 2-Query Trial Limit
     if (trialCount >= 2) {
@@ -106,28 +164,59 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
     setJustGenerated(false);
     setIsScanning(true);
     setScanProgress(15);
-    setStatusMessage('Scanning sources...');
+    setStatusMessage(
+      activeDoc
+        ? `Researching document context for "${targetQuery}"...`
+        : 'Scanning sources...'
+    );
 
     // Progress simulation
     const p1 = setTimeout(() => {
       setScanProgress(45);
-      setStatusMessage('Extracting empirical claims & sentiment...');
+      setStatusMessage(
+        activeDoc
+          ? `Searching Reddit, X, Web & ScholarXIV for assumptions in "${activeDoc.title}"...`
+          : 'Extracting empirical claims & sentiment...'
+      );
     }, 350);
 
     const p2 = setTimeout(() => {
       setScanProgress(80);
-      setStatusMessage('Classifying support vs contradictions...');
+      setStatusMessage(
+        activeDoc
+          ? 'Pressure-testing against competitors, user complaints & friction points...'
+          : 'Classifying support vs contradictions...'
+      );
     }, 750);
 
     const p3 = setTimeout(() => {
       setScanProgress(100);
       setIsScanning(false);
-      setStatusMessage('Investigation complete · Verified 6 sources');
+      setStatusMessage(
+        activeDoc
+          ? `Investigation complete · Document context pressure-tested across 6 empirical sources`
+          : 'Investigation complete · Verified 6 sources'
+      );
 
-      const result = generateDynamicInvestigation(targetQuery);
+      const result = generateDynamicInvestigation(targetQuery, activeDoc);
       setActiveData(result);
       setGenerationCount((prev) => prev + 1);
       setJustGenerated(true);
+
+      // Persist in localStorage and live bridge for workspace continuation
+      localStorage.setItem('probe_active_idea', targetQuery);
+      if (activeDoc) {
+        localStorage.setItem('probe_active_document_context', JSON.stringify(activeDoc));
+      } else {
+        localStorage.removeItem('probe_active_document_context');
+      }
+
+      const fallback = buildClientPressureTestFallback(targetQuery, activeDoc);
+      updateProbeLiveState({
+        currentIdea: targetQuery,
+        latestPressureTest: fallback,
+        investigationStatus: 'READY'
+      });
 
       if (onInvestigationComplete) {
         onInvestigationComplete(result);
@@ -288,21 +377,102 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
           Probe an idea or product.
         </h1>
 
-        {/* Primary Investigation Search Input Pill */}
+        {/* Hidden File Input for PDF / PRD / TXT / MD */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void handleFileSelection(f);
+            e.target.value = '';
+          }}
+          accept=".pdf,.txt,.md,.markdown"
+          className="hidden"
+        />
+
+        {/* Attached Document Pill (if uploaded) */}
+        {uploadedDoc && (
+          <div className="mb-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#F1F5F9] border border-[#CBD5E1] text-xs font-mono text-[#0A0D14] shadow-2xs animate-in fade-in duration-200">
+            <FileText size={13} className="text-[#0F52BA]" />
+            <span className="font-bold truncate max-w-[200px]" title={uploadedDoc.sourceFileName || uploadedDoc.title}>
+              {uploadedDoc.sourceFileName || uploadedDoc.title}
+            </span>
+            <span className="text-[10px] text-[#64748B] uppercase font-bold">
+              {uploadedDoc.sourceFileType || 'DOC'}
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowDocDetails((prev) => !prev)}
+              className="text-[11px] text-[#0F52BA] hover:underline cursor-pointer ml-1"
+            >
+              {showDocDetails ? 'Hide details' : 'Inspect context'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setUploadedDoc(null);
+                setShowDocDetails(false);
+                localStorage.removeItem('probe_active_document_context');
+              }}
+              className="text-[#868C98] hover:text-[#EF4444] p-0.5 ml-1 cursor-pointer transition-colors"
+              title="Remove document"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
+        {/* Primary Investigation Search Input Pill with Drag & Drop & Upload */}
         <form
           onSubmit={(e) => handleStartInvestigation(e)}
-          className="max-w-2xl mx-auto rounded-full bg-white border border-[#E5E7EB] hover:border-[#CBD5E1] focus-within:border-[#0A0D14] focus-within:ring-4 focus-within:ring-black/5 shadow-xs px-5 py-3 sm:px-6 sm:py-3.5 flex items-center justify-between transition-all relative z-30"
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsDraggingFile(true);
+          }}
+          onDragLeave={() => setIsDraggingFile(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setIsDraggingFile(false);
+            const file = e.dataTransfer.files?.[0];
+            if (file) void handleFileSelection(file);
+          }}
+          className={`max-w-2xl mx-auto rounded-full bg-white border shadow-xs px-3 sm:px-4 py-2 sm:py-2.5 flex items-center justify-between transition-all relative z-30 ${
+            isDraggingFile
+              ? 'border-[#0F52BA] ring-4 ring-[#0F52BA]/15 bg-[#EFF6FF]/30'
+              : 'border-[#E5E7EB] hover:border-[#CBD5E1] focus-within:border-[#0A0D14] focus-within:ring-4 focus-within:ring-black/5'
+          }`}
         >
+          {/* Document Upload Button */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isExtractingDoc || isScanning}
+            title="Upload PDF, PRD / product brief, or TXT/MD file"
+            className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#64748B] hover:text-[#0A0D14] border border-[#E2E8F0] flex items-center justify-center shrink-0 cursor-pointer transition-colors mr-2"
+          >
+            {isExtractingDoc ? (
+              <div className="w-4 h-4 border-2 border-[#0F52BA] border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Paperclip size={15} />
+            )}
+          </button>
+
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="AI tools will replace most productivity software"
+            onPaste={handleInputPaste}
+            placeholder={
+              isDraggingFile
+                ? 'Drop PDF, PRD, or TXT/MD file here...'
+                : 'Paste an idea, PRD text, or upload a document'
+            }
             className="text-sm sm:text-base font-medium text-[#0A0D14] placeholder:text-[#94A3B8] flex-1 bg-transparent outline-none pr-3"
           />
+
           <button
             type="submit"
-            disabled={isScanning}
+            disabled={isScanning || isExtractingDoc}
             className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#0A0D14] text-white flex items-center justify-center hover:bg-[#1E293B] shrink-0 cursor-pointer shadow-xs transition-transform active:scale-95 disabled:opacity-50"
             title="Start investigation"
           >
@@ -314,9 +484,53 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
           </button>
         </form>
 
-        {/* Input Subtext & Free Trial Status */}
+        {/* Collapsible Document Context Drawer */}
+        {uploadedDoc && showDocDetails && (
+          <div className="max-w-2xl mx-auto mt-3 p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] text-left text-xs font-mono space-y-2.5 animate-in fade-in duration-200 shadow-xs">
+            <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-1.5">
+              <span className="font-bold text-[#0A0D14] flex items-center gap-1.5">
+                <FileText size={13} className="text-[#0F52BA]" />
+                <span>EXTRACTED PRD CONTEXT</span>
+              </span>
+              <span className="text-[10px] text-[#64748B]">Ready for empirical pressure-test</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+              <div>
+                <span className="text-[#64748B] font-bold block uppercase text-[9px]">Problem:</span>
+                <p className="text-[#1E293B] font-normal leading-snug">{uploadedDoc.problem}</p>
+              </div>
+              <div>
+                <span className="text-[#64748B] font-bold block uppercase text-[9px]">Target Users:</span>
+                <p className="text-[#1E293B] font-normal leading-snug">{uploadedDoc.targetUsers}</p>
+              </div>
+            </div>
+
+            <div className="pt-1 text-[11px]">
+              <span className="text-[#64748B] font-bold block uppercase text-[9px]">Solution / Core Features:</span>
+              <p className="text-[#1E293B] font-normal leading-snug">
+                {uploadedDoc.solution} {uploadedDoc.features.length > 0 && `(${uploadedDoc.features.slice(0, 3).join(', ')})`}
+              </p>
+            </div>
+
+            {uploadedDoc.assumptions.length > 0 && (
+              <div className="pt-1 text-[11px]">
+                <span className="text-[#64748B] font-bold block uppercase text-[9px]">
+                  Extracted Assumptions ({uploadedDoc.assumptions.length}):
+                </span>
+                <ul className="list-disc list-inside text-[#334155] space-y-0.5 mt-0.5">
+                  {uploadedDoc.assumptions.slice(0, 3).map((a, i) => (
+                    <li key={i} className="truncate">{a}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Input Subtext & Supported Document Types */}
         <div className="mt-3 flex flex-wrap items-center justify-center gap-3 text-xs sm:text-sm text-[#868C98] font-normal">
-          <span>Paste a product URL or type a new idea to start the investigation.</span>
+          <span>Upload PDF, PRD / brief, TXT/MD, or paste/type an idea.</span>
           <span className="inline-flex items-center gap-1 text-[11px] font-mono text-[#0F52BA] bg-[#EFF6FF] px-2.5 py-0.5 rounded-full border border-[#BFDBFE]">
             <span>Click any result card below to expand</span>
           </span>

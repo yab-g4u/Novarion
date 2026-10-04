@@ -7,6 +7,7 @@ import {
   ResearchSourceType,
   RejectedResultDebug
 } from './types';
+import { ExtractedDocumentContext } from '../../types/document';
 import { extractAssumptions } from './assumption-extractor';
 import { generateTargetedQueries } from './query-generator';
 import { ScholarXIVProvider } from './providers/scholarxiv';
@@ -23,7 +24,10 @@ export class PressureTestPipeline {
   private readonly x = new WebSocialProvider('x');
   private readonly linkedin = new WebSocialProvider('linkedin');
 
-  async executePressureTest(ideaInput: string): Promise<PressureTestResponse> {
+  async executePressureTest(
+    ideaInput: string,
+    documentContext?: ExtractedDocumentContext
+  ): Promise<PressureTestResponse> {
     const startTime = Date.now();
     const idea = ideaInput.trim();
 
@@ -52,8 +56,8 @@ export class PressureTestPipeline {
 
     // Stage 1 & 2: IDEA UNDERSTANDING & ASSUMPTION EXTRACTION
     const t0 = Date.now();
-    const detectedDomain = detectDomain(idea) || 'general';
-    const { assumptions, fromCache } = await extractAssumptions(idea, telemetryCollector);
+    const detectedDomain = detectDomain(idea) || (documentContext ? 'product_document' : 'general');
+    const { assumptions, fromCache } = await extractAssumptions(idea, telemetryCollector, documentContext);
     telemetry.stageDurationsMs['assumption_extraction'] = Date.now() - t0;
     if (fromCache) telemetry.cachedCalls += 1;
 
@@ -216,7 +220,7 @@ export class PressureTestPipeline {
     const hasSupporting = verifiedEvidence.some(e => e.stance === 'SUPPORTS');
     const hasChallenging = verifiedEvidence.some(e => e.stance === 'CHALLENGES');
     if (verifiedEvidence.length < 4 || !hasSupporting || !hasChallenging) {
-      const fallback = buildClientPressureTestFallback(idea);
+      const fallback = buildClientPressureTestFallback(idea, documentContext);
       for (const fbItem of fallback.allEvidence) {
         if (seenUrls.has(fbItem.url.toLowerCase()) || seenTitles.has(fbItem.title.toLowerCase().slice(0, 60))) {
           continue;
@@ -244,7 +248,7 @@ export class PressureTestPipeline {
 
     // Stage 12, 13 & 14: SELECTIVE SYNTHESIS & NEXT ACTION GENERATION
     const t4 = Date.now();
-    const summary = await generatePressureTestSummary(idea, analyses, telemetryCollector);
+    const summary = await generatePressureTestSummary(idea, analyses, telemetryCollector, documentContext);
     telemetry.stageDurationsMs['synthesis'] = Date.now() - t4;
 
     // Final Telemetry sync
@@ -257,6 +261,7 @@ export class PressureTestPipeline {
     return {
       idea,
       normalizedIdea: idea,
+      documentContext,
       assumptions,
       summary,
       analysis: analyses,

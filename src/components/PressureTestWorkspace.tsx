@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ArrowRight,
   ShieldAlert,
@@ -19,7 +19,9 @@ import {
   ShieldCheck,
   XCircle,
   GraduationCap,
-  BookOpen
+  BookOpen,
+  Paperclip,
+  X
 } from 'lucide-react';
 import {
   PressureTestResponse,
@@ -33,6 +35,8 @@ import { DynamicGraphData, DynamicEvidenceSource } from '../types/evidenceGraph'
 import { BuildBriefPanel } from './buildBrief/BuildBriefPanel';
 import { buildClientPressureTestFallback } from '../lib/research/dynamicInvestigationResolver';
 import { getProbeInternalState, updateProbeLiveState } from '../lib/voxide/probeVoxideBridge';
+import { ExtractedDocumentContext } from '../types/document';
+import { extractDocumentContext, extractContextFromDocumentText } from '../lib/documents/documentExtractor';
 
 interface PressureTestWorkspaceProps {
   initialIdea?: string;
@@ -52,6 +56,21 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
   const [ideaInput, setIdeaInput] = useState(
     externalIdea || getProbeInternalState().currentIdea || initialIdea
   );
+  const [uploadedDoc, setUploadedDoc] = useState<ExtractedDocumentContext | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const stored = localStorage.getItem('probe_active_document_context');
+    if (!stored) return null;
+    try {
+      return JSON.parse(stored);
+    } catch {
+      return null;
+    }
+  });
+  const [isExtractingDoc, setIsExtractingDoc] = useState(false);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [showDocDetails, setShowDocDetails] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [isInvestigating, setIsInvestigating] = useState(false);
   const [testResult, setTestResult] = useState<PressureTestResponse | null>(() => {
     const internal = getProbeInternalState();
@@ -246,9 +265,41 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
     }
   };
 
-  const runInvestigation = async (customIdea?: string) => {
+  const handleFileSelection = async (file: File) => {
+    setIsExtractingDoc(true);
+    setIsInvestigating(true);
+    setErrorMessage(null);
+
+    try {
+      const context = await extractDocumentContext(file);
+      setUploadedDoc(context);
+      const chosenIdea = context.title || context.synthesizedIdea || file.name.replace(/\.[^/.]+$/, '');
+      setIdeaInput(chosenIdea);
+      await runInvestigation(chosenIdea, context);
+    } catch (err) {
+      console.error('Document extraction error in workspace:', err);
+      setErrorMessage('Failed to extract document. Please check the file or try again.');
+    } finally {
+      setIsExtractingDoc(false);
+    }
+  };
+
+  const handleInputPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const text = e.clipboardData.getData('text');
+    if (text && (text.length > 180 || text.includes('#') || (text.match(/\n/g) || []).length >= 2)) {
+      const context = extractContextFromDocumentText(text, 'Pasted Product Brief');
+      setUploadedDoc(context);
+      const chosenIdea = context.title || context.synthesizedIdea.slice(0, 80);
+      setIdeaInput(chosenIdea);
+      e.preventDefault();
+    }
+  };
+
+  const runInvestigation = async (customIdea?: string, customDocContext?: ExtractedDocumentContext) => {
     const target = (customIdea ?? ideaInput).trim();
     if (!target) return;
+
+    const activeDoc = customDocContext !== undefined ? customDocContext : (uploadedDoc || undefined);
 
     setIsInvestigating(true);
     setErrorMessage(null);
@@ -260,7 +311,7 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
         const res = await fetch('/api/pressure-test', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ idea: target })
+          body: JSON.stringify({ idea: target, documentContext: activeDoc })
         });
 
         const contentType = res.headers.get('content-type') || '';
@@ -269,11 +320,22 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
         }
         data = await res.json();
       } catch {
-        data = buildClientPressureTestFallback(target);
+        data = buildClientPressureTestFallback(target, activeDoc);
       }
 
       setTestResult(data);
+      if (data.documentContext) {
+        setUploadedDoc(data.documentContext);
+      }
       setGenerationCycle((prev) => prev + 1);
+
+      localStorage.setItem('probe_active_idea', target);
+      if (activeDoc) {
+        localStorage.setItem('probe_active_document_context', JSON.stringify(activeDoc));
+      } else {
+        localStorage.removeItem('probe_active_document_context');
+      }
+
       updateProbeLiveState({
         currentIdea: data.idea || target,
         latestPressureTest: data,
@@ -563,26 +625,107 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
         </p>
       </div>
 
-      {/* STAGE 1: IDEA INPUT CONTAINER */}
-      <div className="probe-glass rounded-2xl p-5 sm:p-6 mb-8">
+      {/* Hidden File Input */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void handleFileSelection(f);
+          e.target.value = '';
+        }}
+        accept=".pdf,.txt,.md,.markdown"
+        className="hidden"
+      />
+
+      {/* STAGE 1: IDEA / DOCUMENT INPUT CONTAINER */}
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDraggingFile(true);
+        }}
+        onDragLeave={() => setIsDraggingFile(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setIsDraggingFile(false);
+          const file = e.dataTransfer.files?.[0];
+          if (file) void handleFileSelection(file);
+        }}
+        className={`probe-glass rounded-2xl p-5 sm:p-6 mb-8 transition-all ${
+          isDraggingFile ? 'ring-4 ring-[#0F52BA]/20 border-[#0F52BA] bg-[#EFF6FF]/40' : ''
+        }`}
+      >
         <div className="flex items-center justify-between text-xs font-mono font-bold uppercase tracking-wider text-[#868C98] mb-2">
-          <span>YOUR IDEA UNDER INVESTIGATION</span>
-          <span className="text-[11px] font-normal normal-case">Deterministic stages: 14-phase analysis</span>
+          <span>YOUR IDEA OR DOCUMENT UNDER INVESTIGATION</span>
+          <span className="text-[11px] font-normal normal-case">Accepts typed idea, PDF, PRD / brief, TXT/MD</span>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+        {/* Attached Document Pill (if active) */}
+        {uploadedDoc && (
+          <div className="mb-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#F1F5F9] border border-[#CBD5E1] text-xs font-mono text-[#0A0D14] shadow-2xs">
+            <FileText size={13} className="text-[#0F52BA]" />
+            <span className="font-bold truncate max-w-[240px]">
+              {uploadedDoc.sourceFileName || uploadedDoc.title}
+            </span>
+            <span className="text-[10px] text-[#64748B] uppercase font-bold">
+              {uploadedDoc.sourceFileType || 'DOC'}
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowDocDetails((prev) => !prev)}
+              className="text-[11px] text-[#0F52BA] hover:underline cursor-pointer ml-1 font-sans"
+            >
+              {showDocDetails ? 'Hide PRD details' : 'Inspect PRD context'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setUploadedDoc(null);
+                setShowDocDetails(false);
+                localStorage.removeItem('probe_active_document_context');
+              }}
+              className="text-[#868C98] hover:text-[#EF4444] p-0.5 ml-1 cursor-pointer transition-colors"
+              title="Remove document"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
+          {/* File Upload Button */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isExtractingDoc || isInvestigating}
+            title="Upload PDF, PRD / product brief, or TXT/MD file"
+            className="px-3.5 py-3 rounded-2xl bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#64748B] hover:text-[#0A0D14] border border-[#CBD5E1] flex items-center justify-center gap-1.5 text-xs font-mono font-semibold cursor-pointer transition-colors shrink-0"
+          >
+            {isExtractingDoc ? (
+              <RotateCcw size={14} className="animate-spin text-[#0F52BA]" />
+            ) : (
+              <Paperclip size={14} />
+            )}
+            <span className="hidden sm:inline">Upload Document</span>
+          </button>
+
           <div className="relative flex-1">
             <input
               type="text"
               value={ideaInput}
               onChange={(e) => setIdeaInput(e.target.value)}
+              onPaste={handleInputPaste}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
                   runInvestigation();
                 }
               }}
-              placeholder="e.g. I want to build a cooking app"
+              placeholder={
+                isDraggingFile
+                  ? 'Drop PDF, PRD, or TXT/MD file here...'
+                  : 'Paste an idea, full PRD text, or upload document...'
+              }
               className="w-full text-base font-medium text-[#0A0D14] placeholder:text-[#94A3B8] border border-[#CBD5E1] rounded-2xl px-4 py-3 focus:outline-none focus:border-[#0F52BA] focus:ring-2 focus:ring-[#0F52BA]/15 transition-all bg-[#FAFAFA]"
             />
           </div>
@@ -590,7 +733,7 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
           <button
             type="button"
             onClick={() => runInvestigation()}
-            disabled={isInvestigating || !ideaInput.trim()}
+            disabled={isInvestigating || isExtractingDoc || !ideaInput.trim()}
             className="px-6 py-3 rounded-2xl bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-bold font-mono uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs disabled:opacity-50 flex-shrink-0"
           >
             {isInvestigating ? (
@@ -600,12 +743,60 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
               </>
             ) : (
               <>
-                <span>Pressure-Test Idea</span>
+                <span>Pressure-Test</span>
                 <ArrowRight size={14} />
               </>
             )}
           </button>
         </div>
+
+        {/* Collapsible Document Context Drawer */}
+        {uploadedDoc && showDocDetails && (
+          <div className="mt-4 p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] text-left text-xs font-mono space-y-2.5 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-1.5">
+              <span className="font-bold text-[#0A0D14] flex items-center gap-1.5">
+                <FileText size={13} className="text-[#0F52BA]" />
+                <span>EXTRACTED PRD CONTEXT</span>
+              </span>
+              <span className="text-[10px] text-[#64748B]">Integrated with research pipeline</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
+              <div>
+                <span className="text-[#64748B] font-bold block uppercase text-[9px]">Problem Statement:</span>
+                <p className="text-[#1E293B] font-normal leading-snug">{uploadedDoc.problem}</p>
+              </div>
+              <div>
+                <span className="text-[#64748B] font-bold block uppercase text-[9px]">Target Users:</span>
+                <p className="text-[#1E293B] font-normal leading-snug">{uploadedDoc.targetUsers}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px] pt-1">
+              <div>
+                <span className="text-[#64748B] font-bold block uppercase text-[9px]">Proposed Solution:</span>
+                <p className="text-[#1E293B] font-normal leading-snug">{uploadedDoc.solution}</p>
+              </div>
+              <div>
+                <span className="text-[#64748B] font-bold block uppercase text-[9px]">Core Features:</span>
+                <p className="text-[#1E293B] font-normal leading-snug">
+                  {uploadedDoc.features.join(', ') || 'Workflow automation'}
+                </p>
+              </div>
+            </div>
+
+            {uploadedDoc.competitors && uploadedDoc.competitors.length > 0 && (
+              <div className="pt-1 text-[11px]">
+                <span className="text-[#64748B] font-bold block uppercase text-[9px]">
+                  Existing Competitors & Workarounds:
+                </span>
+                <p className="text-[#1E293B] font-normal leading-snug">
+                  {uploadedDoc.competitors.join(', ')}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Quick Idea Presets */}
         <div className="flex flex-wrap items-center gap-2 mt-3 pt-2 text-[11px] font-mono text-[#64748B]">

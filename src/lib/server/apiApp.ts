@@ -24,7 +24,31 @@ const PressureTestRequestSchema = z.object({
     .string()
     .trim()
     .min(3, { message: 'Idea must be at least 3 characters long' })
-    .max(1000, { message: 'Idea cannot exceed 1000 characters' }),
+    .max(50000, { message: 'Idea or document cannot exceed 50,000 characters' }),
+  documentContext: z
+    .object({
+      title: z.string().optional(),
+      problem: z.string().optional(),
+      targetUsers: z.string().optional(),
+      solution: z.string().optional(),
+      assumptions: z.array(z.string()).optional(),
+      features: z.array(z.string()).optional(),
+      importantClaims: z.array(z.string()).optional(),
+      competitors: z.array(z.string()).optional(),
+      userComplaints: z.array(z.string()).optional(),
+      sourceFileName: z.string().optional(),
+      sourceFileType: z.string().optional(),
+      synthesizedIdea: z.string().optional(),
+      rawTextExcerpt: z.string().optional(),
+    })
+    .optional(),
+});
+
+const DocumentExtractRequestSchema = z.object({
+  text: z.string().optional(),
+  fileBase64: z.string().optional(),
+  mimeType: z.string().optional(),
+  fileName: z.string().optional(),
 });
 
 const ResearchAssumptionSchema = z.object({
@@ -231,6 +255,32 @@ export function createApiApp() {
     }
   });
 
+  // REST API: POST /api/documents/extract (Extracts context from PDF / PRD / brief)
+  app.post('/api/documents/extract', async (req: Request, res: Response) => {
+    const parseResult = DocumentExtractRequestSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({
+        error: 'Invalid document extraction request',
+        details: parseResult.error.format(),
+      });
+    }
+
+    try {
+      const { extractDocumentWithGemini } = await import('./documentService');
+      const context = await extractDocumentWithGemini(parseResult.data);
+      return res.status(200).json({
+        status: 'ok',
+        context,
+      });
+    } catch (err: any) {
+      console.error('[API /api/documents/extract Error]:', err);
+      return res.status(500).json({
+        error: 'Document extraction failed',
+        message: err.message || 'Internal server error',
+      });
+    }
+  });
+
   // REST API: POST /api/pressure-test (lazy-loads pressureTestPipeline on request)
   app.post('/api/pressure-test', async (req: Request, res: Response) => {
     const parseResult = PressureTestRequestSchema.safeParse(req.body);
@@ -243,8 +293,8 @@ export function createApiApp() {
 
     try {
       const { pressureTestPipeline } = await import('../research/pipeline');
-      const { idea } = parseResult.data;
-      const result = await pressureTestPipeline.executePressureTest(idea);
+      const { idea, documentContext } = parseResult.data;
+      const result = await pressureTestPipeline.executePressureTest(idea, documentContext as any);
       return res.json(result);
     } catch (err: any) {
       console.error('[API /api/pressure-test Error]:', err);

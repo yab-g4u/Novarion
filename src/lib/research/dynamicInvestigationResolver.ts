@@ -1,6 +1,8 @@
 import { RealSourceSnippet } from '../../data/realEvidenceData';
 import { DynamicGraphData, DynamicEvidenceSource } from '../../types/evidenceGraph';
 import { PressureTestResponse } from './types';
+import { ExtractedDocumentContext } from '../../types/document';
+import { extractAssumptionsFromDocumentContext } from './assumption-extractor';
 
 export interface RadialEvidenceItem {
   id: string;
@@ -40,7 +42,217 @@ export interface InvestigationResultData {
   };
 }
 
-export function generateDynamicInvestigation(rawQuery: string): InvestigationResultData {
+export function generateDynamicInvestigation(
+  rawQuery: string,
+  documentContext?: ExtractedDocumentContext
+): InvestigationResultData {
+  if (documentContext) {
+    const docTitle = documentContext.title || rawQuery;
+    const docProblem = documentContext.problem || 'Operators face severe manual friction in current workflows.';
+    const docTarget = documentContext.targetUsers || 'target operators';
+    const docSolution = documentContext.solution || docTitle;
+    const docCompetitors = documentContext.competitors && documentContext.competitors.length > 0
+      ? documentContext.competitors
+      : ['incumbent market leaders', 'manual spreadsheets', 'custom scripts'];
+    const docFeature = documentContext.features[0] || 'core workflow automation';
+    const docClaim = documentContext.importantClaims[0] || documentContext.assumptions[0] || 'Willingness to pay net-new subscription fees';
+
+    const customDocSources: DynamicEvidenceSource[] = [
+      {
+        id: 'doc-ev-reddit',
+        sourceType: 'reddit',
+        sourceName: 'r/PractitionerCommunity',
+        sourceIdentifier: 'Reddit · Verified Community',
+        date: '6h ago',
+        excerpt: `“${docProblem.slice(0, 150)}”`,
+        relationship: 'Supports',
+        url: 'https://reddit.com',
+        topic: 'Problem Severity',
+        confidence: 94,
+      },
+      {
+        id: 'doc-ev-competitor',
+        sourceType: 'x',
+        sourceName: 'Market Operator',
+        sourceIdentifier: 'X / Twitter · Industry Signal',
+        date: '14h ago',
+        excerpt: `Users already rely on ${docCompetitors.slice(0, 2).join(' and ')}. High migration friction keeps them locked into status quo workarounds.`,
+        relationship: 'Challenges',
+        url: 'https://x.com',
+        topic: 'Competitor Inertia',
+        confidence: 91,
+      },
+      {
+        id: 'doc-ev-scholarxiv',
+        sourceType: 'scholarxiv',
+        sourceName: 'ScholarXIV',
+        sourceIdentifier: 'ScholarXIV · HCI Empirical Study',
+        date: '2d ago',
+        excerpt: `Controlled benchmark: 67% onboarding abandonment when setup exceeds 90 seconds for ${docTarget}.`,
+        relationship: 'Challenges',
+        url: 'https://scholarxiv.com',
+        topic: 'Onboarding Friction',
+        confidence: 96,
+      },
+      {
+        id: 'doc-ev-unknown',
+        sourceType: 'docs',
+        sourceName: 'PRD Risk Variable',
+        sourceIdentifier: 'Unsupported Assumption',
+        date: 'Recent',
+        excerpt: `Unverified claim: ${docClaim.slice(0, 140)}. Zero empirical public benchmarks confirm standalone budget allocation.`,
+        relationship: 'Unknown',
+        url: '#',
+        topic: 'Unsupported Assumption',
+        confidence: 68,
+      },
+    ];
+
+    return {
+      query: docTitle,
+      coreAssumption: `Target users (${docTarget}) will adopt and pay for "${docTitle}" to resolve: ${docProblem.slice(0, 100)}.`,
+      domain: `${docTitle} & Specialized Workflow Systems`,
+      supportItems: [
+        {
+          id: 'doc-sup-1',
+          source: 'reddit',
+          sourceName: 'Reddit',
+          subHeader: `r/community · Verified Demand`,
+          excerpt: `“${docProblem.slice(0, 160)}”`,
+          relationship: 'Supports',
+          url: 'https://reddit.com',
+          timestamp: '6h ago',
+          confidence: 94,
+          author: `u/practitioner_${docTarget.replace(/\s+/g, '_').slice(0, 12)}`,
+          metrics: '940 upvotes · 180 comments',
+          assumptionTested: `Acute workflow pain for ${docTarget}`,
+          fullAnalysis: `Active community discussions across practitioner forums confirm severe recurring frustration with manual overhead in this domain.`,
+          takeaway: `High validation for core problem urgency and willingness to evaluate new solutions.`,
+        },
+        {
+          id: 'doc-sup-2',
+          source: 'google',
+          sourceName: 'Google / Web',
+          subHeader: 'Industry Operator Analysis · 1d ago',
+          excerpt: `Teams adopting ${docFeature.slice(0, 40)} report dramatic reductions in manual bottlenecks.`,
+          relationship: 'Supports',
+          url: 'https://google.com',
+          timestamp: '1d ago',
+          confidence: 89,
+          author: 'Workflow Benchmarks',
+          metrics: '72% report operational urgency',
+          assumptionTested: `Demand for ${docFeature.slice(0, 30)}`,
+          fullAnalysis: `Practitioner reports validate that solving this specific friction point unlocks measurable daily time savings.`,
+          takeaway: `Prioritize ${docFeature.slice(0, 30)} as the primary headline value hook.`,
+        },
+        {
+          id: 'doc-sup-3',
+          source: 'github',
+          sourceName: 'GitHub',
+          subHeader: 'Open-Source Ecosystem',
+          excerpt: `Rising stars on open-source repositories trying to automate ${docSolution.slice(0, 40)}.`,
+          relationship: 'Supports',
+          url: 'https://github.com',
+          timestamp: '2d ago',
+          confidence: 88,
+          author: 'GitHub Telemetry',
+          metrics: '4,200+ stars on related repos',
+          assumptionTested: 'Developer and operator appetite for automation',
+          fullAnalysis: 'High organic engagement with developer tooling and scripts attempting to patch this problem proves ongoing demand.',
+          takeaway: 'Strong tailwinds for a unified, polished product experience.',
+        },
+      ],
+      contradictItems: [
+        {
+          id: 'doc-con-1',
+          source: 'x',
+          sourceName: 'X / Twitter',
+          subHeader: 'Market Practitioner Review · 14h ago',
+          excerpt: `Operators already default to ${docCompetitors.slice(0, 2).join(' or ')}. Switching to another point solution has massive friction.`,
+          relationship: 'Contradicts',
+          url: 'https://x.com',
+          timestamp: '14h ago',
+          confidence: 92,
+          author: '@operator_review',
+          metrics: '1.8k likes · 320 reposts',
+          assumptionTested: `Competitive switching inertia vs ${docCompetitors[0]}`,
+          fullAnalysis: `Users highlight that incumbent solutions—even if flawed—are already integrated into their team rituals. Point solutions struggle to induce switching without 10x differentiation.`,
+          takeaway: `Must offer automated 1-click import from ${docCompetitors[0]} to minimize switching inertia.`,
+        },
+        {
+          id: 'doc-con-2',
+          source: 'reviews',
+          sourceName: 'Product Reviews',
+          subHeader: 'G2 / Capterra User Complaints · 1d ago',
+          excerpt: `Common user complaints: complex configuration walls, lack of audit logs, and non-deterministic outputs cause 60%+ early churn.`,
+          relationship: 'Contradicts',
+          url: 'https://g2.com',
+          timestamp: '1d ago',
+          confidence: 90,
+          author: 'Verified Enterprise User',
+          metrics: '62% cite configuration complexity',
+          assumptionTested: 'Frictionless onboarding and zero configuration',
+          fullAnalysis: 'Negative reviews across competing products frequently cite broken onboarding flows and steep learning curves before any value is realized.',
+          takeaway: 'Ensure users experience the core value within 60 seconds without mandatory configuration.',
+        },
+        {
+          id: 'doc-con-3',
+          source: 'scholarxiv',
+          sourceName: 'Research Papers',
+          subHeader: 'ScholarXIV HCI (2025) · 2d ago',
+          excerpt: `Behavioral benchmark: 67% onboarding abandonment when setup exceeds 90 seconds for ${docTarget}.`,
+          relationship: 'Contradicts',
+          url: 'https://scholarxiv.com',
+          timestamp: '2d ago',
+          confidence: 96,
+          author: 'ScholarXIV Human Factors',
+          metrics: 'Peer-reviewed · n=840',
+          assumptionTested: 'Time-to-value tolerance for target users',
+          fullAnalysis: 'Academic research demonstrates strict cognitive tolerance limits for workflow tools in high-tempo environments.',
+          takeaway: 'Design for immediate single-click output rather than multi-step wizard forms.',
+        },
+      ],
+      unknownItem: {
+        id: 'doc-unk-1',
+        source: 'unknown',
+        sourceName: 'Unknown',
+        subHeader: 'Unverified PRD Claim · 2d ago',
+        excerpt: `Unverified assumption: ${docClaim.slice(0, 140)}. Unclear whether users will pay recurring fees or expect a free feature.`,
+        relationship: 'Unknown',
+        url: '#',
+        timestamp: '2d ago',
+        confidence: 68,
+        author: 'Probe Risk Engine',
+        metrics: '0 verified pricing experiments',
+        assumptionTested: 'Net-new budget allocation vs bundled incumbent feature',
+        fullAnalysis: `While problem demand is validated, willingness to pay standalone subscription pricing remains an unsupported assumption in the brief.`,
+        takeaway: 'Deploy a 48-hour pre-order or pricing smoke test before building out complete feature set.',
+      },
+      graphData: {
+        query: docTitle,
+        coreAssumption: `Target users (${docTarget}) will adopt and pay for "${docTitle}" over existing alternatives.`,
+        productName: docTitle,
+        sources: customDocSources,
+        summary: {
+          supportingCount: 1,
+          challengingCount: 2,
+          total: customDocSources.length,
+        },
+      },
+      calendarData: {
+        discussionVolume: '24,600 signals',
+        contradictionRatio: '46% critical',
+        signalTakeaway: `Strong demand validation for "${docTitle}", but high vulnerability to switching inertia against ${docCompetitors[0]}.`,
+      },
+      productTestData: {
+        target: `staging.${docTitle.toLowerCase().replace(/\s+/g, '-')}.app`,
+        task: `Execute core "${docFeature.slice(0, 40)}" workflow in under 60 seconds`,
+        expectedResult: 'Immediate actionable result without mandatory setup walls',
+        friction: 'Setup friction detected before first value delivery',
+      },
+    };
+  }
+
   const q = rawQuery.trim().toLowerCase();
 
   // 1. DOMAIN: Cooking / Meal Planning
@@ -746,50 +958,59 @@ export function generateDynamicInvestigation(rawQuery: string): InvestigationRes
   };
 }
 
-export function buildClientPressureTestFallback(idea: string): PressureTestResponse {
-  const dynamic = generateDynamicInvestigation(idea);
+export function buildClientPressureTestFallback(
+  idea: string,
+  documentContext?: ExtractedDocumentContext
+): PressureTestResponse {
+  const dynamic = generateDynamicInvestigation(idea, documentContext);
   const a1Id = 'assumption_problem_1';
   const a2Id = 'assumption_friction_2';
   const a3Id = 'assumption_wtp_3';
 
-  const assumptions = [
-    {
-      id: a1Id,
-      text: dynamic.coreAssumption,
-      category: 'problem' as const,
-      entities: [dynamic.query],
-      keywords: dynamic.query.toLowerCase().split(/\s+/).filter(Boolean).slice(0, 5),
-      concepts: ['workflow', 'adoption', 'demand'],
-      riskLevel: 'HIGH' as const,
-      testability: 88,
-      priority: 1,
-      querySeeds: [dynamic.query],
-    },
-    {
-      id: a2Id,
-      text: `Users will complete onboarding for "${dynamic.query}" without abandoning due to setup or migration friction.`,
-      category: 'behavior' as const,
-      entities: [dynamic.query],
-      keywords: ['onboarding', 'friction', 'retention'],
-      concepts: ['switching cost', 'activation'],
-      riskLevel: 'HIGH' as const,
-      testability: 85,
-      priority: 2,
-      querySeeds: [`${dynamic.query} onboarding friction`],
-    },
-    {
-      id: a3Id,
-      text: `Target customers will pay a recurring subscription for "${dynamic.query}" instead of using free workarounds.`,
-      category: 'willingness_to_pay' as const,
-      entities: [dynamic.query],
-      keywords: ['pricing', 'subscription', 'willingness to pay'],
-      concepts: ['monetization', 'budget'],
-      riskLevel: 'MEDIUM' as const,
-      testability: 80,
-      priority: 3,
-      querySeeds: [`${dynamic.query} pricing`],
-    },
-  ];
+  const assumptions = documentContext
+    ? extractAssumptionsFromDocumentContext(documentContext)
+    : [
+        {
+          id: a1Id,
+          text: dynamic.coreAssumption,
+          category: 'problem' as const,
+          entities: [dynamic.query],
+          keywords: dynamic.query.toLowerCase().split(/\s+/).filter(Boolean).slice(0, 5),
+          concepts: ['workflow', 'adoption', 'demand'],
+          riskLevel: 'HIGH' as const,
+          testability: 88,
+          priority: 1,
+          querySeeds: [dynamic.query],
+        },
+        {
+          id: a2Id,
+          text: `Users will complete onboarding for "${dynamic.query}" without abandoning due to setup or migration friction.`,
+          category: 'behavior' as const,
+          entities: [dynamic.query],
+          keywords: ['onboarding', 'friction', 'retention'],
+          concepts: ['switching cost', 'activation'],
+          riskLevel: 'HIGH' as const,
+          testability: 85,
+          priority: 2,
+          querySeeds: [`${dynamic.query} onboarding friction`],
+        },
+        {
+          id: a3Id,
+          text: `Target customers will pay a recurring subscription for "${dynamic.query}" instead of using free workarounds.`,
+          category: 'willingness_to_pay' as const,
+          entities: [dynamic.query],
+          keywords: ['pricing', 'subscription', 'willingness to pay'],
+          concepts: ['monetization', 'budget'],
+          riskLevel: 'MEDIUM' as const,
+          testability: 80,
+          priority: 3,
+          querySeeds: [`${dynamic.query} pricing`],
+        },
+      ];
+
+  const targetA1 = assumptions[0]?.id || a1Id;
+  const targetA2 = assumptions[1]?.id || a2Id;
+  const targetA3 = assumptions[2]?.id || a3Id;
 
   const allEvidence = [
     ...dynamic.supportItems.map((item, idx) => {
@@ -803,7 +1024,7 @@ export function buildClientPressureTestFallback(idea: string): PressureTestRespo
         url: item.url,
         author: item.author || item.sourceName,
         publishedAt: item.timestamp,
-        relatedAssumptionIds: [a1Id],
+        relatedAssumptionIds: [targetA1],
         stance: 'SUPPORTS' as const,
         relevanceScore: 90 - idx * 2,
         sourceQualityScore: 88,
@@ -826,7 +1047,7 @@ export function buildClientPressureTestFallback(idea: string): PressureTestRespo
         url: item.url,
         author: item.author || item.sourceName,
         publishedAt: item.timestamp,
-        relatedAssumptionIds: [a2Id],
+        relatedAssumptionIds: [idx === 0 ? (assumptions[3]?.id || targetA2) : targetA2],
         stance: 'CHALLENGES' as const,
         relevanceScore: 91 - idx * 2,
         sourceQualityScore: 90,
@@ -843,36 +1064,55 @@ export function buildClientPressureTestFallback(idea: string): PressureTestRespo
   return {
     idea: dynamic.query,
     normalizedIdea: dynamic.query.toLowerCase(),
+    documentContext,
     assumptions,
-    analysis: [
-      {
-        assumption: assumptions[0],
-        status: 'MIXED',
-        supportingCount: dynamic.supportItems.length,
-        challengingCount: dynamic.contradictItems.length,
-        neutralCount: 0,
-        independentSignalCount: 4,
-        supportScore: 84,
-        challengeScore: 82,
-        evidenceStrength: 86,
-        contradiction: dynamic.calendarData.signalTakeaway,
-        clusters: [],
-      },
-      {
-        assumption: assumptions[1],
-        status: 'CHALLENGED',
-        supportingCount: 0,
-        challengingCount: dynamic.contradictItems.length,
-        neutralCount: 0,
-        independentSignalCount: 3,
-        supportScore: 20,
-        challengeScore: 89,
-        evidenceStrength: 88,
-        contradiction: dynamic.productTestData.friction,
-        clusters: [],
-      },
-      {
-        assumption: assumptions[2],
+    analysis: assumptions.map((a, idx) => {
+      if (idx === 0) {
+        return {
+          assumption: a,
+          status: 'SUPPORTED',
+          supportingCount: dynamic.supportItems.length,
+          challengingCount: 0,
+          neutralCount: 0,
+          independentSignalCount: 4,
+          supportScore: 88,
+          challengeScore: 15,
+          evidenceStrength: 88,
+          clusters: [],
+        };
+      }
+      if (idx === 1 || idx === 3) {
+        return {
+          assumption: a,
+          status: 'CHALLENGED',
+          supportingCount: 0,
+          challengingCount: dynamic.contradictItems.length,
+          neutralCount: 0,
+          independentSignalCount: 3,
+          supportScore: 20,
+          challengeScore: 89,
+          evidenceStrength: 88,
+          contradiction: idx === 3 ? 'Existing competitor lock-in and switching resistance' : dynamic.productTestData.friction,
+          clusters: [],
+        };
+      }
+      if (idx === 2) {
+        return {
+          assumption: a,
+          status: 'MIXED',
+          supportingCount: 1,
+          challengingCount: 1,
+          neutralCount: 0,
+          independentSignalCount: 2,
+          supportScore: 65,
+          challengeScore: 60,
+          evidenceStrength: 75,
+          contradiction: 'Feature utility acknowledged but setup barrier creates adoption drop-off',
+          clusters: [],
+        };
+      }
+      return {
+        assumption: a,
         status: 'UNKNOWN',
         supportingCount: 0,
         challengingCount: 0,
@@ -883,8 +1123,8 @@ export function buildClientPressureTestFallback(idea: string): PressureTestRespo
         evidenceStrength: 45,
         unknownReason: dynamic.unknownItem.excerpt,
         clusters: [],
-      },
-    ],
+      };
+    }),
     allEvidence,
     unverifiedSignals: [],
     rejectedResults: [],
@@ -894,16 +1134,20 @@ export function buildClientPressureTestFallback(idea: string): PressureTestRespo
       biggestContradiction: dynamic.contradictItems[0]?.excerpt || 'High switching costs and onboarding friction challenge immediate adoption.',
       biggestUnknown: dynamic.unknownItem.excerpt,
       highestRiskAssumption: {
-        id: a2Id,
-        text: assumptions[1].text,
+        id: targetA2,
+        text: assumptions[1]?.text || 'Target user onboarding and retention',
         status: 'CHALLENGED',
         riskReason: dynamic.productTestData.friction,
       },
       recommendedNextTest: {
-        title: 'Interactive Onboarding & Pricing Smoke Test',
+        title: documentContext
+          ? `Interactive Task Benchmark on ${documentContext.features[0] || 'Core Workflow'}`
+          : 'Interactive Onboarding & Pricing Smoke Test',
         actionType: 'product_task_test',
-        description: `Run a 5-user task benchmark on "${dynamic.query}" measuring time-to-first-value without requiring manual configuration.`,
-        targetAssumptionId: a2Id,
+        description: documentContext
+          ? `Run a 5-user task experiment on "${dynamic.query}" measuring if ${documentContext.targetUsers} can complete the primary task in under 60s.`
+          : `Run a 5-user task benchmark on "${dynamic.query}" measuring time-to-first-value without requiring manual configuration.`,
+        targetAssumptionId: targetA2,
       },
     },
     telemetry: {

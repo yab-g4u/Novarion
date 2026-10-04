@@ -1,3 +1,5 @@
+import { ExtractedDocumentContext } from '../../types/document';
+
 export type AssumptionCategory =
   | 'problem'
   | 'user'
@@ -166,6 +168,7 @@ export interface PipelineTelemetry {
 export interface PressureTestResponse {
   idea: string;
   normalizedIdea: string;
+  documentContext?: ExtractedDocumentContext;
   assumptions: Assumption[];
   summary: PressureTestSummary;
   analysis: AssumptionEvidenceAnalysis[];

@@ -1,5 +1,6 @@
 import { Assumption, AssumptionCategory } from './types';
 import { GoogleGenAI, Type } from '@google/genai';
+import { ExtractedDocumentContext } from '../../types/document';
 
 interface AssumptionCacheEntry {
   assumptions: Assumption[];
@@ -332,10 +333,128 @@ export function extractAssumptionsDeterministic(idea: string): Assumption[] {
   ];
 }
 
+export function extractAssumptionsFromDocumentContext(context: ExtractedDocumentContext): Assumption[] {
+  const assumptions: Assumption[] = [];
+  const domainWords = [context.title, context.targetUsers, context.solution]
+    .join(' ')
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 3)
+    .slice(0, 5);
+
+  // 1. Problem Severity & Workflow Friction Assumption
+  assumptions.push({
+    id: 'A1',
+    text: `Target operators (${context.targetUsers}) experience acute workflow friction in: ${context.problem}`,
+    category: 'problem',
+    entities: [context.targetUsers, 'workflow friction', 'problem severity'],
+    keywords: [
+      context.problem.slice(0, 30),
+      `${context.targetUsers} pain points`,
+      'workflow struggle'
+    ],
+    concepts: ['problem severity', 'workflow friction', 'demand signal'],
+    riskLevel: 'HIGH',
+    testability: 92,
+    priority: 1,
+    querySeeds: [
+      `${context.targetUsers} ${context.problem.slice(0, 40)} struggle complaints`,
+      `why is ${context.problem.slice(0, 30)} so hard`,
+      `${context.targetUsers} frustrations with ${context.solution.slice(0, 30)}`
+    ]
+  });
+
+  // 2. Target User Adoption & Onboarding Assumption
+  assumptions.push({
+    id: 'A2',
+    text: `Target users (${context.targetUsers}) will actively adopt "${context.title || context.solution}" without abandoning due to setup or habit change.`,
+    category: 'user',
+    entities: [context.targetUsers, 'adoption', 'onboarding'],
+    keywords: [`${context.targetUsers} adoption`, 'habit change', 'setup friction'],
+    concepts: ['user adoption', 'onboarding friction', 'retention inertia'],
+    riskLevel: 'HIGH',
+    testability: 88,
+    priority: 2,
+    querySeeds: [
+      `${context.targetUsers} onboarding churn retention`,
+      `do ${context.targetUsers} actually use ${context.title || 'new tools'}`,
+      `switching from existing habits ${context.targetUsers}`
+    ]
+  });
+
+  // 3. Solution Feasibility & Core Feature Utility
+  const primaryFeatures = context.features.slice(0, 2).join(' and ') || context.solution;
+  assumptions.push({
+    id: 'A3',
+    text: `Core capabilities (${primaryFeatures}) deliver verifiable workflow speedups over manual alternatives.`,
+    category: 'solution',
+    entities: [context.title, ...domainWords],
+    keywords: [primaryFeatures.slice(0, 25), 'workflow speedup', 'utility'],
+    concepts: ['solution efficacy', 'feature utility', 'operational feasibility'],
+    riskLevel: 'HIGH',
+    testability: 85,
+    priority: 3,
+    querySeeds: [
+      `${primaryFeatures.slice(0, 35)} effectiveness benchmarks`,
+      `does ${primaryFeatures.slice(0, 30)} save time`,
+      `${context.title || context.solution.slice(0, 30)} user reviews`
+    ]
+  });
+
+  // 4. Competition & Alternative Workaround Inertia
+  const altText = context.competitors && context.competitors.length > 0
+    ? context.competitors.slice(0, 3).join(', ')
+    : 'incumbent tools and manual spreadsheets';
+  assumptions.push({
+    id: 'A4',
+    text: `Users will abandon existing alternatives (${altText}) to switch to "${context.title || context.solution}".`,
+    category: 'competition',
+    entities: ['competition', altText.slice(0, 20), 'switching costs'],
+    keywords: ['competitor churn', 'alternatives', 'switching costs'],
+    concepts: ['competitive switching', 'workaround inertia', 'market substitution'],
+    riskLevel: 'HIGH',
+    testability: 86,
+    priority: 4,
+    querySeeds: [
+      `alternatives to ${altText.slice(0, 40)}`,
+      `${altText.slice(0, 30)} complaints churn reddit`,
+      `why users switch from ${altText.slice(0, 30)}`
+    ]
+  });
+
+  // 5. Explicit Document Assumptions or Willingness to Pay / Commercial Claims
+  const docClaim = context.importantClaims[0] || context.assumptions[0] || `Target buyers will pay a recurring subscription for ${context.title || 'this solution'}.`;
+  assumptions.push({
+    id: 'A5',
+    text: docClaim,
+    category: 'willingness_to_pay',
+    entities: ['pricing', 'budget', context.targetUsers],
+    keywords: ['willingness to pay', 'pricing tier', 'budget allocation'],
+    concepts: ['commercial viability', 'standalone budget', 'monetization'],
+    riskLevel: 'MEDIUM',
+    testability: 82,
+    priority: 5,
+    querySeeds: [
+      `${context.targetUsers} willingness to pay for ${context.solution.slice(0, 30)}`,
+      `pricing benchmark ${context.title || context.solution.slice(0, 30)}`,
+      `${context.targetUsers} software budget spending`
+    ]
+  });
+
+  return assumptions;
+}
+
 export async function extractAssumptions(
   idea: string,
-  telemetryCollector?: { geminiCalls: number; estInput: number; estOutput: number }
+  telemetryCollector?: { geminiCalls: number; estInput: number; estOutput: number },
+  documentContext?: ExtractedDocumentContext
 ): Promise<{ assumptions: Assumption[]; fromCache: boolean; usedGemini: boolean }> {
+  if (documentContext) {
+    const docAssumptions = extractAssumptionsFromDocumentContext(documentContext);
+    return { assumptions: docAssumptions, fromCache: false, usedGemini: false };
+  }
+
   const norm = normalizeIdea(idea);
   const cacheKey = norm.toLowerCase();
 
@@ -373,7 +492,7 @@ Return a JSON array of 5 assumptions with:
 - querySeeds: 3 targeted keyword search queries reflecting the specific assumption`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.8-flash',
         contents: prompt,
         config: {
           responseMimeType: 'application/json',
