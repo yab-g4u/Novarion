@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ArrowRight,
   ShieldAlert,
@@ -18,10 +18,7 @@ import {
   Bookmark,
   ShieldCheck,
   XCircle,
-  GraduationCap,
-  BookOpen,
-  Paperclip,
-  X
+  GitBranch
 } from 'lucide-react';
 import {
   PressureTestResponse,
@@ -33,10 +30,8 @@ import {
 } from '../lib/research/types';
 import { DynamicGraphData, DynamicEvidenceSource } from '../types/evidenceGraph';
 import { BuildBriefPanel } from './buildBrief/BuildBriefPanel';
-import { buildClientPressureTestFallback } from '../lib/research/dynamicInvestigationResolver';
-import { getProbeInternalState, updateProbeLiveState } from '../lib/voxide/probeVoxideBridge';
-import { ExtractedDocumentContext } from '../types/document';
-import { extractDocumentContext, extractContextFromDocumentText } from '../lib/documents/documentExtractor';
+import { VoiceControlButton } from './voice/VoiceControlButton';
+import { InvestigationThinkingMode } from './investigation/InvestigationThinkingMode';
 
 interface PressureTestWorkspaceProps {
   initialIdea?: string;
@@ -53,294 +48,58 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
   onPressureTestUpdated,
   onFocusProductTest
 }) => {
-  const [ideaInput, setIdeaInput] = useState(
-    externalIdea || getProbeInternalState().currentIdea || initialIdea
-  );
-  const [uploadedDoc, setUploadedDoc] = useState<ExtractedDocumentContext | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const stored = localStorage.getItem('probe_active_document_context');
-    if (!stored) return null;
-    try {
-      return JSON.parse(stored);
-    } catch {
-      return null;
-    }
-  });
-  const [isExtractingDoc, setIsExtractingDoc] = useState(false);
-  const [isDraggingFile, setIsDraggingFile] = useState(false);
-  const [showDocDetails, setShowDocDetails] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
+  const [ideaInput, setIdeaInput] = useState(externalIdea || initialIdea);
   const [isInvestigating, setIsInvestigating] = useState(false);
-  const [testResult, setTestResult] = useState<PressureTestResponse | null>(() => {
-    const internal = getProbeInternalState();
-    return internal.latestPressureTest || null;
-  });
+  const [showThinkingMode, setShowThinkingMode] = useState(false);
+  const [pendingResult, setPendingResult] = useState<PressureTestResponse | null>(null);
+  const [testResult, setTestResult] = useState<PressureTestResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [generationCycle, setGenerationCycle] = useState(0);
-  const [expandedEvidenceId, setExpandedEvidenceId] = useState<string | null>(
-    () => getProbeInternalState().selectedEvidenceId
-  );
 
-  // Filter & interaction state initialized from live bridge state
-  const [activeRepoTab, setActiveRepoTab] = useState<'verified' | 'unverified' | 'rejected'>(
-    () => (getProbeInternalState().activeEvidenceFilters.tab as any) || 'verified'
-  );
-  const [selectedAssumptionId, setSelectedAssumptionId] = useState<string>(
-    () => getProbeInternalState().activeEvidenceFilters.assumptionId || 'all'
-  );
-  const [selectedStance, setSelectedStance] = useState<'all' | 'SUPPORTS' | 'CHALLENGES' | 'NEUTRAL'>(
-    () => (getProbeInternalState().activeEvidenceFilters.stance as any) || 'all'
-  );
-  const [selectedSourceType, setSelectedSourceType] = useState<'all' | ResearchSourceType>(
-    () => (getProbeInternalState().activeEvidenceFilters.sourceType as any) || 'all'
-  );
+  // Filter & interaction state
+  const [activeRepoTab, setActiveRepoTab] = useState<'verified' | 'unverified' | 'rejected'>('verified');
+  const [selectedAssumptionId, setSelectedAssumptionId] = useState<string>('all');
+  const [selectedStance, setSelectedStance] = useState<'all' | 'SUPPORTS' | 'CHALLENGES' | 'NEUTRAL'>('all');
+  const [selectedSourceType, setSelectedSourceType] = useState<'all' | ResearchSourceType>('all');
   const [showTelemetryDebug, setShowTelemetryDebug] = useState<boolean>(false);
-  const [expandedWhyAssumptionId, setExpandedWhyAssumptionId] = useState<string | null>(
-    () => getProbeInternalState().selectedNode
-  );
+  const [expandedWhyAssumptionId, setExpandedWhyAssumptionId] = useState<string | null>(null);
 
-  // Per-assumption ScholarXIV academic research state
-  const [academicResearchState, setAcademicResearchState] = useState<
-    Record<
-      string,
-      {
-        status: 'loading' | 'loaded' | 'error';
-        result?: {
-          assumptionId: string;
-          assumptionText: string;
-          academicQuery: string;
-          papers: Array<{
-            id: string;
-            title: string;
-            authors: string;
-            year?: string;
-            abstract: string;
-            relevance: string;
-            stance: 'SUPPORTS' | 'CHALLENGES' | 'CONTEXT' | 'INCONCLUSIVE';
-            stanceLabel: string;
-            shortFinding: string;
-            sourceLabel: string;
-            url: string;
-            confidence?: number;
-          }>;
-          academicSignal: {
-            supporting: number;
-            challenging: number;
-            context: number;
-            inconclusive: number;
-          };
-          conclusion: string;
-        };
-        errorMessage?: string;
-      }
-    >
-  >({});
-
-  const handleResearchAssumptionWithScholarXIV = async (
-    assumptionId: string,
-    assumptionText: string,
-    forceRefresh = false
-  ) => {
-    setAcademicResearchState((prev) => ({
-      ...prev,
-      [assumptionId]: { status: 'loading' }
-    }));
-
-    try {
-      const res = await fetch('/api/research/assumption', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          assumptionId,
-          assumptionText,
-          idea: ideaInput,
-          forceRefresh
-        })
-      });
-
-      if (!res.ok) {
-        throw new Error('Academic research is temporarily unavailable.');
-      }
-
-      const data = await res.json();
-      if (data.status === 'unavailable' || data.error) {
-        throw new Error(data.message || 'Academic research is temporarily unavailable.');
-      }
-
-      setAcademicResearchState((prev) => ({
-        ...prev,
-        [assumptionId]: { status: 'loaded', result: data }
-      }));
-
-      // Integrate into Evidence Graph & verified evidence repository
-      if (data.papers && data.papers.length > 0) {
-        setTestResult((prev) => {
-          if (!prev) return prev;
-          const existingIds = new Set(prev.allEvidence.map((e) => e.id));
-          const newEvidenceItems: EvidenceItem[] = data.papers.map((p: any) => ({
-            id: p.id || `sx-paper-${Date.now()}`,
-            sourceType: 'scholarxiv',
-            provider: 'scholarxiv',
-            title: p.title,
-            excerpt: p.shortFinding || p.abstract,
-            fullText: p.abstract,
-            url: p.url || `https://www.scholarxiv.com/papers/${p.id}`,
-            author: p.authors || 'ScholarXIV Academic Team',
-            publishedAt: p.year ? String(p.year) : '2025',
-            stance: p.stance === 'SUPPORTS' ? 'SUPPORTS' : p.stance === 'CHALLENGES' ? 'CHALLENGES' : 'NEUTRAL',
-            confidence: p.confidence || 0.88,
-            relevanceScore: 94,
-            sourceQualityScore: 95,
-            independenceScore: 95,
-            noveltyScore: 90,
-            evidenceStrength: 92,
-            relatedAssumptionIds: [assumptionId],
-            whyItMatters: p.relevance || 'Peer-reviewed academic finding relevant to assumption.',
-            implication:
-              p.stance === 'CHALLENGES'
-                ? 'Challenges foundational startup assumption.'
-                : 'Supports hypothesis problem validation.'
-          }));
-
-          const updatedEvidence = [
-            ...newEvidenceItems.filter((item) => !existingIds.has(item.id)),
-            ...prev.allEvidence
-          ];
-
-          const updatedResult: PressureTestResponse = {
-            ...prev,
-            allEvidence: updatedEvidence
-          };
-
-          // Automatically push to living graph
-          if (onPressureTestUpdated && updatedEvidence.length > 0) {
-            const dynamicSources: DynamicEvidenceSource[] = updatedEvidence.map((ev, idx) => {
-              let rel: 'Supports' | 'Challenges' | 'Unknown' = 'Unknown';
-              if (ev.stance === 'SUPPORTS') rel = 'Supports';
-              else if (ev.stance === 'CHALLENGES') rel = 'Challenges';
-
-              return {
-                id: ev.id || `dyn-ev-${idx}`,
-                sourceType: ev.sourceType === 'scholarxiv' ? 'scholarxiv' : (ev.sourceType as any),
-                sourceName: ev.sourceType === 'scholarxiv' ? 'ScholarXIV' : ev.sourceType.toUpperCase(),
-                sourceIdentifier: ev.author ? `${ev.author} · ${ev.sourceType}` : `${ev.sourceType.toUpperCase()}`,
-                date: ev.publishedAt || 'Recent',
-                excerpt: ev.excerpt,
-                relationship: rel,
-                url: ev.url,
-                topic: ev.relatedAssumptionIds.join(', '),
-                confidence: Math.round(ev.confidence * 100)
-              };
-            });
-
-            onPressureTestUpdated({
-              query: prev.idea,
-              coreAssumption: prev.assumptions[0]?.text || prev.idea,
-              productName: 'PROBE INVESTIGATION',
-              sources: dynamicSources,
-              summary: {
-                supportingCount: dynamicSources.filter((s) => s.relationship === 'Supports').length,
-                challengingCount: dynamicSources.filter((s) => s.relationship === 'Challenges').length,
-                total: dynamicSources.length
-              }
-            });
-          }
-
-          updateProbeLiveState({
-            latestPressureTest: updatedResult
-          });
-
-          return updatedResult;
-        });
-      }
-    } catch {
-      setAcademicResearchState((prev) => ({
-        ...prev,
-        [assumptionId]: {
-          status: 'error',
-          errorMessage: 'Academic research is temporarily unavailable.'
-        }
-      }));
+  const handleThinkingComplete = () => {
+    setShowThinkingMode(false);
+    setIsInvestigating(false);
+    if (pendingResult) {
+      setTestResult(pendingResult);
     }
   };
 
-  const handleFileSelection = async (file: File) => {
-    setIsExtractingDoc(true);
-    setIsInvestigating(true);
-    setErrorMessage(null);
-
-    try {
-      const context = await extractDocumentContext(file);
-      setUploadedDoc(context);
-      const chosenIdea = context.title || context.synthesizedIdea || file.name.replace(/\.[^/.]+$/, '');
-      setIdeaInput(chosenIdea);
-      await runInvestigation(chosenIdea, context);
-    } catch (err) {
-      console.error('Document extraction error in workspace:', err);
-      setErrorMessage('Failed to extract document. Please check the file or try again.');
-    } finally {
-      setIsExtractingDoc(false);
-    }
-  };
-
-  const handleInputPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    const text = e.clipboardData.getData('text');
-    if (text && (text.length > 180 || text.includes('#') || (text.match(/\n/g) || []).length >= 2)) {
-      const context = extractContextFromDocumentText(text, 'Pasted Product Brief');
-      setUploadedDoc(context);
-      const chosenIdea = context.title || context.synthesizedIdea.slice(0, 80);
-      setIdeaInput(chosenIdea);
-      e.preventDefault();
-    }
-  };
-
-  const runInvestigation = async (customIdea?: string, customDocContext?: ExtractedDocumentContext) => {
+  const runInvestigation = async (customIdea?: string, skipAnimation: boolean = false) => {
     const target = (customIdea ?? ideaInput).trim();
     if (!target) return;
 
-    const activeDoc = customDocContext !== undefined ? customDocContext : (uploadedDoc || undefined);
-
+    if (!skipAnimation) {
+      setShowThinkingMode(true);
+    }
     setIsInvestigating(true);
     setErrorMessage(null);
-    setExpandedEvidenceId(null);
 
     try {
-      let data: PressureTestResponse;
-      try {
-        const res = await fetch('/api/pressure-test', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ idea: target, documentContext: activeDoc })
-        });
-
-        const contentType = res.headers.get('content-type') || '';
-        if (!res.ok || !contentType.includes('application/json')) {
-          throw new Error(`Static fallback (${res.status})`);
-        }
-        data = await res.json();
-      } catch {
-        data = buildClientPressureTestFallback(target, activeDoc);
-      }
-
-      setTestResult(data);
-      if (data.documentContext) {
-        setUploadedDoc(data.documentContext);
-      }
-      setGenerationCycle((prev) => prev + 1);
-
-      localStorage.setItem('probe_active_idea', target);
-      if (activeDoc) {
-        localStorage.setItem('probe_active_document_context', JSON.stringify(activeDoc));
-      } else {
-        localStorage.removeItem('probe_active_document_context');
-      }
-
-      updateProbeLiveState({
-        currentIdea: data.idea || target,
-        latestPressureTest: data,
-        investigationStatus: 'READY'
+      const res = await fetch('/api/pressure-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idea: target })
       });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || errJson.message || `Investigation error: ${res.status}`);
+      }
+
+      const data: PressureTestResponse = await res.json();
+      setPendingResult(data);
+
+      if (skipAnimation) {
+        setTestResult(data);
+        setIsInvestigating(false);
+      }
 
       // Automatically update Living Evidence Graph with verified evidence
       if (onPressureTestUpdated && data.allEvidence.length > 0) {
@@ -382,180 +141,72 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
       }
     } catch (err: any) {
       setErrorMessage(err.message || 'Investigation failed');
-    } finally {
       setIsInvestigating(false);
+      setShowThinkingMode(false);
     }
   };
 
   useEffect(() => {
-    const target = (externalIdea || initialIdea).trim();
-    const cached = getProbeInternalState().latestPressureTest;
-    if (cached && cached.idea.toLowerCase() === target.toLowerCase()) {
-      setIdeaInput(cached.idea);
-      setTestResult(cached);
-      return;
-    }
-    void runInvestigation(target);
+    runInvestigation(externalIdea || initialIdea, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [externalIdea]);
 
+  // Listen to voice-controlled UI filter events
   useEffect(() => {
-    const onVoxideInvestigateStart = (e: Event) => {
-      const detail = (e as CustomEvent)?.detail;
-      if (!detail) return;
-      if (detail.idea) {
-        setIdeaInput(detail.idea);
-      }
-      if (detail.pressureTest) {
-        setTestResult(detail.pressureTest);
-      }
-      setIsInvestigating(true);
-      setErrorMessage(null);
-    };
-
-    const onVoxideInvestigate = (e: Event) => {
-      const detail = (e as CustomEvent)?.detail;
-      if (!detail) return;
-      if (detail.idea) {
-        setIdeaInput(detail.idea);
-      }
-      if (detail.pressureTest) {
-        setTestResult(detail.pressureTest);
-        setGenerationCycle((prev) => prev + 1);
-        setIsInvestigating(false);
-      } else if (detail.idea) {
-        void runInvestigation(detail.idea);
+    const handleVoiceInvestigation = (e: any) => {
+      const idea = e?.detail?.idea;
+      if (idea) {
+        setIdeaInput(idea);
+        runInvestigation(idea);
       }
     };
 
-    const onVoxideEvidenceUpdated = (e: Event) => {
-      const detail = (e as CustomEvent)?.detail;
-      if (!detail?.pressureTest) return;
-      // Update evidence data ONLY; never modify ideaInput
-      setTestResult(detail.pressureTest);
-    };
-
-    const onVoxideShowAssumptions = (e: Event) => {
-      const detail = (e as CustomEvent)?.detail;
-      const targetAssumpId = detail?.assumptionId || 'all';
-      setSelectedAssumptionId(targetAssumpId);
-      if (targetAssumpId !== 'all') {
-        setExpandedWhyAssumptionId(targetAssumpId);
-      }
-      const el = document.getElementById('section-assumptions');
-      el?.scrollIntoView({ behavior: 'smooth' });
-    };
-
-    const onVoxideChallengeAssumption = (e: Event) => {
-      const detail = (e as CustomEvent)?.detail;
-      if (!detail?.assumptionId) return;
-      const targetId = String(detail.assumptionId);
-      setSelectedAssumptionId(targetId);
+    const handleFilterContradictions = () => {
       setSelectedStance('CHALLENGES');
-      setExpandedWhyAssumptionId(targetId);
-      setTestResult((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          analysis: prev.analysis.map((item) =>
-            item.assumption.id === targetId
-              ? {
-                  ...item,
-                  status: 'CHALLENGED',
-                  contradiction: detail.reason || item.contradiction
-                }
-              : item
-          )
-        };
-      });
-      const el = document.getElementById('section-assumptions');
-      el?.scrollIntoView({ behavior: 'smooth' });
+      setActiveRepoTab('verified');
+      const el = document.getElementById('section-evidence-repo');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
     };
 
-    const onVoxideFilter = (e: Event) => {
-      const detail = (e as CustomEvent)?.detail;
-      if (!detail) return;
-      if (detail.stance) setSelectedStance(detail.stance);
-      if (detail.sourceType) setSelectedSourceType(detail.sourceType);
-      if (detail.assumptionId) setSelectedAssumptionId(detail.assumptionId);
-      if (detail.tab) setActiveRepoTab(detail.tab);
-      if (detail.scrollToEvidence) {
-        const el =
-          document.getElementById('section-evidence-repository') ||
-          document.getElementById('section-assumptions');
-        el?.scrollIntoView({ behavior: 'smooth' });
+    const handleFilterScholarxiv = () => {
+      setSelectedSourceType('scholarxiv');
+      setActiveRepoTab('verified');
+      const el = document.getElementById('section-evidence-repo');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    };
+
+    const handleFilterStance = (e: any) => {
+      const stance = e?.detail?.stance;
+      if (stance === 'SUPPORTS' || stance === 'CHALLENGES' || stance === 'all') {
+        setSelectedStance(stance);
+        setActiveRepoTab('verified');
       }
     };
 
-    const onVoxideAddEvidence = (e: Event) => {
-      const detail = (e as CustomEvent)?.detail;
-      if (!detail?.evidence) return;
-      const ev = detail.evidence;
-      setTestResult((prev) => {
-        if (!prev) return prev;
-        const defaultAssumpId = prev.assumptions?.[0]?.id || 'A1';
-        const newEvidenceItem: EvidenceItem = {
-          id: ev.id,
-          sourceType: ev.sourceType === 'docs' ? 'reddit' : ev.sourceType,
-          provider: ev.sourceType === 'docs' ? 'reddit' : ev.sourceType,
-          title: ev.sourceName || 'Founder Field Evidence',
-          excerpt: ev.excerpt,
-          url: ev.url || 'https://novarion.ethiodeploy.com',
-          author: ev.sourceName || 'Founder',
-          publishedAt: 'Just now',
-          stance: ev.relationship === 'Challenges' ? 'CHALLENGES' : 'SUPPORTS',
-          confidence: 0.9,
-          relevanceScore: 95,
-          sourceQualityScore: 90,
-          independenceScore: 90,
-          noveltyScore: 88,
-          evidenceStrength: 92,
-          relatedAssumptionIds: [defaultAssumpId],
-          whyItMatters: 'Direct empirical observation added to the investigation.',
-          implication:
-            ev.relationship === 'Challenges'
-              ? 'Challenges core hypothesis assumption.'
-              : 'Reinforces core hypothesis assumption.'
-        };
-        return {
-          ...prev,
-          allEvidence: [newEvidenceItem, ...prev.allEvidence]
-        };
-      });
+    const handleFocusAssumption = (e: any) => {
+      const text = e?.detail?.text?.toLowerCase();
+      if (text && testResult?.assumptions) {
+        const found = testResult.assumptions.find((a) => a.text.toLowerCase().includes(text));
+        if (found) {
+          setSelectedAssumptionId(found.id);
+        }
+      }
     };
 
-    window.addEventListener('probe:voxide-investigate-start', onVoxideInvestigateStart);
-    window.addEventListener('probe:voxide-investigate', onVoxideInvestigate);
-    window.addEventListener('probe:voxide-investigation-updated', onVoxideEvidenceUpdated);
-    window.addEventListener('probe:voxide-show-assumptions', onVoxideShowAssumptions);
-    window.addEventListener('probe:voxide-challenge-assumption', onVoxideChallengeAssumption);
-    window.addEventListener('probe:voxide-filter', onVoxideFilter);
-    window.addEventListener('probe:voxide-add-evidence', onVoxideAddEvidence);
+    window.addEventListener('probe_investigate_idea', handleVoiceInvestigation);
+    window.addEventListener('probe_filter_contradictions', handleFilterContradictions);
+    window.addEventListener('probe_filter_scholarxiv', handleFilterScholarxiv);
+    window.addEventListener('probe_filter_stance', handleFilterStance);
+    window.addEventListener('probe_focus_assumption', handleFocusAssumption);
 
     return () => {
-      window.removeEventListener('probe:voxide-investigate-start', onVoxideInvestigateStart);
-      window.removeEventListener('probe:voxide-investigate', onVoxideInvestigate);
-      window.removeEventListener('probe:voxide-investigation-updated', onVoxideEvidenceUpdated);
-      window.removeEventListener('probe:voxide-show-assumptions', onVoxideShowAssumptions);
-      window.removeEventListener('probe:voxide-challenge-assumption', onVoxideChallengeAssumption);
-      window.removeEventListener('probe:voxide-filter', onVoxideFilter);
-      window.removeEventListener('probe:voxide-add-evidence', onVoxideAddEvidence);
+      window.removeEventListener('probe_investigate_idea', handleVoiceInvestigation);
+      window.removeEventListener('probe_filter_contradictions', handleFilterContradictions);
+      window.removeEventListener('probe_filter_scholarxiv', handleFilterScholarxiv);
+      window.removeEventListener('probe_filter_stance', handleFilterStance);
+      window.removeEventListener('probe_focus_assumption', handleFocusAssumption);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    updateProbeLiveState({
-      ...(selectedAssumptionId !== 'all' ? { selectedNode: selectedAssumptionId } : {}),
-      ...(expandedEvidenceId ? { selectedEvidenceId: expandedEvidenceId } : {}),
-      activeEvidenceFilters: {
-        stance: selectedStance,
-        sourceType: selectedSourceType,
-        assumptionId: selectedAssumptionId,
-        tab: activeRepoTab
-      }
-    });
-  }, [selectedAssumptionId, selectedStance, selectedSourceType, activeRepoTab, expandedEvidenceId]);
+  }, [testResult]);
 
   const getStatusBadge = (status: AssumptionStatus) => {
     switch (status) {
@@ -625,183 +276,58 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
         </p>
       </div>
 
-      {/* Hidden File Input */}
-      <input
-        type="file"
-        ref={fileInputRef}
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) void handleFileSelection(f);
-          e.target.value = '';
-        }}
-        accept=".pdf,.txt,.md,.markdown"
-        className="hidden"
-      />
-
-      {/* STAGE 1: IDEA / DOCUMENT INPUT CONTAINER */}
-      <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDraggingFile(true);
-        }}
-        onDragLeave={() => setIsDraggingFile(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setIsDraggingFile(false);
-          const file = e.dataTransfer.files?.[0];
-          if (file) void handleFileSelection(file);
-        }}
-        className={`probe-glass rounded-2xl p-5 sm:p-6 mb-8 transition-all ${
-          isDraggingFile ? 'ring-4 ring-[#0F52BA]/20 border-[#0F52BA] bg-[#EFF6FF]/40' : ''
-        }`}
-      >
+      {/* STAGE 1: IDEA INPUT CONTAINER */}
+      <div className="probe-glass rounded-2xl p-5 sm:p-6 mb-8">
         <div className="flex items-center justify-between text-xs font-mono font-bold uppercase tracking-wider text-[#868C98] mb-2">
-          <span>YOUR IDEA OR DOCUMENT UNDER INVESTIGATION</span>
-          <span className="text-[11px] font-normal normal-case">Accepts typed idea, PDF, PRD / brief, TXT/MD</span>
+          <span>YOUR IDEA UNDER INVESTIGATION</span>
+          <span className="text-[11px] font-normal normal-case">Deterministic stages: 14-phase analysis</span>
         </div>
 
-        {/* Attached Document Pill (if active) */}
-        {uploadedDoc && (
-          <div className="mb-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#F1F5F9] border border-[#CBD5E1] text-xs font-mono text-[#0A0D14] shadow-2xs">
-            <FileText size={13} className="text-[#0F52BA]" />
-            <span className="font-bold truncate max-w-[240px]">
-              {uploadedDoc.sourceFileName || uploadedDoc.title}
-            </span>
-            <span className="text-[10px] text-[#64748B] uppercase font-bold">
-              {uploadedDoc.sourceFileType || 'DOC'}
-            </span>
-            <button
-              type="button"
-              onClick={() => setShowDocDetails((prev) => !prev)}
-              className="text-[11px] text-[#0F52BA] hover:underline cursor-pointer ml-1 font-sans"
-            >
-              {showDocDetails ? 'Hide PRD details' : 'Inspect PRD context'}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setUploadedDoc(null);
-                setShowDocDetails(false);
-                localStorage.removeItem('probe_active_document_context');
-              }}
-              className="text-[#868C98] hover:text-[#EF4444] p-0.5 ml-1 cursor-pointer transition-colors"
-              title="Remove document"
-            >
-              <X size={12} />
-            </button>
-          </div>
-        )}
-
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
-          {/* File Upload Button */}
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isExtractingDoc || isInvestigating}
-            title="Upload PDF, PRD / product brief, or TXT/MD file"
-            className="px-3.5 py-3 rounded-2xl bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#64748B] hover:text-[#0A0D14] border border-[#CBD5E1] flex items-center justify-center gap-1.5 text-xs font-mono font-semibold cursor-pointer transition-colors shrink-0"
-          >
-            {isExtractingDoc ? (
-              <RotateCcw size={14} className="animate-spin text-[#0F52BA]" />
-            ) : (
-              <Paperclip size={14} />
-            )}
-            <span className="hidden sm:inline">Upload Document</span>
-          </button>
-
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <div className="relative flex-1">
             <input
               type="text"
               value={ideaInput}
               onChange={(e) => setIdeaInput(e.target.value)}
-              onPaste={handleInputPaste}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
                   runInvestigation();
                 }
               }}
-              placeholder={
-                isDraggingFile
-                  ? 'Drop PDF, PRD, or TXT/MD file here...'
-                  : 'Paste an idea, full PRD text, or upload document...'
-              }
+              placeholder="e.g. I want to build a cooking app"
               className="w-full text-base font-medium text-[#0A0D14] placeholder:text-[#94A3B8] border border-[#CBD5E1] rounded-2xl px-4 py-3 focus:outline-none focus:border-[#0F52BA] focus:ring-2 focus:ring-[#0F52BA]/15 transition-all bg-[#FAFAFA]"
             />
           </div>
 
-          <button
-            type="button"
-            onClick={() => runInvestigation()}
-            disabled={isInvestigating || isExtractingDoc || !ideaInput.trim()}
-            className="px-6 py-3 rounded-2xl bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-bold font-mono uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs disabled:opacity-50 flex-shrink-0"
-          >
-            {isInvestigating ? (
-              <>
-                <RotateCcw size={14} className="animate-spin text-[#60A5FA]" />
-                <span>Investigating...</span>
-              </>
-            ) : (
-              <>
-                <span>Pressure-Test</span>
-                <ArrowRight size={14} />
-              </>
-            )}
-          </button>
-        </div>
-
-        {/* Collapsible Document Context Drawer */}
-        {uploadedDoc && showDocDetails && (
-          <div className="mt-4 p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] text-left text-xs font-mono space-y-2.5 animate-in fade-in duration-200">
-            <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-1.5">
-              <span className="font-bold text-[#0A0D14] flex items-center gap-1.5">
-                <FileText size={13} className="text-[#0F52BA]" />
-                <span>EXTRACTED PRD CONTEXT</span>
-              </span>
-              <span className="text-[10px] text-[#64748B]">Integrated with research pipeline</span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
-              <div>
-                <span className="text-[#64748B] font-bold block uppercase text-[9px]">Problem Statement:</span>
-                <p className="text-[#1E293B] font-normal leading-snug">{uploadedDoc.problem}</p>
-              </div>
-              <div>
-                <span className="text-[#64748B] font-bold block uppercase text-[9px]">Target Users:</span>
-                <p className="text-[#1E293B] font-normal leading-snug">{uploadedDoc.targetUsers}</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px] pt-1">
-              <div>
-                <span className="text-[#64748B] font-bold block uppercase text-[9px]">Proposed Solution:</span>
-                <p className="text-[#1E293B] font-normal leading-snug">{uploadedDoc.solution}</p>
-              </div>
-              <div>
-                <span className="text-[#64748B] font-bold block uppercase text-[9px]">Core Features:</span>
-                <p className="text-[#1E293B] font-normal leading-snug">
-                  {uploadedDoc.features.join(', ') || 'Workflow automation'}
-                </p>
-              </div>
-            </div>
-
-            {uploadedDoc.competitors && uploadedDoc.competitors.length > 0 && (
-              <div className="pt-1 text-[11px]">
-                <span className="text-[#64748B] font-bold block uppercase text-[9px]">
-                  Existing Competitors & Workarounds:
-                </span>
-                <p className="text-[#1E293B] font-normal leading-snug">
-                  {uploadedDoc.competitors.join(', ')}
-                </p>
-              </div>
-            )}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <VoiceControlButton size="md" />
+            <button
+              type="button"
+              onClick={() => runInvestigation()}
+              disabled={isInvestigating || !ideaInput.trim()}
+              className="px-6 py-3 rounded-2xl bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-bold font-mono uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+            >
+              {isInvestigating ? (
+                <>
+                  <RotateCcw size={14} className="animate-spin text-[#60A5FA]" />
+                  <span>Investigating...</span>
+                </>
+              ) : (
+                <>
+                  <span>Pressure-Test Idea</span>
+                  <ArrowRight size={14} />
+                </>
+              )}
+            </button>
           </div>
-        )}
+        </div>
 
         {/* Quick Idea Presets */}
         <div className="flex flex-wrap items-center gap-2 mt-3 pt-2 text-[11px] font-mono text-[#64748B]">
           <span>Test Pre-built Cases:</span>
           {[
+            'search about OCR for students files',
             'I want to build a cooking app',
             'I want to build an AI bookkeeping product for freelancers.',
             'A local-first encrypted collaborative workspace for remote engineering teams.'
@@ -832,6 +358,36 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
           <p>{errorMessage}</p>
         </div>
       )}
+
+      {/* STAGE 2: LIVE INVESTIGATION THINKING MODE OR SYNTHESIZED RESULTS */}
+      {showThinkingMode ? (
+        <div className="mb-12">
+          <InvestigationThinkingMode
+            query={ideaInput}
+            onComplete={handleThinkingComplete}
+            onSkip={handleThinkingComplete}
+          />
+        </div>
+      ) : (
+        <>
+          {testResult && (
+            <div className="flex items-center justify-between mb-5 px-1">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-[#10B981]" />
+                <span className="text-xs font-mono font-bold text-[#0A0D14] uppercase tracking-wider">
+                  INVESTIGATION COMPLETE · SYNTHESIZED EVIDENCE
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowThinkingMode(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#0A0D14] text-xs font-mono font-semibold text-[#0A0D14] shadow-2xs hover:shadow-xs transition-all cursor-pointer"
+              >
+                <GitBranch size={13} className="text-[#0F52BA]" />
+                <span>View Live Investigation Topology & Trail</span>
+              </button>
+            </div>
+          )}
 
       {/* PIPELINE TELEMETRY & HARD RELEVANCE GATE AUDIT */}
       {testResult?.telemetry && (
@@ -912,7 +468,7 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
 
       {/* STAGE 3: TESTABLE ASSUMPTIONS DECONSTRUCTION */}
       {testResult?.analysis && (
-        <div id="section-assumptions" className="space-y-4 mb-8">
+        <div className="space-y-4 mb-8">
           <div className="flex items-center justify-between text-xs font-mono font-bold text-[#868C98] uppercase tracking-wider">
             <span>DECONSTRUCTED TESTABLE ASSUMPTIONS ({testResult.analysis.length})</span>
             <span>Filter by assumption</span>
@@ -951,49 +507,17 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
                       </h4>
                     </div>
 
-                    <div className="flex items-center gap-2 flex-wrap flex-shrink-0 self-start sm:self-auto">
+                    <div className="flex items-center gap-3 flex-shrink-0 self-start sm:self-auto">
                       {getStatusBadge(analysis.status)}
 
                       <button
                         type="button"
-                        onClick={() => {
-                          const nextId = isSelected ? 'all' : a.id;
-                          setSelectedAssumptionId(nextId);
-                          updateProbeLiveState({ selectedNode: nextId === 'all' ? null : nextId });
-                        }}
+                        onClick={() => setSelectedAssumptionId(isSelected ? 'all' : a.id)}
                         className={`px-3 py-1.5 rounded-xl text-xs font-mono transition-colors cursor-pointer ${
                           isSelected ? 'bg-[#0F52BA] text-white font-bold' : 'bg-[#F1F5F9] text-[#334155] hover:bg-[#E2E8F0]'
                         }`}
                       >
                         {isSelected ? 'Viewing Evidence' : 'Inspect Evidence'}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleResearchAssumptionWithScholarXIV(a.id, a.text)}
-                        disabled={academicResearchState[a.id]?.status === 'loading'}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5 border shadow-2xs ${
-                          academicResearchState[a.id]?.status === 'loaded'
-                            ? 'bg-[#EEF2FF] text-[#4338CA] border-[#C7D2FE]'
-                            : 'bg-white text-[#4338CA] border-[#C7D2FE] hover:bg-[#F5F3FF]'
-                        }`}
-                        title="Search peer-reviewed papers via ScholarXIV to support or challenge this assumption"
-                      >
-                        {academicResearchState[a.id]?.status === 'loading' ? (
-                          <>
-                            <RotateCcw size={12} className="animate-spin text-[#4F46E5]" />
-                            <span>Researching academic evidence...</span>
-                          </>
-                        ) : (
-                          <>
-                            <GraduationCap size={13} className="text-[#4F46E5]" />
-                            <span>
-                              {academicResearchState[a.id]?.status === 'loaded'
-                                ? 'Refresh ScholarXIV'
-                                : 'Research with ScholarXIV'}
-                            </span>
-                          </>
-                        )}
                       </button>
                     </div>
                   </div>
@@ -1044,145 +568,6 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
                           </span>
                         </div>
                       )}
-                    </div>
-                  )}
-
-                  {/* SCHOLARXIV ACADEMIC EVIDENCE DISPLAY */}
-                  {academicResearchState[a.id]?.status === 'loading' && (
-                    <div className="mt-3.5 p-3.5 rounded-xl bg-[#EEF2FF]/60 border border-[#C7D2FE] flex items-center gap-2.5 text-xs font-mono text-[#4338CA] animate-pulse">
-                      <RotateCcw size={13} className="animate-spin text-[#4F46E5]" />
-                      <span className="font-semibold">Researching academic evidence...</span>
-                    </div>
-                  )}
-
-                  {academicResearchState[a.id]?.status === 'error' && (
-                    <div className="mt-3.5 p-3 rounded-xl bg-[#FFF1F2] border border-[#FECDD3] text-xs font-mono text-[#BE123C] flex items-center justify-between">
-                      <span>{academicResearchState[a.id]?.errorMessage || 'Academic research is temporarily unavailable.'}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleResearchAssumptionWithScholarXIV(a.id, a.text, true)}
-                        className="underline hover:text-[#9F1239] cursor-pointer font-bold ml-2"
-                      >
-                        Retry
-                      </button>
-                    </div>
-                  )}
-
-                  {academicResearchState[a.id]?.status === 'loaded' && academicResearchState[a.id]?.result && (
-                    <div className="mt-3.5 pt-3.5 border-t border-[#EEF2F6] space-y-3 animate-in fade-in duration-200">
-                      {/* Section Header */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-[#4F46E5]" />
-                          <h5 className="text-xs font-mono font-bold uppercase tracking-wider text-[#1E1B4B]">
-                            Academic Evidence
-                          </h5>
-                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-[#EEF2FF] text-[#4338CA] border border-[#C7D2FE] font-medium">
-                            Powered by ScholarXIV
-                          </span>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => handleResearchAssumptionWithScholarXIV(a.id, a.text, true)}
-                          className="text-[11px] font-mono text-[#4F46E5] hover:underline flex items-center gap-1 cursor-pointer"
-                        >
-                          <RotateCcw size={11} />
-                          <span>Refresh research</span>
-                        </button>
-                      </div>
-
-                      {/* Papers List */}
-                      <div className="space-y-2.5">
-                        {academicResearchState[a.id].result!.papers.map((paper) => (
-                          <div
-                            key={paper.id}
-                            className="p-3.5 rounded-xl bg-[#FAFAFA] border border-[#E2E8F0] space-y-2 hover:border-[#C7D2FE] transition-colors"
-                          >
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <span
-                                className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 ${
-                                  paper.stance === 'SUPPORTS'
-                                    ? 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]'
-                                    : paper.stance === 'CHALLENGES'
-                                    ? 'bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3]'
-                                    : paper.stance === 'CONTEXT'
-                                    ? 'bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE]'
-                                    : 'bg-[#FFFBEB] text-[#D97706] border border-[#FDE68A]'
-                                }`}
-                              >
-                                {paper.stance === 'SUPPORTS'
-                                  ? 'SUPPORTS ASSUMPTION'
-                                  : paper.stance === 'CHALLENGES'
-                                  ? 'CHALLENGES ASSUMPTION'
-                                  : paper.stance === 'CONTEXT'
-                                  ? 'PROVIDES CONTEXT'
-                                  : 'INCONCLUSIVE'}
-                              </span>
-
-                              <span className="text-[10px] font-mono text-[#64748B]">
-                                {paper.sourceLabel} {paper.year ? `· ${paper.year}` : ''}
-                              </span>
-                            </div>
-
-                            <div>
-                              <a
-                                href={paper.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs font-bold text-[#0A0D14] hover:text-[#0F52BA] hover:underline inline-flex items-center gap-1 leading-snug"
-                              >
-                                <span>{paper.title}</span>
-                                <ExternalLink size={11} className="flex-shrink-0 text-[#64748B]" />
-                              </a>
-                              <p className="text-[11px] text-[#64748B] mt-0.5">
-                                {paper.authors}
-                              </p>
-                            </div>
-
-                            <div className="p-2.5 rounded-lg bg-white border border-[#E5E7EB] text-xs text-[#334155] leading-relaxed">
-                              <strong className="text-[10px] font-mono uppercase text-[#64748B] block mb-0.5">
-                                Key Empirical Finding:
-                              </strong>
-                              <span>"{paper.shortFinding}"</span>
-                            </div>
-
-                            <div className="text-[11px] text-[#475467] flex flex-wrap items-center justify-between gap-1 pt-0.5">
-                              <span className="italic text-[#0F52BA]">{paper.stanceLabel}</span>
-                              <span className="text-[10px] font-mono text-[#868C98]">{paper.relevance}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Bottom Metric & Probe Conclusion Bar */}
-                      <div className="p-3 rounded-xl bg-[#EEF2FF]/70 border border-[#C7D2FE] space-y-2 text-xs font-mono">
-                        <div className="flex flex-wrap items-center justify-between gap-2 text-[#3730A3]">
-                          <span className="font-bold uppercase tracking-wider text-[11px]">Academic signal:</span>
-                          <div className="flex items-center gap-3">
-                            <span className="text-[#059669] font-bold">
-                              Supporting: {academicResearchState[a.id].result!.academicSignal.supporting}
-                            </span>
-                            <span>·</span>
-                            <span className="text-[#E11D48] font-bold">
-                              Challenging: {academicResearchState[a.id].result!.academicSignal.challenging}
-                            </span>
-                            <span>·</span>
-                            <span className="text-[#D97706] font-bold">
-                              Inconclusive: {academicResearchState[a.id].result!.academicSignal.inconclusive}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="pt-2 border-t border-[#C7D2FE]/70 text-[#1E1B4B]">
-                          <strong className="block text-[11px] font-mono uppercase tracking-wider text-[#4338CA] mb-0.5">
-                            Probe conclusion:
-                          </strong>
-                          <span className="text-xs font-medium font-sans">
-                            "{academicResearchState[a.id].result!.conclusion}"
-                          </span>
-                        </div>
-                      </div>
                     </div>
                   )}
                 </div>
@@ -1318,21 +703,15 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
                 </button>
               </div>
             ) : (
-              filteredEvidence.map((ev, idx) => {
+              filteredEvidence.map((ev) => {
                 const isSupport = ev.stance === 'SUPPORTS';
                 const isChallenge = ev.stance === 'CHALLENGES';
-                const isExpanded = expandedEvidenceId === ev.id;
 
                 return (
                   <div
-                    key={`${generationCycle}-${ev.id}`}
-                    onClick={() => setExpandedEvidenceId((prev) => (prev === ev.id ? null : ev.id))}
-                    style={{ animationDelay: `${idx * 65}ms` }}
-                    className={`bg-white border rounded-2xl p-4 sm:p-5 transition-all cursor-pointer space-y-3 group text-left animate-in fade-in slide-in-from-bottom-2 duration-300 ${
-                      isExpanded
-                        ? 'border-[#0F52BA] shadow-md ring-2 ring-[#0F52BA]/10'
-                        : 'border-[#E5E7EB] hover:border-[#CBD5E1] shadow-xs hover:shadow-sm'
-                    }`}
+                    key={ev.id}
+                    onClick={() => onOpenSourceModal && onOpenSourceModal(ev)}
+                    className="bg-white border border-[#E5E7EB] hover:border-[#CBD5E1] rounded-2xl p-4 sm:p-5 transition-all shadow-xs hover:shadow-sm cursor-pointer space-y-3 group text-left"
                   >
                     {/* Top Bar: Relationship + Target Assumption + Source */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#F8FAFC] pb-2">
@@ -1371,12 +750,7 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
                         <span title="Stance Confidence">
                           Conf: <strong className="text-[#0A0D14]">{Math.round(ev.confidence * 100)}%</strong>
                         </span>
-                        <ChevronDown
-                          size={14}
-                          className={`text-[#64748B] transition-transform duration-200 ml-1 ${
-                            isExpanded ? 'rotate-180 text-[#0F52BA]' : ''
-                          }`}
-                        />
+                        <ExternalLink size={12} className="opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
                       </div>
                     </div>
 
@@ -1388,12 +762,12 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
                       <h4 className="text-sm font-bold text-[#0A0D14] group-hover:text-[#0F52BA] transition-colors leading-snug">
                         {ev.title}
                       </h4>
-                      <p className={`text-xs text-[#525866] mt-1.5 leading-relaxed ${isExpanded ? '' : 'line-clamp-2'}`}>
+                      <p className="text-xs text-[#525866] mt-1.5 leading-relaxed line-clamp-3">
                         "{ev.excerpt}"
                       </p>
                     </div>
 
-                    {/* WHY IT MATTERS & IMPLICATION (Always visible or expanded with actions) */}
+                    {/* WHY IT MATTERS & IMPLICATION */}
                     <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#EDF2F7] space-y-1.5 text-xs">
                       <div>
                         <span className="text-[10px] font-mono uppercase font-bold text-[#64748B]">WHY IT MATTERS: </span>
@@ -1405,45 +779,10 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
                       </div>
                     </div>
 
-                    {isExpanded && (
-                      <div
-                        className="pt-2 border-t border-[#F1F5F9] flex flex-wrap items-center justify-between gap-2 text-xs font-mono animate-in fade-in duration-200"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div className="flex items-center gap-3 text-[11px] text-[#64748B]">
-                          <span>Independence: <strong className="text-[#0A0D14]">{ev.independenceScore}/100</strong></span>
-                          <span>·</span>
-                          <span>Novelty: <strong className="text-[#0A0D14]">{ev.noveltyScore}/100</strong></span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {ev.url && (
-                            <a
-                              href={ev.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="px-2.5 py-1 rounded-lg bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#0A0D14] font-semibold inline-flex items-center gap-1"
-                            >
-                              <span>Open URL</span>
-                              <ExternalLink size={11} />
-                            </a>
-                          )}
-                          {onOpenSourceModal && (
-                            <button
-                              type="button"
-                              onClick={() => onOpenSourceModal(ev)}
-                              className="px-2.5 py-1 rounded-lg bg-[#0A0D14] hover:bg-[#1E293B] text-white font-semibold cursor-pointer"
-                            >
-                              Full Citation Modal
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
                     {/* Footer Source Metadata */}
                     <div className="flex items-center justify-between text-[11px] font-mono text-[#94A3B8] pt-1">
                       <span>{ev.author || 'Verified Practitioner'}</span>
-                      <span>{ev.publishedAt || 'Recent'} · {isExpanded ? 'Click to collapse' : 'Click to expand'}</span>
+                      <span>{ev.publishedAt || 'Recent'}</span>
                     </div>
                   </div>
                 );
@@ -1461,6 +800,8 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
             rawQuery={ideaInput} 
           />
         </div>
+      )}
+        </>
       )}
     </section>
   );

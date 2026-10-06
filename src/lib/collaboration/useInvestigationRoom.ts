@@ -93,6 +93,17 @@ const getOrCreateCreatorIds = (ideaKey: string): { investigationId: string; shar
   return existing;
 };
 
+export const getPublicShareableUrl = (roomId: string): string => {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    let origin = window.location.origin;
+    if (origin.includes('ais-dev-')) {
+      origin = origin.replace('ais-dev-', 'ais-pre-');
+    }
+    return `${origin}/r/${roomId}`;
+  }
+  return `https://probe.pro.et/r/${roomId}`;
+};
+
 export const useInvestigationRoom = (
   initialIdentifier?: string,
   initialQuery?: string,

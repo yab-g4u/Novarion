@@ -3,14 +3,19 @@ import {
   Compass,
   ArrowRight,
   RotateCcw,
+  Sparkles,
+  ExternalLink,
+  ShieldCheck,
   AlertTriangle,
   Play,
-  Box,
-  Lock
+  Layers,
+  Scale,
+  CheckCircle2,
+  Box
 } from 'lucide-react';
 import { TestingSession } from './TestingSession';
-import { ALLOWED_GOOGLE_TEST_EMAIL } from '../../../lib/testing/testing.types';
-import { getProbeInternalState, updateProbeLiveState } from '../../../lib/voxide/probeVoxideBridge';
+import { BrowserSessionData } from '../../../../apps/api/src/modules/testing/testing.types';
+import { VoiceControlButton } from '../../../components/voice/VoiceControlButton';
 
 interface TestingWorkspaceProps {
   onSyncToGraph?: (evidence: any) => void;
@@ -18,107 +23,84 @@ interface TestingWorkspaceProps {
 
 const PRESET_TEST_CASES = [
   {
-    name: 'links.et (Payment Receipt Verification)',
+    name: 'links.et (Short Link Creation)',
     url: 'https://links.et/',
-    task: 'Verify transaction reference DHV0BHI2GG in the payment receipt input and inspect the response.',
-    useGoogleAuth: false
+    task: 'Find a way to create a short link for https://example.com and copy the resulting short URL.'
   },
   {
-    name: 'links.et/signup (Google Auth Detection)',
-    url: 'https://links.et/signup',
-    task: 'Detect authentication requirements and test Continue with Google sign-in.',
-    useGoogleAuth: true
-  },
-  {
-    name: 'Standard Web Application (example.com)',
+    name: 'Standard Web Application',
     url: 'https://example.com',
-    task: 'Navigate to the domain information link and verify the more information section.',
-    useGoogleAuth: false
+    task: 'Navigate to the domain information link and verify the more information section.'
   },
   {
-    name: 'Live News Portal (news.ycombinator.com)',
+    name: 'Documentation Exploration',
     url: 'https://news.ycombinator.com',
-    task: 'Find the newest submissions link and open the newest page.',
-    useGoogleAuth: false
+    task: 'Find the newest submissions and open the top submission.'
   }
 ];
 
 export const TestingWorkspace: React.FC<TestingWorkspaceProps> = ({ onSyncToGraph }) => {
-  const [productUrl, setProductUrl] = useState(
-    () => getProbeInternalState().currentProductUrl || 'https://links.et/'
-  );
-  const [task, setTask] = useState(
-    () =>
-      getProbeInternalState().currentProductTask ||
-      'Verify transaction reference DHV0BHI2GG in the payment receipt input and inspect the response.'
-  );
-  const [useGoogleAuth, setUseGoogleAuth] = useState(false);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(
-    () => getProbeInternalState().activeTestingSessionId
-  );
+  const [productUrl, setProductUrl] = useState(() => {
+    return localStorage.getItem('probe_test_url') || 'https://links.et/';
+  });
+  const [task, setTask] = useState(() => {
+    return (
+      localStorage.getItem('probe_test_task') ||
+      'Find a way to create a short link for https://example.com and copy the resulting short URL.'
+    );
+  });
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [isLaunching, setIsLaunching] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [comparisonMode, setComparisonMode] = useState(false);
+  const [comparisonHistory, setComparisonHistory] = useState<BrowserSessionData[]>([]);
 
   useEffect(() => {
-    updateProbeLiveState({
-      currentProductUrl: productUrl,
-      currentProductTask: task,
-    });
-  }, [productUrl, task]);
+    const handleVoiceTest = (e: any) => {
+      const url = e?.detail?.productUrl;
+      const t = e?.detail?.task;
+      if (url) setProductUrl(url);
+      if (t) setTask(t);
+      handleStartTest(url, t);
+    };
 
-  const handleStartTest = async (
-    overrideUrl?: string,
-    overrideTask?: string,
-    overrideGoogleAuth?: boolean
-  ) => {
+    window.addEventListener('probe_start_test', handleVoiceTest);
+    return () => {
+      window.removeEventListener('probe_start_test', handleVoiceTest);
+    };
+  }, []);
+
+  const handleStartTest = async (overrideUrl?: string, overrideTask?: string) => {
     const targetUrl = (overrideUrl || productUrl).trim();
     const targetTask = (overrideTask || task).trim();
-    const shouldUseGoogle =
-      overrideGoogleAuth !== undefined ? overrideGoogleAuth : useGoogleAuth;
 
     if (!targetUrl || !targetTask) return;
 
     setIsLaunching(true);
     setErrorMessage(null);
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 20000);
-
     try {
       const res = await fetch('/api/testing/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
         body: JSON.stringify({
           productUrl: targetUrl,
           task: targetTask,
-          authEmail: shouldUseGoogle ? ALLOWED_GOOGLE_TEST_EMAIL : undefined,
-          maxSteps: 8,
-          timeoutMs: 45000
+          maxSteps: 25,
+          timeoutMs: 120000
         })
       });
 
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
-        throw new Error(
-          errJson.error ||
-            errJson.message ||
-            (res.status === 502 || res.status === 503
-              ? `Playwright testing service is temporarily unavailable (HTTP ${res.status}). Please retry in a moment.`
-              : `Failed to start session (HTTP ${res.status})`)
-        );
+        throw new Error(errJson.error || errJson.message || `Failed to start session (${res.status})`);
       }
 
       const data = await res.json();
       setActiveSessionId(data.sessionId);
     } catch (err: any) {
-      const msg =
-        err?.name === 'AbortError'
-          ? 'Request timed out after 20s while starting Playwright session.'
-          : err.message || 'Failed to initialize Playwright browser session';
-      setErrorMessage(msg);
+      setErrorMessage(err.message || 'Failed to initialize Playwright browser session');
     } finally {
-      clearTimeout(timer);
       setIsLaunching(false);
     }
   };
@@ -126,24 +108,7 @@ export const TestingWorkspace: React.FC<TestingWorkspaceProps> = ({ onSyncToGrap
   const handlePresetSelect = (preset: (typeof PRESET_TEST_CASES)[0]) => {
     setProductUrl(preset.url);
     setTask(preset.task);
-    setUseGoogleAuth(preset.useGoogleAuth);
   };
-
-  useEffect(() => {
-    const onVoxideTest = (e: Event) => {
-      const detail = (e as CustomEvent)?.detail;
-      if (!detail) return;
-      if (detail.productUrl) setProductUrl(detail.productUrl);
-      if (detail.task) setTask(detail.task);
-      if (typeof detail.useGoogleAuth === 'boolean') setUseGoogleAuth(detail.useGoogleAuth);
-      if (detail.sessionId) {
-        setErrorMessage(null);
-        setActiveSessionId(detail.sessionId);
-      }
-    };
-    window.addEventListener('probe:voxide-product-test', onVoxideTest);
-    return () => window.removeEventListener('probe:voxide-product-test', onVoxideTest);
-  }, []);
 
   return (
     <section id="section-product-testing" className="py-16 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto text-left font-['Geist',sans-serif]">
@@ -157,7 +122,7 @@ export const TestingWorkspace: React.FC<TestingWorkspaceProps> = ({ onSyncToGrap
           Probe can actually use a product, not just talk about it.
         </h2>
         <p className="text-xs sm:text-sm text-[#525866] mt-1.5 max-w-3xl leading-relaxed">
-          Launch an isolated Playwright browser session, execute concrete user tasks against the live URL, capture real screenshots and navigation timing, detect authentication walls, and record console/network errors.
+          Launch an isolated Playwright browser session, execute concrete user tasks, capture real page interactions and screenshots, measure empirical UX friction, and generate structured evidence for your Living Evidence Graph.
         </p>
       </div>
 
@@ -166,10 +131,10 @@ export const TestingWorkspace: React.FC<TestingWorkspaceProps> = ({ onSyncToGrap
         <div className="flex items-center justify-between text-xs font-mono font-bold uppercase tracking-wider text-[#868C98]">
           <div className="flex items-center gap-2 text-[#0A0D14]">
             <Box size={14} className="text-[#0F52BA]" />
-            <span>CONFIGURE LIVE PLAYWRIGHT PARAMETERS</span>
+            <span>CONFIGURE BROWSER TEST PARAMETERS</span>
           </div>
           <span className="text-[11px] font-normal normal-case text-[#059669]">
-            Headless Chromium · Real Network & DOM
+            Headless Chromium with Sandboxed Context
           </span>
         </div>
 
@@ -200,59 +165,47 @@ export const TestingWorkspace: React.FC<TestingWorkspaceProps> = ({ onSyncToGrap
                 type="text"
                 value={task}
                 onChange={(e) => setTask(e.target.value)}
-                placeholder="Verify transaction reference DHV0BHI2GG in the payment receipt input..."
+                placeholder="Find a way to create a short link for https://example.com and copy the resulting short URL."
                 className="flex-1 text-sm font-medium text-[#0A0D14] placeholder:text-[#94A3B8] border border-[#CBD5E1] rounded-2xl px-4 py-3 bg-[#FAFAFA] focus:outline-none focus:border-[#0F52BA] focus:ring-2 focus:ring-[#0F52BA]/15 transition-all"
               />
-              <button
-                type="button"
-                onClick={() => handleStartTest()}
-                disabled={isLaunching || !productUrl.trim() || !task.trim()}
-                className="px-6 py-3 rounded-2xl bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-bold font-mono uppercase tracking-wider flex items-center gap-2 cursor-pointer shadow-xs transition-all disabled:opacity-50 flex-shrink-0"
-              >
-                {isLaunching ? (
-                  <>
-                    <RotateCcw size={14} className="animate-spin text-[#60A5FA]" />
-                    <span>Launching...</span>
-                  </>
-                ) : (
-                  <>
-                    <Play size={13} fill="currentColor" />
-                    <span>Run Test</span>
-                  </>
-                )}
-              </button>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <VoiceControlButton size="md" />
+                <button
+                  type="button"
+                  onClick={() => handleStartTest()}
+                  disabled={isLaunching || !productUrl.trim() || !task.trim()}
+                  className="px-6 py-3 rounded-2xl bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-bold font-mono uppercase tracking-wider flex items-center gap-2 cursor-pointer shadow-xs transition-all disabled:opacity-50"
+                >
+                  {isLaunching ? (
+                    <>
+                      <RotateCcw size={14} className="animate-spin text-[#60A5FA]" />
+                      <span>Launching...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play size={13} fill="currentColor" />
+                      <span>Run Test</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Google Auth Option & Presets */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[#F1F3F5] text-[11px] font-mono text-[#64748B]">
-          <label className="inline-flex items-center gap-2 cursor-pointer text-[#334155]">
-            <input
-              type="checkbox"
-              checked={useGoogleAuth}
-              onChange={(e) => setUseGoogleAuth(e.target.checked)}
-              className="rounded border-[#CBD5E1] text-[#0F52BA]"
-            />
-            <Lock size={12} className="text-[#0F52BA]" />
-            <span>
-              Use Google/Gmail Auth where site supports Google Sign-In (never stores passwords)
-            </span>
-          </label>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[#868C98]">Presets:</span>
-            {PRESET_TEST_CASES.map((preset) => (
-              <button
-                key={preset.name}
-                type="button"
-                onClick={() => handlePresetSelect(preset)}
-                className="px-2.5 py-1 rounded-lg bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#334155] transition-colors cursor-pointer"
-              >
-                {preset.name}
-              </button>
-            ))}
-          </div>
+        {/* Quick Presets */}
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#F1F3F5] text-[11px] font-mono text-[#64748B]">
+          <span className="text-[#868C98]">Quick Presets:</span>
+          {PRESET_TEST_CASES.map((preset) => (
+            <button
+              key={preset.name}
+              type="button"
+              onClick={() => handlePresetSelect(preset)}
+              className="px-2.5 py-1 rounded-lg bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#334155] transition-colors cursor-pointer"
+            >
+              {preset.name}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -280,16 +233,10 @@ export const TestingWorkspace: React.FC<TestingWorkspaceProps> = ({ onSyncToGrap
           </p>
           <button
             type="button"
-            onClick={() =>
-              handleStartTest(
-                'https://links.et/',
-                'Verify transaction reference DHV0BHI2GG in the payment receipt input and inspect the response.',
-                false
-              )
-            }
+            onClick={() => handleStartTest('https://links.et/', 'Find a way to create a short link for https://example.com and copy the resulting short URL.')}
             className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#EFF6FF] border border-[#BFDBFE] text-[#1D4ED8] font-bold cursor-pointer hover:bg-[#DBEAFE] transition-colors"
           >
-            <span>Run Live Test on links.et</span>
+            <span>Launch Demo: Test links.et live</span>
             <ArrowRight size={13} />
           </button>
         </div>

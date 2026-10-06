@@ -4,26 +4,20 @@ import {
   ExternalLink, 
   Star, 
   FileText, 
+  HelpCircle, 
   Sparkles,
   Lock,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-  ShieldCheck,
-  UploadCloud,
-  X,
-  Paperclip
+  AlertCircle
 } from 'lucide-react';
 import { 
   generateDynamicInvestigation, 
-  buildClientPressureTestFallback,
   InvestigationResultData, 
   RadialEvidenceItem 
 } from '../../lib/research/dynamicInvestigationResolver';
 import { BuildBriefPanel } from '../buildBrief/BuildBriefPanel';
-import { updateProbeLiveState } from '../../lib/voxide/probeVoxideBridge';
-import { ExtractedDocumentContext } from '../../types/document';
-import { extractDocumentContext, extractContextFromDocumentText } from '../../lib/documents/documentExtractor';
+import { VoiceControlButton } from '../voice/VoiceControlButton';
+import { InvestigationThinkingMode } from '../investigation/InvestigationThinkingMode';
 
 interface LiveInvestigationExperienceProps {
   initialQuery?: string;
@@ -34,32 +28,15 @@ interface LiveInvestigationExperienceProps {
 export const LiveInvestigationExperience: React.FC<LiveInvestigationExperienceProps> = ({
   initialQuery = 'AI tools will replace most productivity software',
   onInvestigationComplete,
+  onRequireAuth,
 }) => {
   const [query, setQuery] = useState(initialQuery);
-  const [uploadedDoc, setUploadedDoc] = useState<ExtractedDocumentContext | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const stored = localStorage.getItem('probe_active_document_context');
-    if (!stored) return null;
-    try {
-      return JSON.parse(stored);
-    } catch {
-      return null;
-    }
-  });
-  const [isExtractingDoc, setIsExtractingDoc] = useState(false);
-  const [isDraggingFile, setIsDraggingFile] = useState(false);
-  const [showDocDetails, setShowDocDetails] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
   const [activeData, setActiveData] = useState<InvestigationResultData>(() =>
-    generateDynamicInvestigation(initialQuery, uploadedDoc || undefined)
+    generateDynamicInvestigation(initialQuery)
   );
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(100);
   const [statusMessage, setStatusMessage] = useState('Investigation complete');
-  const [generationCount, setGenerationCount] = useState(0);
-  const [justGenerated, setJustGenerated] = useState(false);
-  const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   
   // 2-Query Free Trial System
   const [trialCount, setTrialCount] = useState<number>(() => {
@@ -69,85 +46,30 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
   });
   const [showTrialLimitModal, setShowTrialLimitModal] = useState(false);
 
-  // Notify parent on initial mount
+  // Notify parent on initial mount & listen for voice-driven investigations
   useEffect(() => {
     if (onInvestigationComplete) {
       onInvestigationComplete(activeData);
     }
-  }, []);
 
-  useEffect(() => {
-    const onVoxideInvestigate = (e: Event) => {
-      const detail = (e as CustomEvent)?.detail;
-      if (!detail?.idea) return;
-      setQuery(detail.idea);
-      const nextData = detail.dynamicData || generateDynamicInvestigation(detail.idea);
-      setActiveData(nextData);
-      setGenerationCount((prev) => prev + 1);
-      setJustGenerated(true);
-      setIsScanning(false);
-      setScanProgress(100);
-      setStatusMessage('Investigation complete · Verified 6 sources');
-      if (onInvestigationComplete) {
-        onInvestigationComplete(nextData);
+    const handleVoiceInvestigation = (event: any) => {
+      const idea = event?.detail?.idea;
+      if (idea) {
+        setQuery(idea);
+        handleStartInvestigation(undefined, idea);
       }
     };
 
-    window.addEventListener('probe:voxide-investigate-start', onVoxideInvestigate);
-    window.addEventListener('probe:voxide-investigate', onVoxideInvestigate);
+    window.addEventListener('probe_investigate_idea', handleVoiceInvestigation);
     return () => {
-      window.removeEventListener('probe:voxide-investigate-start', onVoxideInvestigate);
-      window.removeEventListener('probe:voxide-investigate', onVoxideInvestigate);
+      window.removeEventListener('probe_investigate_idea', handleVoiceInvestigation);
     };
-  }, [onInvestigationComplete]);
+  }, []);
 
-  const toggleCardExpand = (id?: string) => {
-    if (!id) return;
-    setExpandedCardId((prev) => (prev === id ? null : id));
-    updateProbeLiveState({ selectedEvidenceId: id });
-  };
-
-  const handleFileSelection = async (file: File) => {
-    setIsExtractingDoc(true);
-    setIsScanning(true);
-    setScanProgress(20);
-    setStatusMessage(`Parsing ${file.name} (extracting problem, target users, assumptions, features)...`);
-
-    try {
-      const context = await extractDocumentContext(file);
-      setUploadedDoc(context);
-      const chosenQuery = context.title || context.synthesizedIdea || file.name.replace(/\.[^/.]+$/, '');
-      setQuery(chosenQuery);
-      handleStartInvestigation(undefined, chosenQuery, context);
-    } catch (err) {
-      console.error('Document extraction failed:', err);
-      setStatusMessage('Document extraction encountered an issue; falling back to direct investigation.');
-    } finally {
-      setIsExtractingDoc(false);
-    }
-  };
-
-  const handleInputPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    const text = e.clipboardData.getData('text');
-    if (text && (text.length > 180 || text.includes('#') || (text.match(/\n/g) || []).length >= 2)) {
-      const context = extractContextFromDocumentText(text, 'Pasted Product Document');
-      setUploadedDoc(context);
-      const chosenQuery = context.title || context.synthesizedIdea.slice(0, 80);
-      setQuery(chosenQuery);
-      e.preventDefault();
-    }
-  };
-
-  const handleStartInvestigation = (
-    e?: React.FormEvent,
-    overrideQuery?: string,
-    overrideDoc?: ExtractedDocumentContext
-  ) => {
+  const handleStartInvestigation = (e?: React.FormEvent, overrideQuery?: string) => {
     if (e) e.preventDefault();
     const targetQuery = (overrideQuery ?? query).trim();
     if (!targetQuery) return;
-
-    const activeDoc = overrideDoc !== undefined ? overrideDoc : (uploadedDoc || undefined);
 
     // Check 2-Query Trial Limit
     if (trialCount >= 2) {
@@ -160,210 +82,22 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
     setTrialCount(nextCount);
     localStorage.setItem('probe_trial_queries', String(nextCount));
 
-    setExpandedCardId(null);
-    setJustGenerated(false);
     setIsScanning(true);
-    setScanProgress(15);
-    setStatusMessage(
-      activeDoc
-        ? `Researching document context for "${targetQuery}"...`
-        : 'Scanning sources...'
-    );
-
-    // Progress simulation
-    const p1 = setTimeout(() => {
-      setScanProgress(45);
-      setStatusMessage(
-        activeDoc
-          ? `Searching Reddit, X, Web & ScholarXIV for assumptions in "${activeDoc.title}"...`
-          : 'Extracting empirical claims & sentiment...'
-      );
-    }, 350);
-
-    const p2 = setTimeout(() => {
-      setScanProgress(80);
-      setStatusMessage(
-        activeDoc
-          ? 'Pressure-testing against competitors, user complaints & friction points...'
-          : 'Classifying support vs contradictions...'
-      );
-    }, 750);
-
-    const p3 = setTimeout(() => {
-      setScanProgress(100);
-      setIsScanning(false);
-      setStatusMessage(
-        activeDoc
-          ? `Investigation complete · Document context pressure-tested across 6 empirical sources`
-          : 'Investigation complete · Verified 6 sources'
-      );
-
-      const result = generateDynamicInvestigation(targetQuery, activeDoc);
-      setActiveData(result);
-      setGenerationCount((prev) => prev + 1);
-      setJustGenerated(true);
-
-      // Persist in localStorage and live bridge for workspace continuation
-      localStorage.setItem('probe_active_idea', targetQuery);
-      if (activeDoc) {
-        localStorage.setItem('probe_active_document_context', JSON.stringify(activeDoc));
-      } else {
-        localStorage.removeItem('probe_active_document_context');
-      }
-
-      const fallback = buildClientPressureTestFallback(targetQuery, activeDoc);
-      updateProbeLiveState({
-        currentIdea: targetQuery,
-        latestPressureTest: fallback,
-        investigationStatus: 'READY'
-      });
-
-      if (onInvestigationComplete) {
-        onInvestigationComplete(result);
-      }
-    }, 1150);
-
-    const p4 = setTimeout(() => {
-      setJustGenerated(false);
-    }, 6000);
-
-    return () => {
-      clearTimeout(p1);
-      clearTimeout(p2);
-      clearTimeout(p3);
-      clearTimeout(p4);
-    };
+    setStatusMessage('Probe is investigating...');
   };
 
-  const renderExpandedDetails = (item: RadialEvidenceItem | undefined, align: 'left' | 'right' | 'center' = 'left') => {
-    if (!item || expandedCardId !== item.id) return null;
-    const isSupport = item.relationship === 'Supports';
-    const isContradict = item.relationship === 'Contradicts';
-    const confidence = item.confidence ?? (isSupport ? 92 : isContradict ? 90 : 68);
-    const analysisText =
-      item.fullAnalysis ||
-      (isSupport
-        ? `Verified community and practitioner discussions strongly validate this signal for "${activeData.query}". High organic engagement indicates recurring pain.`
-        : isContradict
-        ? `Empirical benchmarks and practitioner reviews highlight friction around "${activeData.query}"—specifically onboarding complexity and switching inertia.`
-        : `Unresolved risk variable for "${activeData.query}". Requires direct customer validation or a pricing smoke test before committing engineering resources.`);
-    const takeawayText =
-      item.takeaway ||
-      (isSupport
-        ? 'Actionable signal: prioritize this workflow as the primary value hook.'
-        : isContradict
-        ? 'Mitigation: eliminate manual setup steps before asking users to commit.'
-        : 'Next step: run a 48-hour validation experiment to resolve this unknown.');
-
-    return (
-      <div
-        className={`mt-2.5 pt-2.5 border-t border-[#E5E7EB] text-left space-y-2 animate-in fade-in slide-in-from-top-1 duration-200 ${
-          align === 'right' ? 'w-full' : ''
-        }`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-1.5">
-          <span
-            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
-              isSupport
-                ? 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]'
-                : isContradict
-                ? 'bg-[#FEF2F2] text-[#EF4444] border border-[#FECACA]'
-                : 'bg-[#F1F5F9] text-[#475569] border border-[#CBD5E1]'
-            }`}
-          >
-            <ShieldCheck size={10} />
-            <span>{item.relationship.toUpperCase()} · {confidence}% CONFIDENCE</span>
-          </span>
-          {item.metrics && (
-            <span className="text-[10px] font-mono text-[#64748B] font-medium">
-              {item.metrics}
-            </span>
-          )}
-        </div>
-
-        {item.assumptionTested && (
-          <div className="rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] px-2.5 py-1.5">
-            <span className="text-[9px] font-mono uppercase tracking-wider text-[#64748B] font-bold block">
-              Assumption Tested
-            </span>
-            <p className="text-[11px] font-semibold text-[#0A0D14] leading-snug">
-              {item.assumptionTested}
-            </p>
-          </div>
-        )}
-
-        <div className="space-y-1">
-          <span className="text-[9px] font-mono uppercase tracking-wider text-[#64748B] font-bold block">
-            Empirical Signal Breakdown
-          </span>
-          <p className="text-[11px] text-[#334155] leading-relaxed">
-            {analysisText}
-          </p>
-        </div>
-
-        <div className="rounded-xl bg-[#0A0D14]/[0.03] px-2.5 py-1.5">
-          <span className="text-[9px] font-mono uppercase tracking-wider text-[#0F52BA] font-bold block">
-            Key Product Takeaway
-          </span>
-          <p className="text-[11px] font-medium text-[#0A0D14] leading-snug">
-            {takeawayText}
-          </p>
-        </div>
-
-        <div className="flex items-center justify-between pt-1">
-          {item.url && item.url !== '#' ? (
-            <a
-              href={item.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-[11px] font-mono font-bold text-[#0F52BA] hover:underline"
-            >
-              <span>Inspect Original Source</span>
-              <ExternalLink size={11} />
-            </a>
-          ) : (
-            <span className="text-[10px] font-mono text-[#64748B]">Unverified risk factor</span>
-          )}
-          <button
-            type="button"
-            onClick={() => setExpandedCardId(null)}
-            className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold text-[#64748B] hover:text-[#0A0D14] px-2 py-0.5 rounded-md hover:bg-[#F1F5F9] cursor-pointer"
-          >
-            <span>Collapse</span>
-            <ChevronUp size={11} />
-          </button>
-        </div>
-      </div>
-    );
+  const handleInvestigationThinkingDone = () => {
+    setIsScanning(false);
+    setStatusMessage('Investigation complete · Verified 6 sources');
+    const result = generateDynamicInvestigation(query);
+    setActiveData(result);
+    if (onInvestigationComplete) {
+      onInvestigationComplete(result);
+    }
   };
 
   return (
     <div id="live-investigation" className="relative w-full bg-white text-[#0A0D14] font-['Geist','Inter',-apple-system,sans-serif] selection:bg-[#0F52BA]/15 selection:text-[#0A0D14] overflow-hidden">
-      <style>{`
-        @keyframes probeCardPopIn {
-          0% {
-            opacity: 0;
-            transform: translateY(14px) scale(0.94);
-          }
-          65% {
-            opacity: 1;
-            transform: translateY(-3px) scale(1.015);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
-        }
-        @keyframes probeGlowSupport {
-          0%, 100% { box-shadow: 0 1px 2px rgba(16, 185, 129, 0.08); }
-          40% { box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.22), 0 10px 25px -5px rgba(16, 185, 129, 0.18); }
-        }
-        @keyframes probeGlowContradict {
-          0%, 100% { box-shadow: 0 1px 2px rgba(239, 68, 68, 0.08); }
-          40% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.22), 0 10px 25px -5px rgba(239, 68, 68, 0.18); }
-        }
-      `}</style>
       {/* 2. HERO HEADLINE & SEARCH INPUT (MATCHES home-page.png) */}
       <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-10 sm:pt-14 pb-8 text-center relative z-20">
         
@@ -377,163 +111,38 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
           Probe an idea or product.
         </h1>
 
-        {/* Hidden File Input for PDF / PRD / TXT / MD */}
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void handleFileSelection(f);
-            e.target.value = '';
-          }}
-          accept=".pdf,.txt,.md,.markdown"
-          className="hidden"
-        />
-
-        {/* Attached Document Pill (if uploaded) */}
-        {uploadedDoc && (
-          <div className="mb-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#F1F5F9] border border-[#CBD5E1] text-xs font-mono text-[#0A0D14] shadow-2xs animate-in fade-in duration-200">
-            <FileText size={13} className="text-[#0F52BA]" />
-            <span className="font-bold truncate max-w-[200px]" title={uploadedDoc.sourceFileName || uploadedDoc.title}>
-              {uploadedDoc.sourceFileName || uploadedDoc.title}
-            </span>
-            <span className="text-[10px] text-[#64748B] uppercase font-bold">
-              {uploadedDoc.sourceFileType || 'DOC'}
-            </span>
-            <button
-              type="button"
-              onClick={() => setShowDocDetails((prev) => !prev)}
-              className="text-[11px] text-[#0F52BA] hover:underline cursor-pointer ml-1"
-            >
-              {showDocDetails ? 'Hide details' : 'Inspect context'}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setUploadedDoc(null);
-                setShowDocDetails(false);
-                localStorage.removeItem('probe_active_document_context');
-              }}
-              className="text-[#868C98] hover:text-[#EF4444] p-0.5 ml-1 cursor-pointer transition-colors"
-              title="Remove document"
-            >
-              <X size={12} />
-            </button>
-          </div>
-        )}
-
-        {/* Primary Investigation Search Input Pill with Drag & Drop & Upload */}
+        {/* Primary Investigation Search Input Pill */}
         <form
           onSubmit={(e) => handleStartInvestigation(e)}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setIsDraggingFile(true);
-          }}
-          onDragLeave={() => setIsDraggingFile(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setIsDraggingFile(false);
-            const file = e.dataTransfer.files?.[0];
-            if (file) void handleFileSelection(file);
-          }}
-          className={`max-w-2xl mx-auto rounded-full bg-white border shadow-xs px-3 sm:px-4 py-2 sm:py-2.5 flex items-center justify-between transition-all relative z-30 ${
-            isDraggingFile
-              ? 'border-[#0F52BA] ring-4 ring-[#0F52BA]/15 bg-[#EFF6FF]/30'
-              : 'border-[#E5E7EB] hover:border-[#CBD5E1] focus-within:border-[#0A0D14] focus-within:ring-4 focus-within:ring-black/5'
-          }`}
+          className="max-w-2xl mx-auto rounded-full bg-white border border-[#E5E7EB] hover:border-[#CBD5E1] focus-within:border-[#0A0D14] focus-within:ring-4 focus-within:ring-black/5 shadow-xs px-5 py-3 sm:px-6 sm:py-3.5 flex items-center justify-between transition-all relative z-30"
         >
-          {/* Document Upload Button */}
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isExtractingDoc || isScanning}
-            title="Upload PDF, PRD / product brief, or TXT/MD file"
-            className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#64748B] hover:text-[#0A0D14] border border-[#E2E8F0] flex items-center justify-center shrink-0 cursor-pointer transition-colors mr-2"
-          >
-            {isExtractingDoc ? (
-              <div className="w-4 h-4 border-2 border-[#0F52BA] border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <Paperclip size={15} />
-            )}
-          </button>
-
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onPaste={handleInputPaste}
-            placeholder={
-              isDraggingFile
-                ? 'Drop PDF, PRD, or TXT/MD file here...'
-                : 'Paste an idea, PRD text, or upload a document'
-            }
+            placeholder="AI tools will replace most productivity software"
             className="text-sm sm:text-base font-medium text-[#0A0D14] placeholder:text-[#94A3B8] flex-1 bg-transparent outline-none pr-3"
           />
-
-          <button
-            type="submit"
-            disabled={isScanning || isExtractingDoc}
-            className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#0A0D14] text-white flex items-center justify-center hover:bg-[#1E293B] shrink-0 cursor-pointer shadow-xs transition-transform active:scale-95 disabled:opacity-50"
-            title="Start investigation"
-          >
-            {isScanning ? (
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <ArrowRight size={16} />
-            )}
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <VoiceControlButton size="md" />
+            <button
+              type="submit"
+              disabled={isScanning}
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#0A0D14] text-white flex items-center justify-center hover:bg-[#1E293B] shrink-0 cursor-pointer shadow-xs transition-transform active:scale-95 disabled:opacity-50"
+              title="Start investigation"
+            >
+              {isScanning ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <ArrowRight size={16} />
+              )}
+            </button>
+          </div>
         </form>
 
-        {/* Collapsible Document Context Drawer */}
-        {uploadedDoc && showDocDetails && (
-          <div className="max-w-2xl mx-auto mt-3 p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] text-left text-xs font-mono space-y-2.5 animate-in fade-in duration-200 shadow-xs">
-            <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-1.5">
-              <span className="font-bold text-[#0A0D14] flex items-center gap-1.5">
-                <FileText size={13} className="text-[#0F52BA]" />
-                <span>EXTRACTED PRD CONTEXT</span>
-              </span>
-              <span className="text-[10px] text-[#64748B]">Ready for empirical pressure-test</span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-              <div>
-                <span className="text-[#64748B] font-bold block uppercase text-[9px]">Problem:</span>
-                <p className="text-[#1E293B] font-normal leading-snug">{uploadedDoc.problem}</p>
-              </div>
-              <div>
-                <span className="text-[#64748B] font-bold block uppercase text-[9px]">Target Users:</span>
-                <p className="text-[#1E293B] font-normal leading-snug">{uploadedDoc.targetUsers}</p>
-              </div>
-            </div>
-
-            <div className="pt-1 text-[11px]">
-              <span className="text-[#64748B] font-bold block uppercase text-[9px]">Solution / Core Features:</span>
-              <p className="text-[#1E293B] font-normal leading-snug">
-                {uploadedDoc.solution} {uploadedDoc.features.length > 0 && `(${uploadedDoc.features.slice(0, 3).join(', ')})`}
-              </p>
-            </div>
-
-            {uploadedDoc.assumptions.length > 0 && (
-              <div className="pt-1 text-[11px]">
-                <span className="text-[#64748B] font-bold block uppercase text-[9px]">
-                  Extracted Assumptions ({uploadedDoc.assumptions.length}):
-                </span>
-                <ul className="list-disc list-inside text-[#334155] space-y-0.5 mt-0.5">
-                  {uploadedDoc.assumptions.slice(0, 3).map((a, i) => (
-                    <li key={i} className="truncate">{a}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Input Subtext & Supported Document Types */}
-        <div className="mt-3 flex flex-wrap items-center justify-center gap-3 text-xs sm:text-sm text-[#868C98] font-normal">
-          <span>Upload PDF, PRD / brief, TXT/MD, or paste/type an idea.</span>
-          <span className="inline-flex items-center gap-1 text-[11px] font-mono text-[#0F52BA] bg-[#EFF6FF] px-2.5 py-0.5 rounded-full border border-[#BFDBFE]">
-            <span>Click any result card below to expand</span>
-          </span>
+        {/* Input Subtext & Free Trial Status */}
+        <div className="mt-3 flex items-center justify-center gap-3 text-xs sm:text-sm text-[#868C98] font-normal">
+          <span>Paste a product URL or type a new idea to start the investigation.</span>
           {trialCount === 1 && (
             <span className="hidden sm:inline-block px-2 py-0.5 rounded-full bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE] font-mono text-[10px] font-semibold">
               1 free investigation remaining
@@ -545,27 +154,38 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
             </span>
           )}
         </div>
-
-        {/* Live Generation Feedback Banner */}
-        {isScanning && (
-          <div className="mt-4 inline-flex items-center gap-2.5 px-4 py-2 rounded-full bg-[#0A0D14] text-white text-xs font-mono shadow-md animate-pulse">
-            <div className="w-3.5 h-3.5 border-2 border-[#10B981] border-t-transparent rounded-full animate-spin" />
-            <span>{statusMessage}</span>
-          </div>
-        )}
-
-        {!isScanning && justGenerated && (
-          <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#ECFDF5] border border-[#10B981]/40 text-[#065F46] text-xs font-mono font-semibold shadow-sm animate-in fade-in zoom-in-95 duration-300">
-            <Sparkles size={14} className="text-[#10B981]" />
-            <span>
-              New signals generated for &ldquo;{activeData.query}&rdquo; · Click any card to expand full evidence
-            </span>
-          </div>
-        )}
       </div>
 
-      {/* 3. THE LIVE RADIAL INVESTIGATION GRAPH */}
-      <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-14 select-none">
+      {/* 3. INVESTIGATION THINKING MODE (WHEN SCANNING) OR SYNTHESIZED TOPOLOGY */}
+      {isScanning ? (
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
+          <InvestigationThinkingMode
+            query={query}
+            onComplete={handleInvestigationThinkingDone}
+            onSkip={handleInvestigationThinkingDone}
+          />
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between max-w-5xl mx-auto pt-6 px-4 sm:px-6 mb-2">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[#10B981]" />
+              <span className="text-xs font-mono font-bold text-[#0A0D14] uppercase tracking-wider">
+                SYNTHESIZED EVIDENCE TOPOLOGY
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsScanning(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#0A0D14] text-xs font-mono font-semibold text-[#0A0D14] shadow-2xs hover:shadow-xs transition-all cursor-pointer"
+            >
+              <Sparkles size={12} className="text-[#0F52BA]" />
+              <span>Inspect Live Investigation Topology & Trail</span>
+            </button>
+          </div>
+
+          {/* 3. THE LIVE RADIAL INVESTIGATION GRAPH */}
+          <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-14 select-none">
         
         {/* DESKTOP RADIAL VIEW (min-width: 1024px) - 1020x560 Precision Canvas */}
         <div className="hidden lg:block relative w-[1020px] h-[560px] mx-auto">
@@ -779,192 +399,77 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
 
           {/* LEFT SUPPORT NODES - Text on left, Icon on inner right facing center (Port at x=320) */}
           {/* Node 1: Reddit */}
-          <div
-            key={`sup-0-${generationCount}-${activeData.supportItems[0]?.id}`}
-            onClick={() => toggleCardExpand(activeData.supportItems[0]?.id)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => e.key === 'Enter' && toggleCardExpand(activeData.supportItems[0]?.id)}
-            className={`absolute flex flex-col p-2.5 rounded-2xl bg-white/95 backdrop-blur-xs border transition-all duration-300 cursor-pointer ${
-              isScanning
-                ? 'opacity-45 scale-[0.97] blur-[0.5px] pointer-events-none z-20 border-[#E5E7EB]/80'
-                : expandedCardId === activeData.supportItems[0]?.id
-                ? 'z-40 border-[#10B981] shadow-2xl ring-4 ring-[#10B981]/15 -translate-y-0.5'
-                : 'z-20 border-[#E5E7EB]/80 shadow-2xs hover:shadow-md hover:border-[#10B981]/60 hover:-translate-y-0.5'
-            }`}
-            style={{
-              left: '20px',
-              top: '44px',
-              width: expandedCardId === activeData.supportItems[0]?.id ? '356px' : '318px',
-              animation:
-                generationCount > 0 && !isScanning
-                  ? 'probeCardPopIn 0.52s cubic-bezier(0.16, 1, 0.3, 1) 0.04s both, probeGlowSupport 1.8s ease-out 0.1s'
-                  : undefined,
-            }}
+          <div 
+            className="absolute z-20 flex flex-row-reverse items-center gap-3.5 text-right p-2.5 rounded-2xl bg-white/95 backdrop-blur-xs border border-[#E5E7EB]/80 shadow-2xs hover:shadow-xs transition-shadow"
+            style={{ left: '20px', top: '44px', width: '318px' }}
           >
-            <div className="flex flex-row-reverse items-center gap-3.5 text-right w-full">
-              <div className="relative w-9 h-9 rounded-full bg-[#FF4500] text-white flex items-center justify-center shrink-0 shadow-2xs">
-                <svg className="w-5 h-5 fill-white" viewBox="0 0 24 24">
-                  <path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.703z"/>
-                </svg>
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#10B981] ring-2 ring-white" />
-              </div>
-              <div className="flex-1 min-w-0 pr-1">
-                <div className="flex items-center justify-end gap-1.5 text-xs font-bold text-[#0A0D14]">
-                  {justGenerated && (
-                    <span className="px-1.5 py-0.2 rounded bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0] text-[9px] font-mono uppercase tracking-wider">
-                      NEW
-                    </span>
-                  )}
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
-                  <span className="truncate">{activeData.supportItems[0]?.sourceName || 'Reddit'}</span>
-                  <ChevronDown
-                    size={12}
-                    className={`text-[#64748B] transition-transform duration-200 ${
-                      expandedCardId === activeData.supportItems[0]?.id ? 'rotate-180 text-[#0A0D14]' : ''
-                    }`}
-                  />
-                </div>
-                <p className="text-[11px] text-[#64748B] font-mono mb-0.5 truncate">
-                  {activeData.supportItems[0]?.subHeader || 'r/technology • 12h ago'}
-                </p>
-                <p
-                  className={`text-[11px] text-[#334155] leading-snug italic font-serif ${
-                    expandedCardId === activeData.supportItems[0]?.id ? '' : 'line-clamp-2'
-                  }`}
-                >
-                  {activeData.supportItems[0]?.excerpt}
-                </p>
-              </div>
+            <div className="relative w-9 h-9 rounded-full bg-[#FF4500] text-white flex items-center justify-center shrink-0 shadow-2xs">
+              <svg className="w-5 h-5 fill-white" viewBox="0 0 24 24">
+                <path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.703z"/>
+              </svg>
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#10B981] ring-2 ring-white" />
             </div>
-            {renderExpandedDetails(activeData.supportItems[0], 'right')}
+            <div className="flex-1 min-w-0 pr-1">
+              <div className="flex items-center justify-end gap-1.5 text-xs font-bold text-[#0A0D14]">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
+                <span className="truncate">{activeData.supportItems[0]?.sourceName || 'Reddit'}</span>
+              </div>
+              <p className="text-[11px] text-[#64748B] font-mono mb-0.5 truncate">
+                {activeData.supportItems[0]?.subHeader || 'r/technology • 12h ago'}
+              </p>
+              <p className="text-[11px] text-[#334155] leading-snug line-clamp-2 italic font-serif">
+                {activeData.supportItems[0]?.excerpt}
+              </p>
+            </div>
           </div>
 
           {/* Node 2: GitHub */}
-          <div
-            key={`sup-1-${generationCount}-${activeData.supportItems[1]?.id}`}
-            onClick={() => toggleCardExpand(activeData.supportItems[1]?.id)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => e.key === 'Enter' && toggleCardExpand(activeData.supportItems[1]?.id)}
-            className={`absolute flex flex-col p-2.5 rounded-2xl bg-white/95 backdrop-blur-xs border transition-all duration-300 cursor-pointer ${
-              isScanning
-                ? 'opacity-45 scale-[0.97] blur-[0.5px] pointer-events-none z-20 border-[#E5E7EB]/80'
-                : expandedCardId === activeData.supportItems[1]?.id
-                ? 'z-40 border-[#10B981] shadow-2xl ring-4 ring-[#10B981]/15 -translate-y-0.5'
-                : 'z-20 border-[#E5E7EB]/80 shadow-2xs hover:shadow-md hover:border-[#10B981]/60 hover:-translate-y-0.5'
-            }`}
-            style={{
-              left: '20px',
-              top: '224px',
-              width: expandedCardId === activeData.supportItems[1]?.id ? '356px' : '318px',
-              animation:
-                generationCount > 0 && !isScanning
-                  ? 'probeCardPopIn 0.52s cubic-bezier(0.16, 1, 0.3, 1) 0.12s both, probeGlowSupport 1.8s ease-out 0.18s'
-                  : undefined,
-            }}
+          <div 
+            className="absolute z-20 flex flex-row-reverse items-center gap-3.5 text-right p-2.5 rounded-2xl bg-white/95 backdrop-blur-xs border border-[#E5E7EB]/80 shadow-2xs hover:shadow-xs transition-shadow"
+            style={{ left: '20px', top: '224px', width: '318px' }}
           >
-            <div className="flex flex-row-reverse items-center gap-3.5 text-right w-full">
-              <div className="relative w-9 h-9 rounded-full bg-[#0A0D14] text-white flex items-center justify-center shrink-0 shadow-2xs">
-                <svg className="w-5 h-5 fill-white" viewBox="0 0 24 24">
-                  <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
-                </svg>
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#10B981] ring-2 ring-white" />
-              </div>
-              <div className="flex-1 min-w-0 pr-1">
-                <div className="flex items-center justify-end gap-1.5 text-xs font-bold text-[#0A0D14]">
-                  {justGenerated && (
-                    <span className="px-1.5 py-0.2 rounded bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0] text-[9px] font-mono uppercase tracking-wider">
-                      NEW
-                    </span>
-                  )}
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
-                  <span className="truncate">{activeData.supportItems[1]?.sourceName || 'GitHub'}</span>
-                  <ChevronDown
-                    size={12}
-                    className={`text-[#64748B] transition-transform duration-200 ${
-                      expandedCardId === activeData.supportItems[1]?.id ? 'rotate-180 text-[#0A0D14]' : ''
-                    }`}
-                  />
-                </div>
-                <p className="text-[11px] text-[#64748B] font-mono mb-0.5 truncate">
-                  {activeData.supportItems[1]?.subHeader || '1d ago'}
-                </p>
-                <p
-                  className={`text-[11px] text-[#334155] leading-snug ${
-                    expandedCardId === activeData.supportItems[1]?.id ? '' : 'line-clamp-2'
-                  }`}
-                >
-                  {activeData.supportItems[1]?.excerpt}
-                </p>
-              </div>
+            <div className="relative w-9 h-9 rounded-full bg-[#0A0D14] text-white flex items-center justify-center shrink-0 shadow-2xs">
+              <svg className="w-5 h-5 fill-white" viewBox="0 0 24 24">
+                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+              </svg>
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#10B981] ring-2 ring-white" />
             </div>
-            {renderExpandedDetails(activeData.supportItems[1], 'right')}
+            <div className="flex-1 min-w-0 pr-1">
+              <div className="flex items-center justify-end gap-1.5 text-xs font-bold text-[#0A0D14]">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
+                <span className="truncate">{activeData.supportItems[1]?.sourceName || 'GitHub'}</span>
+              </div>
+              <p className="text-[11px] text-[#64748B] font-mono mb-0.5">1d ago</p>
+              <p className="text-[11px] text-[#334155] leading-snug line-clamp-2">
+                {activeData.supportItems[1]?.excerpt}
+              </p>
+            </div>
           </div>
 
           {/* Node 3: Google / Web */}
-          <div
-            key={`sup-2-${generationCount}-${activeData.supportItems[2]?.id}`}
-            onClick={() => toggleCardExpand(activeData.supportItems[2]?.id)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => e.key === 'Enter' && toggleCardExpand(activeData.supportItems[2]?.id)}
-            className={`absolute flex flex-col p-2.5 rounded-2xl bg-white/95 backdrop-blur-xs border transition-all duration-300 cursor-pointer ${
-              isScanning
-                ? 'opacity-45 scale-[0.97] blur-[0.5px] pointer-events-none z-20 border-[#E5E7EB]/80'
-                : expandedCardId === activeData.supportItems[2]?.id
-                ? 'z-40 border-[#10B981] shadow-2xl ring-4 ring-[#10B981]/15 -translate-y-0.5'
-                : 'z-20 border-[#E5E7EB]/80 shadow-2xs hover:shadow-md hover:border-[#10B981]/60 hover:-translate-y-0.5'
-            }`}
-            style={{
-              left: '20px',
-              top: '404px',
-              width: expandedCardId === activeData.supportItems[2]?.id ? '356px' : '318px',
-              animation:
-                generationCount > 0 && !isScanning
-                  ? 'probeCardPopIn 0.52s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both, probeGlowSupport 1.8s ease-out 0.26s'
-                  : undefined,
-            }}
+          <div 
+            className="absolute z-20 flex flex-row-reverse items-center gap-3.5 text-right p-2.5 rounded-2xl bg-white/95 backdrop-blur-xs border border-[#E5E7EB]/80 shadow-2xs hover:shadow-xs transition-shadow"
+            style={{ left: '20px', top: '404px', width: '318px' }}
           >
-            <div className="flex flex-row-reverse items-center gap-3.5 text-right w-full">
-              <div className="relative w-9 h-9 rounded-full bg-white border border-[#E5E7EB] text-[#EA4335] flex items-center justify-center shrink-0 shadow-2xs">
-                <svg className="w-4 h-4" viewBox="0 0 24 24">
-                  <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
-                  <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
-                  <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
-                  <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
-                </svg>
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#10B981] ring-2 ring-white" />
-              </div>
-              <div className="flex-1 min-w-0 pr-1">
-                <div className="flex items-center justify-end gap-1.5 text-xs font-bold text-[#0A0D14]">
-                  {justGenerated && (
-                    <span className="px-1.5 py-0.2 rounded bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0] text-[9px] font-mono uppercase tracking-wider">
-                      NEW
-                    </span>
-                  )}
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
-                  <span className="truncate">{activeData.supportItems[2]?.sourceName || 'Google / Web'}</span>
-                  <ChevronDown
-                    size={12}
-                    className={`text-[#64748B] transition-transform duration-200 ${
-                      expandedCardId === activeData.supportItems[2]?.id ? 'rotate-180 text-[#0A0D14]' : ''
-                    }`}
-                  />
-                </div>
-                <p className="text-[11px] text-[#64748B] font-mono mb-0.5 truncate">
-                  {activeData.supportItems[2]?.subHeader || '2d ago'}
-                </p>
-                <p
-                  className={`text-[11px] text-[#334155] leading-snug ${
-                    expandedCardId === activeData.supportItems[2]?.id ? '' : 'line-clamp-2'
-                  }`}
-                >
-                  {activeData.supportItems[2]?.excerpt}
-                </p>
-              </div>
+            <div className="relative w-9 h-9 rounded-full bg-white border border-[#E5E7EB] text-[#EA4335] flex items-center justify-center shrink-0 shadow-2xs">
+              <svg className="w-4 h-4" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
+                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
+                <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+              </svg>
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#10B981] ring-2 ring-white" />
             </div>
-            {renderExpandedDetails(activeData.supportItems[2], 'right')}
+            <div className="flex-1 min-w-0 pr-1">
+              <div className="flex items-center justify-end gap-1.5 text-xs font-bold text-[#0A0D14]">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
+                <span className="truncate">{activeData.supportItems[2]?.sourceName || 'Google / Web'}</span>
+              </div>
+              <p className="text-[11px] text-[#64748B] font-mono mb-0.5">2d ago</p>
+              <p className="text-[11px] text-[#334155] leading-snug line-clamp-2">
+                {activeData.supportItems[2]?.excerpt}
+              </p>
+            </div>
           </div>
 
           {/* CENTER NODE: THE INVESTIGATED IDEA (Anchors: Left 385, Right 635, Top 205, Bottom 315) */}
@@ -972,17 +477,9 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
             className="absolute z-20"
             style={{ left: '510px', top: '260px', transform: 'translate(-50%, -50%)', width: '250px' }}
           >
-            <div
-              className={`rounded-3xl bg-white border px-6 py-5 shadow-sm text-center relative transition-all duration-300 ${
-                isScanning
-                  ? 'border-[#0F52BA] ring-8 ring-[#EFF6FF] scale-[1.03]'
-                  : justGenerated
-                  ? 'border-[#10B981] ring-8 ring-[#ECFDF5]'
-                  : 'border-[#E5E7EB] ring-8 ring-[#F8FAFC]'
-              }`}
-            >
+            <div className="rounded-3xl bg-white border border-[#E5E7EB] px-6 py-5 shadow-sm text-center relative ring-8 ring-[#F8FAFC]">
               <div className="text-[10px] font-mono text-[#868C98] font-bold tracking-widest uppercase mb-1">
-                {isScanning ? 'SCANNING IDEA...' : 'IDEA'}
+                IDEA
               </div>
               <h3 className="text-sm font-bold text-[#0A0D14] leading-snug">
                 {activeData.query}
@@ -991,7 +488,7 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
               {/* Target / Pulse Indicator at bottom center */}
               <div className="mt-3 flex items-center justify-center">
                 <div className="w-4 h-4 rounded-full border border-[#CBD5E1] flex items-center justify-center bg-white shadow-2xs">
-                  <span className={`w-1.5 h-1.5 rounded-full ${isScanning ? 'bg-[#0F52BA] animate-ping' : 'bg-[#0A0D14]'}`} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#0A0D14]" />
                 </div>
               </div>
             </div>
@@ -999,227 +496,81 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
 
           {/* RIGHT CONTRADICT NODES - Icon on left facing center, Text on right (Port at x=700) */}
           {/* Node 4: X */}
-          <div
-            key={`con-0-${generationCount}-${activeData.contradictItems[0]?.id}`}
-            onClick={() => toggleCardExpand(activeData.contradictItems[0]?.id)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => e.key === 'Enter' && toggleCardExpand(activeData.contradictItems[0]?.id)}
-            className={`absolute flex flex-col p-2.5 rounded-2xl bg-white/95 backdrop-blur-xs border transition-all duration-300 cursor-pointer ${
-              isScanning
-                ? 'opacity-45 scale-[0.97] blur-[0.5px] pointer-events-none z-20 border-[#E5E7EB]/80'
-                : expandedCardId === activeData.contradictItems[0]?.id
-                ? 'z-40 border-[#EF4444] shadow-2xl ring-4 ring-[#EF4444]/15 -translate-y-0.5'
-                : 'z-20 border-[#E5E7EB]/80 shadow-2xs hover:shadow-md hover:border-[#EF4444]/60 hover:-translate-y-0.5'
-            }`}
-            style={{
-              left: expandedCardId === activeData.contradictItems[0]?.id ? '644px' : '682px',
-              top: '44px',
-              width: expandedCardId === activeData.contradictItems[0]?.id ? '356px' : '318px',
-              animation:
-                generationCount > 0 && !isScanning
-                  ? 'probeCardPopIn 0.52s cubic-bezier(0.16, 1, 0.3, 1) 0.08s both, probeGlowContradict 1.8s ease-out 0.14s'
-                  : undefined,
-            }}
+          <div 
+            className="absolute z-20 flex flex-row items-center gap-3.5 text-left p-2.5 rounded-2xl bg-white/95 backdrop-blur-xs border border-[#E5E7EB]/80 shadow-2xs hover:shadow-xs transition-shadow"
+            style={{ left: '682px', top: '44px', width: '318px' }}
           >
-            <div className="flex flex-row items-center gap-3.5 text-left w-full">
-              <div className="relative w-9 h-9 rounded-full bg-[#0A0D14] text-white flex items-center justify-center shrink-0 shadow-2xs">
-                <svg className="w-4 h-4 fill-white" viewBox="0 0 24 24">
-                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-                </svg>
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#EF4444] ring-2 ring-white" />
-              </div>
-              <div className="flex-1 min-w-0 pl-1">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-[#0A0D14]">
-                  <span className="truncate">{activeData.contradictItems[0]?.sourceName || 'X'}</span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444]" />
-                  {justGenerated && (
-                    <span className="px-1.5 py-0.2 rounded bg-[#FEF2F2] text-[#EF4444] border border-[#FECACA] text-[9px] font-mono uppercase tracking-wider">
-                      NEW
-                    </span>
-                  )}
-                  <ChevronDown
-                    size={12}
-                    className={`ml-auto text-[#64748B] transition-transform duration-200 ${
-                      expandedCardId === activeData.contradictItems[0]?.id ? 'rotate-180 text-[#0A0D14]' : ''
-                    }`}
-                  />
-                </div>
-                <p className="text-[11px] text-[#64748B] font-mono mb-0.5 truncate">
-                  {activeData.contradictItems[0]?.subHeader || '18h ago'}
-                </p>
-                <p
-                  className={`text-[11px] text-[#334155] leading-snug ${
-                    expandedCardId === activeData.contradictItems[0]?.id ? '' : 'line-clamp-2'
-                  }`}
-                >
-                  {activeData.contradictItems[0]?.excerpt}
-                </p>
-              </div>
+            <div className="relative w-9 h-9 rounded-full bg-[#0A0D14] text-white flex items-center justify-center shrink-0 shadow-2xs">
+              <svg className="w-4 h-4 fill-white" viewBox="0 0 24 24">
+                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+              </svg>
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#EF4444] ring-2 ring-white" />
             </div>
-            {renderExpandedDetails(activeData.contradictItems[0], 'left')}
+            <div className="flex-1 min-w-0 pl-1">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-[#0A0D14]">
+                <span className="truncate">{activeData.contradictItems[0]?.sourceName || 'X'}</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444]" />
+              </div>
+              <p className="text-[11px] text-[#64748B] font-mono mb-0.5">18h ago</p>
+              <p className="text-[11px] text-[#334155] leading-snug line-clamp-2">
+                {activeData.contradictItems[0]?.excerpt}
+              </p>
+            </div>
           </div>
 
           {/* Node 5: Product Reviews */}
-          <div
-            key={`con-1-${generationCount}-${activeData.contradictItems[1]?.id}`}
-            onClick={() => toggleCardExpand(activeData.contradictItems[1]?.id)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => e.key === 'Enter' && toggleCardExpand(activeData.contradictItems[1]?.id)}
-            className={`absolute flex flex-col p-2.5 rounded-2xl bg-white/95 backdrop-blur-xs border transition-all duration-300 cursor-pointer ${
-              isScanning
-                ? 'opacity-45 scale-[0.97] blur-[0.5px] pointer-events-none z-20 border-[#E5E7EB]/80'
-                : expandedCardId === activeData.contradictItems[1]?.id
-                ? 'z-40 border-[#EF4444] shadow-2xl ring-4 ring-[#EF4444]/15 -translate-y-0.5'
-                : 'z-20 border-[#E5E7EB]/80 shadow-2xs hover:shadow-md hover:border-[#EF4444]/60 hover:-translate-y-0.5'
-            }`}
-            style={{
-              left: expandedCardId === activeData.contradictItems[1]?.id ? '644px' : '682px',
-              top: '224px',
-              width: expandedCardId === activeData.contradictItems[1]?.id ? '356px' : '318px',
-              animation:
-                generationCount > 0 && !isScanning
-                  ? 'probeCardPopIn 0.52s cubic-bezier(0.16, 1, 0.3, 1) 0.16s both, probeGlowContradict 1.8s ease-out 0.22s'
-                  : undefined,
-            }}
+          <div 
+            className="absolute z-20 flex flex-row items-center gap-3.5 text-left p-2.5 rounded-2xl bg-white/95 backdrop-blur-xs border border-[#E5E7EB]/80 shadow-2xs hover:shadow-xs transition-shadow"
+            style={{ left: '682px', top: '224px', width: '318px' }}
           >
-            <div className="flex flex-row items-center gap-3.5 text-left w-full">
-              <div className="relative w-9 h-9 rounded-full bg-[#FFFBEB] border border-[#FDE68A] text-[#F59E0B] flex items-center justify-center shrink-0 shadow-2xs">
-                <Star size={16} className="fill-[#F59E0B]" />
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#EF4444] ring-2 ring-white" />
-              </div>
-              <div className="flex-1 min-w-0 pl-1">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-[#0A0D14]">
-                  <span className="truncate">{activeData.contradictItems[1]?.sourceName || 'Product Reviews'}</span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444]" />
-                  {justGenerated && (
-                    <span className="px-1.5 py-0.2 rounded bg-[#FEF2F2] text-[#EF4444] border border-[#FECACA] text-[9px] font-mono uppercase tracking-wider">
-                      NEW
-                    </span>
-                  )}
-                  <ChevronDown
-                    size={12}
-                    className={`ml-auto text-[#64748B] transition-transform duration-200 ${
-                      expandedCardId === activeData.contradictItems[1]?.id ? 'rotate-180 text-[#0A0D14]' : ''
-                    }`}
-                  />
-                </div>
-                <p className="text-[11px] text-[#64748B] font-mono mb-0.5 truncate">
-                  {activeData.contradictItems[1]?.subHeader || '1d ago'}
-                </p>
-                <p
-                  className={`text-[11px] text-[#334155] leading-snug ${
-                    expandedCardId === activeData.contradictItems[1]?.id ? '' : 'line-clamp-2'
-                  }`}
-                >
-                  {activeData.contradictItems[1]?.excerpt}
-                </p>
-              </div>
+            <div className="relative w-9 h-9 rounded-full bg-[#FFFBEB] border border-[#FDE68A] text-[#F59E0B] flex items-center justify-center shrink-0 shadow-2xs">
+              <Star size={16} className="fill-[#F59E0B]" />
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#EF4444] ring-2 ring-white" />
             </div>
-            {renderExpandedDetails(activeData.contradictItems[1], 'left')}
+            <div className="flex-1 min-w-0 pl-1">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-[#0A0D14]">
+                <span className="truncate">{activeData.contradictItems[1]?.sourceName || 'Product Reviews'}</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444]" />
+              </div>
+              <p className="text-[11px] text-[#64748B] font-mono mb-0.5">1d ago</p>
+              <p className="text-[11px] text-[#334155] leading-snug line-clamp-2">
+                {activeData.contradictItems[1]?.excerpt}
+              </p>
+            </div>
           </div>
 
           {/* Node 6: Research Papers */}
-          <div
-            key={`con-2-${generationCount}-${activeData.contradictItems[2]?.id}`}
-            onClick={() => toggleCardExpand(activeData.contradictItems[2]?.id)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => e.key === 'Enter' && toggleCardExpand(activeData.contradictItems[2]?.id)}
-            className={`absolute flex flex-col p-2.5 rounded-2xl bg-white/95 backdrop-blur-xs border transition-all duration-300 cursor-pointer ${
-              isScanning
-                ? 'opacity-45 scale-[0.97] blur-[0.5px] pointer-events-none z-20 border-[#E5E7EB]/80'
-                : expandedCardId === activeData.contradictItems[2]?.id
-                ? 'z-40 border-[#EF4444] shadow-2xl ring-4 ring-[#EF4444]/15 -translate-y-0.5'
-                : 'z-20 border-[#E5E7EB]/80 shadow-2xs hover:shadow-md hover:border-[#EF4444]/60 hover:-translate-y-0.5'
-            }`}
-            style={{
-              left: expandedCardId === activeData.contradictItems[2]?.id ? '644px' : '682px',
-              top: '404px',
-              width: expandedCardId === activeData.contradictItems[2]?.id ? '356px' : '318px',
-              animation:
-                generationCount > 0 && !isScanning
-                  ? 'probeCardPopIn 0.52s cubic-bezier(0.16, 1, 0.3, 1) 0.24s both, probeGlowContradict 1.8s ease-out 0.3s'
-                  : undefined,
-            }}
+          <div 
+            className="absolute z-20 flex flex-row items-center gap-3.5 text-left p-2.5 rounded-2xl bg-white/95 backdrop-blur-xs border border-[#E5E7EB]/80 shadow-2xs hover:shadow-xs transition-shadow"
+            style={{ left: '682px', top: '404px', width: '318px' }}
           >
-            <div className="flex flex-row items-center gap-3.5 text-left w-full">
-              <div className="relative w-9 h-9 rounded-full bg-[#FEF2F2] border border-[#FECACA] text-[#EF4444] flex items-center justify-center shrink-0 shadow-2xs">
-                <FileText size={16} />
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#EF4444] ring-2 ring-white" />
-              </div>
-              <div className="flex-1 min-w-0 pl-1">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-[#0A0D14]">
-                  <span className="truncate">{activeData.contradictItems[2]?.sourceName || 'Research Papers'}</span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444]" />
-                  {justGenerated && (
-                    <span className="px-1.5 py-0.2 rounded bg-[#FEF2F2] text-[#EF4444] border border-[#FECACA] text-[9px] font-mono uppercase tracking-wider">
-                      NEW
-                    </span>
-                  )}
-                  <ChevronDown
-                    size={12}
-                    className={`ml-auto text-[#64748B] transition-transform duration-200 ${
-                      expandedCardId === activeData.contradictItems[2]?.id ? 'rotate-180 text-[#0A0D14]' : ''
-                    }`}
-                  />
-                </div>
-                <p className="text-[11px] text-[#64748B] font-mono mb-0.5 truncate">
-                  {activeData.contradictItems[2]?.subHeader || '3d ago'}
-                </p>
-                <p
-                  className={`text-[11px] text-[#334155] leading-snug ${
-                    expandedCardId === activeData.contradictItems[2]?.id ? '' : 'line-clamp-2'
-                  }`}
-                >
-                  {activeData.contradictItems[2]?.excerpt}
-                </p>
-              </div>
+            <div className="relative w-9 h-9 rounded-full bg-[#FEF2F2] border border-[#FECACA] text-[#EF4444] flex items-center justify-center shrink-0 shadow-2xs">
+              <FileText size={16} />
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#EF4444] ring-2 ring-white" />
             </div>
-            {renderExpandedDetails(activeData.contradictItems[2], 'left')}
+            <div className="flex-1 min-w-0 pl-1">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-[#0A0D14]">
+                <span className="truncate">{activeData.contradictItems[2]?.sourceName || 'Research Papers'}</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444]" />
+              </div>
+              <p className="text-[11px] text-[#64748B] font-mono mb-0.5">3d ago</p>
+              <p className="text-[11px] text-[#334155] leading-snug line-clamp-2">
+                {activeData.contradictItems[2]?.excerpt}
+              </p>
+            </div>
           </div>
 
           {/* BOTTOM NODE: UNKNOWN */}
-          <div
-            key={`unk-${generationCount}-${activeData.unknownItem?.id}`}
-            onClick={() => toggleCardExpand(activeData.unknownItem?.id)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => e.key === 'Enter' && toggleCardExpand(activeData.unknownItem?.id)}
-            className={`absolute left-1/2 bottom-[8px] -translate-x-1/2 flex flex-col items-center text-center p-2.5 rounded-2xl transition-all duration-300 cursor-pointer ${
-              isScanning
-                ? 'opacity-45 scale-[0.97] pointer-events-none z-20'
-                : expandedCardId === activeData.unknownItem?.id
-                ? 'z-40 bg-white border border-[#64748B] shadow-2xl ring-4 ring-[#64748B]/15 w-[340px]'
-                : 'z-20 bg-white/90 hover:bg-white border border-transparent hover:border-[#E5E7EB] hover:shadow-md max-w-xs'
-            }`}
-            style={{
-              animation:
-                generationCount > 0 && !isScanning
-                  ? 'probeCardPopIn 0.52s cubic-bezier(0.16, 1, 0.3, 1) 0.28s both'
-                  : undefined,
-            }}
-          >
+          <div className="absolute left-1/2 bottom-[15px] -translate-x-1/2 z-20 flex flex-col items-center text-center max-w-xs">
             <div className="w-8 h-8 rounded-full bg-white border border-[#CBD5E1] text-[#64748B] flex items-center justify-center font-bold text-xs shadow-2xs mb-1.5">
               ?
             </div>
             <div className="flex items-center gap-1.5 text-xs font-bold text-[#0A0D14]">
               <span>Unknown</span>
               <span className="w-1.5 h-1.5 rounded-full bg-[#94A3B8]" />
-              <span className="text-[10px] text-[#64748B] font-mono">{activeData.unknownItem?.timestamp || '2d ago'}</span>
-              <ChevronDown
-                size={12}
-                className={`text-[#64748B] transition-transform duration-200 ${
-                  expandedCardId === activeData.unknownItem?.id ? 'rotate-180 text-[#0A0D14]' : ''
-                }`}
-              />
+              <span className="text-[10px] text-[#64748B] font-mono">2d ago</span>
             </div>
-            <p
-              className={`text-[11px] text-[#525866] leading-snug mt-0.5 ${
-                expandedCardId === activeData.unknownItem?.id ? 'w-full' : 'line-clamp-2 max-w-[220px]'
-              }`}
-            >
+            <p className="text-[11px] text-[#525866] leading-snug line-clamp-2 mt-0.5 max-w-[220px]">
               {activeData.unknownItem.excerpt}
             </p>
             <div className="mt-1.5">
@@ -1228,7 +579,6 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
                 <span>Unknown</span>
               </span>
             </div>
-            {renderExpandedDetails(activeData.unknownItem, 'center')}
           </div>
 
         </div>
@@ -1249,42 +599,18 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
           <div className="bg-white rounded-2xl border border-[#A7F3D0] p-4 space-y-3 text-left">
             <span className="text-xs font-bold text-[#059669] flex items-center gap-1">
               <span>↑</span>
-              <span>Supporting Signals (Tap any card to expand)</span>
+              <span>Supporting Signals</span>
             </span>
-            {activeData.supportItems.map((item, idx) => (
-              <div
-                key={`${generationCount}-${item.id}`}
-                onClick={() => toggleCardExpand(item.id)}
-                className="pt-2.5 pb-1 px-2.5 rounded-xl border border-transparent hover:border-[#A7F3D0] hover:bg-[#F0FDF4]/40 transition-all cursor-pointer"
-                style={{
-                  animation:
-                    generationCount > 0 && !isScanning
-                      ? `probeCardPopIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) ${idx * 0.08}s both`
-                      : undefined,
-                }}
-              >
-                <div className="flex items-center justify-between gap-1.5 text-xs font-bold text-[#0A0D14]">
-                  <div className="flex items-center gap-1.5">
-                    <span>{item.sourceName}</span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
-                    <span className="text-[10px] text-[#64748B] font-mono">{item.timestamp}</span>
-                    {justGenerated && (
-                      <span className="px-1.5 py-0.2 rounded bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0] text-[9px] font-mono uppercase">
-                        NEW
-                      </span>
-                    )}
-                  </div>
-                  <ChevronDown
-                    size={13}
-                    className={`text-[#64748B] transition-transform ${
-                      expandedCardId === item.id ? 'rotate-180 text-[#0A0D14]' : ''
-                    }`}
-                  />
+            {activeData.supportItems.map((item) => (
+              <div key={item.id} className="pt-2 border-t border-[#F0FDF4]">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-[#0A0D14]">
+                  <span>{item.sourceName}</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
+                  <span className="text-[10px] text-[#64748B] font-mono">{item.timestamp}</span>
                 </div>
                 <p className="text-xs text-[#334155] mt-0.5 italic font-serif">
                   {item.excerpt}
                 </p>
-                {renderExpandedDetails(item, 'left')}
               </div>
             ))}
           </div>
@@ -1293,42 +619,18 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
           <div className="bg-white rounded-2xl border border-[#FECACA] p-4 space-y-3 text-left">
             <span className="text-xs font-bold text-[#EF4444] flex items-center gap-1">
               <span>↓</span>
-              <span>Challenging Signals (Tap any card to expand)</span>
+              <span>Challenging Signals</span>
             </span>
-            {activeData.contradictItems.map((item, idx) => (
-              <div
-                key={`${generationCount}-${item.id}`}
-                onClick={() => toggleCardExpand(item.id)}
-                className="pt-2.5 pb-1 px-2.5 rounded-xl border border-transparent hover:border-[#FECACA] hover:bg-[#FEF2F2]/40 transition-all cursor-pointer"
-                style={{
-                  animation:
-                    generationCount > 0 && !isScanning
-                      ? `probeCardPopIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) ${idx * 0.08 + 0.15}s both`
-                      : undefined,
-                }}
-              >
-                <div className="flex items-center justify-between gap-1.5 text-xs font-bold text-[#0A0D14]">
-                  <div className="flex items-center gap-1.5">
-                    <span>{item.sourceName}</span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444]" />
-                    <span className="text-[10px] text-[#64748B] font-mono">{item.timestamp}</span>
-                    {justGenerated && (
-                      <span className="px-1.5 py-0.2 rounded bg-[#FEF2F2] text-[#EF4444] border border-[#FECACA] text-[9px] font-mono uppercase">
-                        NEW
-                      </span>
-                    )}
-                  </div>
-                  <ChevronDown
-                    size={13}
-                    className={`text-[#64748B] transition-transform ${
-                      expandedCardId === item.id ? 'rotate-180 text-[#0A0D14]' : ''
-                    }`}
-                  />
+            {activeData.contradictItems.map((item) => (
+              <div key={item.id} className="pt-2 border-t border-[#FEF2F2]">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-[#0A0D14]">
+                  <span>{item.sourceName}</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444]" />
+                  <span className="text-[10px] text-[#64748B] font-mono">{item.timestamp}</span>
                 </div>
                 <p className="text-xs text-[#334155] mt-0.5">
                   {item.excerpt}
                 </p>
-                {renderExpandedDetails(item, 'left')}
               </div>
             ))}
           </div>
@@ -1393,6 +695,8 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-12 pt-2">
         <BuildBriefPanel investigationData={activeData} rawQuery={query} />
       </div>
+        </>
+      )}
 
       {/* 6. TWO-INVESTIGATION TRIAL LIMIT MODAL (SECTION 1 & 23) */}
       {showTrialLimitModal && (

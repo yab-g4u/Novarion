@@ -1,134 +1,246 @@
-import express from 'express';
-import fs from 'fs';
-import https from 'https';
+import express, { Request, Response } from 'express';
+import cors from 'cors';
 import path from 'path';
-import { createApiApp } from './src/lib/server/apiApp';
+import fs from 'fs';
+import { z } from 'zod';
+import { createServer as createViteServer } from 'vite';
+import { searchService } from './src/lib/search/search-service';
+import { pressureTestPipeline } from './src/lib/research/pipeline';
+import { testingRouter } from './apps/api/src/modules/testing/testing.controller';
+import { setupVoiceBridge } from './src/server/voiceBridge';
 
-// Prevent background Playwright / stream rejections from crashing the production HTTP process
-process.on('unhandledRejection', (reason) => {
-  console.error('[Probe] Unhandled Promise Rejection:', reason);
+const SearchRequestSchema = z.object({
+  query: z
+    .string()
+    .trim()
+    .min(2, { message: 'Query must be at least 2 characters long' })
+    .max(500, { message: 'Query cannot exceed 500 characters' }),
+  sources: z
+    .array(z.enum(['reddit', 'x', 'linkedin', 'scholarxiv']))
+    .optional(),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(50)
+    .optional()
 });
 
-process.on('uncaughtException', (err) => {
-  console.error('[Probe] Uncaught Exception:', err);
+const PressureTestRequestSchema = z.object({
+  idea: z
+    .string()
+    .trim()
+    .min(3, { message: 'Idea must be at least 3 characters long' })
+    .max(1000, { message: 'Idea cannot exceed 1000 characters' })
+});
+
+const VoxideRequestSchema = z.object({
+  command: z.string().trim().min(2),
+  context: z.record(z.string(), z.unknown()).optional()
 });
 
 async function main() {
-  const PORT = Number(process.env.PORT) || 3000;
+  const app = express();
+  const PORT = 3000;
+  const ALT_PORT = process.env.PORT ? Number(process.env.PORT) : null;
   const isProduction = process.env.NODE_ENV === 'production';
-  const cwd = process.cwd();
-  const distPath = path.join(cwd, 'dist');
-  const indexHtmlPath = path.join(distPath, 'index.html');
-  const distExists = fs.existsSync(indexHtmlPath);
 
-  console.log('[Probe] Starting production server...');
-  console.log(`[Probe] NODE_ENV=${process.env.NODE_ENV || 'development'}`);
-  console.log(`[Probe] PORT=${PORT}`);
-  console.log(`[Probe] cwd=${cwd}`);
-  console.log(`[Probe] dist exists=${distExists}`);
+  app.use(cors());
+  app.use(express.json({ limit: '1mb' }));
 
-  // 1. Create Express app with /health and /api/* registered first
-  const app = createApiApp();
+  // Basic in-memory rate-limiter: 60 requests per minute per IP
+  const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+  app.use('/api', (req, res, next) => {
+    const ip = req.ip || req.headers['x-forwarded-for'] || 'client';
+    const now = Date.now();
+    const clientRecord = rateLimitMap.get(String(ip));
 
-  if (isProduction) {
-    // 2. Serve built static assets from dist/
-    app.use(express.static(distPath));
+    if (!clientRecord || now > clientRecord.resetAt) {
+      rateLimitMap.set(String(ip), { count: 1, resetAt: now + 60000 });
+      return next();
+    }
 
-    // 3. SPA fallback for frontend routes (/, /?share=<id>, /app/*)
-    app.use((req, res, next) => {
-      if (req.method !== 'GET' && req.method !== 'HEAD') {
-        return next();
-      }
-      if (req.path.startsWith('/api/')) {
-        return res.status(404).json({ error: 'API route not found' });
-      }
-      if (!fs.existsSync(indexHtmlPath)) {
-        return res.status(503).json({
-          error: 'Production build artifacts (dist/index.html) not found',
-        });
-      }
-      res.sendFile(indexHtmlPath);
-    });
-  }
+    if (clientRecord.count >= 60) {
+      return res.status(429).json({ error: 'Rate limit exceeded. Please wait a moment.' });
+    }
 
-  console.log('[Probe] Starting HTTP server...');
+    clientRecord.count += 1;
+    next();
+  });
 
-  // Bind HTTP server to 0.0.0.0:$PORT immediately so container health checks succeed right away
-  await new Promise<void>((resolve) => {
-    const httpServer = app.listen(PORT, '0.0.0.0', () => {
-      console.log(`[Probe] Server listening on 0.0.0.0:${PORT}`);
-      resolve();
-    });
+  // REST API: POST /api/search
+  app.post('/api/search', async (req: Request, res: Response) => {
+    const parseResult = SearchRequestSchema.safeParse(req.body);
 
-    // Configure timeouts for reverse-proxy / gateway stability during long-running requests
-    httpServer.keepAliveTimeout = 65000;
-    httpServer.headersTimeout = 66000;
-    httpServer.requestTimeout = 120000;
+    if (!parseResult.success) {
+      return res.status(400).json({
+        error: 'Invalid search request',
+        details: parseResult.error.format()
+      });
+    }
 
-    // Relay Voxide WebSocket upgrade (/api/sdk/live) when accessed from ephemeral preview origins (*.run.app)
-    httpServer.on('upgrade', (req, clientSocket, head) => {
-      if (!req.url || !req.url.startsWith('/api/sdk/live')) {
-        return;
-      }
-
-      const upstreamReq = https.request({
-        hostname: 'voxide.onrender.com',
-        port: 443,
-        path: req.url,
-        method: 'GET',
-        headers: {
-          Connection: 'Upgrade',
-          Upgrade: 'websocket',
-          Origin: 'https://novarion.ethiodeploy.com',
-          'Sec-WebSocket-Key': req.headers['sec-websocket-key'] || '',
-          'Sec-WebSocket-Version': req.headers['sec-websocket-version'] || '13',
-          ...(req.headers['sec-websocket-protocol']
-            ? { 'Sec-WebSocket-Protocol': req.headers['sec-websocket-protocol'] }
-            : {}),
-        },
+    try {
+      const { query, sources, limit } = parseResult.data;
+      const searchResponse = await searchService.executeSearch({
+        query,
+        sources,
+        limit
       });
 
-      upstreamReq.on('upgrade', (upstreamRes, upstreamSocket, upstreamHead) => {
-        const responseLines = [
-          'HTTP/1.1 101 Switching Protocols',
-          'Upgrade: websocket',
-          'Connection: Upgrade',
-          `Sec-WebSocket-Accept: ${upstreamRes.headers['sec-websocket-accept'] || ''}`,
-        ];
-        if (upstreamRes.headers['sec-websocket-protocol']) {
-          responseLines.push(
-            `Sec-WebSocket-Protocol: ${upstreamRes.headers['sec-websocket-protocol']}`
-          );
-        }
-        clientSocket.write(responseLines.join('\r\n') + '\r\n\r\n');
-        if (upstreamHead && upstreamHead.length > 0) {
-          clientSocket.write(upstreamHead);
-        }
-        if (head && head.length > 0) {
-          upstreamSocket.write(head);
-        }
-        upstreamSocket.pipe(clientSocket);
-        clientSocket.pipe(upstreamSocket);
-        upstreamSocket.on('error', () => clientSocket.destroy());
-        clientSocket.on('error', () => upstreamSocket.destroy());
+      return res.json(searchResponse);
+    } catch (err: any) {
+      console.error('[API /api/search Error]:', err);
+      return res.status(500).json({
+        error: 'Search execution failed',
+        message: err.message || 'Internal server error'
       });
+    }
+  });
 
-      upstreamReq.on('error', () => {
-        clientSocket.destroy();
+  // REST API: POST /api/pressure-test (Primary Pressure-Testing Pipeline)
+  app.post('/api/pressure-test', async (req: Request, res: Response) => {
+    const parseResult = PressureTestRequestSchema.safeParse(req.body);
+
+    if (!parseResult.success) {
+      return res.status(400).json({
+        error: 'Invalid pressure-test request',
+        details: parseResult.error.format()
       });
+    }
 
-      upstreamReq.end();
+    try {
+      const { idea } = parseResult.data;
+      const result = await pressureTestPipeline.executePressureTest(idea);
+      return res.json(result);
+    } catch (err: any) {
+      console.error('[API /api/pressure-test Error]:', err);
+      return res.status(500).json({
+        error: 'Pressure-test pipeline failed',
+        message: err.message || 'Internal server error'
+      });
+    }
+  });
+
+  // REST API: POST /api/voxide (Deterministic Voice Intent Mapper)
+  app.post('/api/voxide', async (req: Request, res: Response) => {
+    const parseResult = VoxideRequestSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({ error: 'Invalid voice intent command' });
+    }
+
+    const { command } = parseResult.data;
+    const lower = command.toLowerCase();
+
+    let intent = 'UNKNOWN';
+    let target = 'all';
+
+    if (lower.includes('willingness to pay') || lower.includes('willingness-to-pay') || lower.includes('pricing') || lower.includes('pay')) {
+      intent = 'FOCUS_ASSUMPTION';
+      target = 'willingness_to_pay';
+    } else if (lower.includes('against') || lower.includes('challeng') || lower.includes('counter')) {
+      intent = 'FILTER_STANCE';
+      target = 'CHALLENGES';
+    } else if (lower.includes('scholar') || lower.includes('paper') || lower.includes('academic')) {
+      intent = 'FILTER_SOURCE';
+      target = 'scholarxiv';
+    } else if (lower.includes('product test') || lower.includes('run test') || lower.includes('simulate')) {
+      intent = 'EXECUTE_PRODUCT_TEST';
+      target = 'links.et';
+    } else if (lower.includes('why') || lower.includes('explain')) {
+      intent = 'EXPLAIN_CONTRADICTION';
+      target = 'contradictions';
+    } else if (lower.includes('independent') || lower.includes('unique')) {
+      intent = 'SHOW_INDEPENDENT_CLUSTERS';
+      target = 'clusters';
+    }
+
+    return res.json({
+      command,
+      matchedIntent: intent,
+      targetAction: target,
+      status: 'executed'
     });
   });
 
-  // In development only, dynamically attach Vite dev middleware after HTTP server is listening
+  // Mount Product Testing Subsystem routes
+  app.use('/api/testing', testingRouter);
+
+  // Gemini Live Voice Status endpoint
+  app.get('/api/voice/status', (_req, res) => {
+    const hasKey = Boolean(process.env.GEMINI_API_KEY);
+    res.json({
+      configured: hasKey,
+      model: 'gemini-3.8-live',
+      wsPath: '/api/voice/live',
+      supportedModalities: ['AUDIO'],
+      features: ['continuous_speech', 'barge_in', 'realtime_tools', 'live_transcription']
+    });
+  });
+
+  // Health check endpoint
+  app.get('/api/health', (_req, res) => {
+    res.json({ status: 'ok', service: 'Probe Research Search Engine' });
+  });
+
+  // Mount Vite middleware in dev or static files in production
   if (!isProduction) {
-    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true, host: '0.0.0.0', port: PORT },
-      appType: 'spa',
+      server: { middlewareMode: true, host: '0.0.0.0', hmr: false },
+      appType: 'custom'
     });
     app.use(vite.middlewares);
+
+    // Development SPA route fallback for /r/:roomId, /app, /signin, etc.
+    // In Express 5, route without path runs on all requests (avoiding path-to-regexp '*' error)
+    app.use(async (req: Request, res: Response, next) => {
+      if ((req.method !== 'GET' && req.method !== 'HEAD') || req.originalUrl.startsWith('/api')) {
+        return next();
+      }
+      try {
+        const url = req.originalUrl;
+        let template = fs.readFileSync(path.resolve('index.html'), 'utf-8');
+        template = await vite.transformIndexHtml(url, template);
+        if (req.method === 'HEAD') {
+          return res.status(200).set({ 'Content-Type': 'text/html' }).end();
+        }
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+      } catch (e: any) {
+        vite.ssrFixStacktrace(e);
+        console.error('[Vite HTML transform error]:', e);
+        next(e);
+      }
+    });
+  } else {
+    const distPath = path.resolve('dist');
+    app.use(express.static(distPath));
+    app.use((req: Request, res: Response, next) => {
+      if ((req.method !== 'GET' && req.method !== 'HEAD') || req.originalUrl.startsWith('/api')) {
+        return next();
+      }
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  // Primary listen on port 3000 (required by AI Studio dev environment)
+  const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[Probe Server] Primary server listening on http://0.0.0.0:${PORT} (env: ${process.env.NODE_ENV || 'development'})`);
+  });
+  server.on('error', (err: any) => {
+    console.error(`[Probe Server] Primary server error on port ${PORT}:`, err.message || err);
+  });
+
+  // Attach Gemini Live WebSocket Bridge
+  setupVoiceBridge(server);
+
+  // Secondary listen if external PORT (e.g. 8080) is specified
+  if (ALT_PORT && ALT_PORT !== PORT) {
+    const altServer = app.listen(ALT_PORT, '0.0.0.0', () => {
+      console.log(`[Probe Server] Alternate port listening on http://0.0.0.0:${ALT_PORT}`);
+    });
+    altServer.on('error', (e: any) => {
+      console.warn(`[Probe Server] Alternate port ${ALT_PORT} not bound:`, e.message || e);
+    });
+    setupVoiceBridge(altServer);
   }
 }
 

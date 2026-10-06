@@ -372,7 +372,7 @@ export function generateDynamicInvestigation(
           subHeader: 'ScholarXIV HCI (2024) · 3d ago',
           excerpt: 'Controlled study: Adherence drops 88% when grocery onboarding requires more than 3 diet configuration steps.',
           relationship: 'Contradicts',
-          url: 'https://scholar.google.com',
+          url: 'https://www.scholarxiv.com/papers/sx-cook-2024-adherence',
           timestamp: '3d ago',
         },
       ],

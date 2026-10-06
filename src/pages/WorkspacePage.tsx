@@ -1,65 +1,28 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { 
   Search, 
   Compass, 
   Layers, 
-  Calendar,
   LogOut, 
   Sparkles, 
   Edit3, 
   Check, 
+  ExternalLink,
   User,
-  PanelLeftClose,
-  PanelLeftOpen,
-  PanelRightClose,
-  PanelRightOpen,
-  Plus,
-  Share2
+  ArrowRight
 } from 'lucide-react';
+import { PressureTestWorkspace } from '../components/PressureTestWorkspace';
 import { TestingWorkspace } from '../features/testing/components/TestingWorkspace';
 import { EvidenceGraph } from '../components/EvidenceGraph';
-import { EvidenceTimeline } from '../components/EvidenceTimeline';
 import { EvidenceModal } from '../components/EvidenceModal';
+import { TryModal } from '../components/TryModal';
 import { EvidenceSource } from '../types';
 import { DynamicGraphData } from '../types/evidenceGraph';
 import { ProbeLogo } from '../components/ProbeLogo';
-import { generateDynamicInvestigation } from '../lib/research/dynamicInvestigationResolver';
-import {
-  buildGraphDataFromPressureTest,
-  getProbeInternalState,
-  updateProbeLiveState
-} from '../lib/voxide/probeVoxideBridge';
-
-// Investigation Platform imports
-import { 
-  InvestigationRecord, 
-  ValidationExperiment 
-} from '../types/investigation';
-import { 
-  getSavedInvestigations, 
-  groupInvestigationsByDate, 
-  getActiveInvestigationId, 
-  setActiveInvestigationId, 
-  createNewInvestigation, 
-  updateInvestigation, 
-  deleteInvestigation 
-} from '../lib/investigations/investigationManager';
-import { 
-  AuthUser, 
-  getCurrentUser, 
-  subscribeToAuthState, 
-  signOut,
-  handleAuthRedirectCallback 
-} from '../lib/auth/authService';
-import { InvestigationSidebar } from '../components/investigation/InvestigationSidebar';
-import { InvestigationConversation } from '../components/investigation/InvestigationConversation';
-import { InvestigationContextPanel } from '../components/investigation/InvestigationContextPanel';
-import { NewInvestigationModal } from '../components/investigation/NewInvestigationModal';
-import { EmptyWorkspaceView } from '../components/investigation/EmptyWorkspaceView';
-import { ResearchNodeType } from '../components/investigation/InteractiveResearchNodes';
-import { ShareInvestigationModal } from '../components/collaboration/ShareInvestigationModal';
-import { generateOpaqueShareId } from '../lib/collaboration/investigationStore';
+import { roomCodeFromIdea } from '../lib/collaboration/useInvestigationRoom';
+import { useVoice } from '../contexts/VoiceContext';
+import { VoiceControlButton } from '../components/voice/VoiceControlButton';
 
 export const WorkspacePage: React.FC = () => {
   const location = useLocation();
@@ -67,203 +30,118 @@ export const WorkspacePage: React.FC = () => {
 
   // Active section based on URL path
   const path = location.pathname.toLowerCase();
-  let activeTab: 'research' | 'testing' | 'evidence' | 'calendar' = 'research';
+  let activeTab: 'research' | 'testing' | 'evidence' = 'research';
   if (path.includes('/app/testing')) activeTab = 'testing';
   else if (path.includes('/app/evidence')) activeTab = 'evidence';
-  else if (path.includes('/app/calendar')) activeTab = 'calendar';
   else activeTab = 'research';
 
-  // User auth state with Supabase session restoration
-  const [user, setUser] = useState<AuthUser | null>(() => {
-    if (typeof window === 'undefined') return null;
+  // State
+  const [selectedSource, setSelectedSource] = useState<EvidenceSource | null>(null);
+  const [isTryModalOpen, setIsTryModalOpen] = useState<boolean>(false);
+  const [activeGraphData, setActiveGraphData] = useState<DynamicGraphData | null>(null);
+  const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
+  
+  // Idea initialized from localStorage or default
+  const [investigationIdea, setInvestigationIdea] = useState<string>(() => {
+    return localStorage.getItem('probe_active_idea') || 'I want to build a cooking app';
+  });
+
+  const [isEditingIdea, setIsEditingIdea] = useState(false);
+  const [tempIdea, setTempIdea] = useState(investigationIdea);
+
+  // User info
+  const [user, setUser] = useState<{ name: string; email: string } | null>(() => {
     const raw = localStorage.getItem('probe_auth_user');
-    return raw ? JSON.parse(raw) : null;
+    return raw ? JSON.parse(raw) : { name: 'Founder', email: 'founder@probe.dev' };
   });
 
-  // Saved investigations state scoped to authenticated user
-  const [investigations, setInvestigations] = useState<InvestigationRecord[]>(() => {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem('probe_auth_user') : null;
-    const parsedUser = raw ? JSON.parse(raw) : null;
-    return getSavedInvestigations(parsedUser?.id);
-  });
+  const { updateVoiceContext, registerExecutor } = useVoice();
 
-  const [activeInvId, setActiveInvId] = useState<string>(() => {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem('probe_auth_user') : null;
-    const parsedUser = raw ? JSON.parse(raw) : null;
-    return getActiveInvestigationId(parsedUser?.id);
-  });
-
-  const [isNewModalOpen, setIsNewModalOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
-  const [contextPanelCollapsed, setContextPanelCollapsed] = useState(true);
-  const [selectedResearchNodeType, setSelectedResearchNodeType] = useState<ResearchNodeType | null>(null);
-
-  // Sharing state
-  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
-  const [shareTargetInvestigation, setShareTargetInvestigation] = useState<InvestigationRecord | null>(null);
-
-  // Subscribe to auth state changes and restore session
+  // Keep Gemini Live aware of active workspace context
   useEffect(() => {
-    let isMounted = true;
-    
-    void (async () => {
-      await handleAuthRedirectCallback();
-      const currentUser = await getCurrentUser();
-      if (isMounted) {
-        if (currentUser) {
-          setUser(currentUser);
-          setInvestigations(getSavedInvestigations(currentUser.id));
-          setActiveInvId(getActiveInvestigationId(currentUser.id));
-        } else {
-          // Double-check local storage before redirecting to prevent loops
-          const cached = typeof window !== 'undefined' ? localStorage.getItem('probe_auth_user') : null;
-          if (!cached) {
-            navigate('/signin', { replace: true });
+    const topContradiction = activeGraphData?.sources?.find(
+      (s: any) => s.relationship === 'Challenges'
+    )?.excerpt;
+
+    updateVoiceContext({
+      currentIdea: investigationIdea,
+      activeTab,
+      assumptions: activeGraphData?.coreAssumption ? [activeGraphData.coreAssumption] : [],
+      strongestContradiction: topContradiction || null,
+      evidenceCount: activeGraphData?.sources?.length || 0,
+    });
+  }, [investigationIdea, activeTab, activeGraphData, updateVoiceContext]);
+
+  // Register workspace-specific voice executor
+  useEffect(() => {
+    return registerExecutor(async (name, args) => {
+      if (name === 'start_investigation') {
+        const cleanIdea = (args.idea || '').trim();
+        if (cleanIdea) {
+          setInvestigationIdea(cleanIdea);
+          localStorage.setItem('probe_active_idea', cleanIdea);
+          if (activeTab !== 'research') {
+            navigate('/app/research');
           }
+          window.dispatchEvent(new CustomEvent('probe_investigate_idea', { detail: { idea: cleanIdea } }));
+          return { status: 'investigation_started', idea: cleanIdea };
         }
       }
-    })();
 
-    const unsubscribe = subscribeToAuthState((updatedUser) => {
-      if (isMounted) {
-        setUser(updatedUser);
-        const list = getSavedInvestigations(updatedUser?.id);
-        setInvestigations(list);
-        setActiveInvId(getActiveInvestigationId(updatedUser?.id));
+      if (name === 'create_experiment') {
+        const topContradiction = activeGraphData?.sources?.find(
+          (s: any) => s.relationship === 'Challenges'
+        );
+        const testTitle =
+          args.title ||
+          `Validate: ${topContradiction?.excerpt?.slice(0, 50) || activeGraphData?.coreAssumption || 'critical unknown'}`;
+        const newTest = {
+          id: `test_${Date.now()}`,
+          title: testTitle,
+          hypothesis: args.hypothesis || 'Empirical validation test',
+          method: args.method || 'Smoke test / Founder interview',
+          status: 'planned' as const,
+          createdAt: Date.now()
+        };
+
+        const roomId = roomCodeFromIdea(investigationIdea);
+        try {
+          const raw = localStorage.getItem(`probe_room_state_${roomId}`);
+          const state = raw ? JSON.parse(raw) : { tests: [] };
+          state.tests = [newTest, ...(state.tests || [])];
+          localStorage.setItem(`probe_room_state_${roomId}`, JSON.stringify(state));
+        } catch (e) {
+          // ignore
+        }
+
+        // Navigate to Living Evidence Graph to display newly created experiment
+        navigate('/app/evidence');
+        return {
+          status: 'experiment_created',
+          test: newTest,
+          message: `Created validation experiment "${testTitle}" in the Living Evidence Graph.`
+        };
       }
+
+      return undefined;
     });
+  }, [investigationIdea, activeTab, activeGraphData, navigate, registerExecutor]);
 
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
-  }, []);
-
-  // Active investigation object (null if in new chat mode or no investigations exist)
-  const activeInvestigation = useMemo(() => {
-    if (!activeInvId || activeInvId === 'new') return null;
-    return investigations.find((inv) => inv.id === activeInvId) || null;
-  }, [investigations, activeInvId]);
-
-  // Grouped investigations for sidebar
-  const groupedInvestigations = useMemo(() => {
-    return groupInvestigationsByDate(investigations);
-  }, [investigations]);
-
-  // Active idea for bridge & graph
-  const investigationIdea = activeInvestigation?.query || activeInvestigation?.title || '';
-
-  // Modal detail for evidence sources
-  const [selectedSource, setSelectedSource] = useState<EvidenceSource | null>(null);
-  const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
-
-  // Dynamic Graph data for Evidence Graph view
-  const [activeGraphData, setActiveGraphData] = useState<DynamicGraphData | null>(() => {
-    if (activeInvestigation?.pressureTestResult) {
-      return buildGraphDataFromPressureTest(activeInvestigation.pressureTestResult);
-    }
-    return investigationIdea ? generateDynamicInvestigation(investigationIdea).graphData : null;
-  });
-
-  // Sync graph data when active investigation changes
-  useEffect(() => {
-    if (activeInvestigation) {
-      updateProbeLiveState({
-        currentInvestigationId: activeInvestigation.id,
-        currentIdea: activeInvestigation.query,
-        latestPressureTest: activeInvestigation.pressureTestResult || null
-      });
-
-      if (activeInvestigation.pressureTestResult) {
-        setActiveGraphData(buildGraphDataFromPressureTest(activeInvestigation.pressureTestResult));
-      } else {
-        setActiveGraphData(generateDynamicInvestigation(activeInvestigation.query).graphData);
-      }
-    }
-  }, [activeInvestigation?.id]);
-
-  // Listen for storage events across tabs or bridge
-  useEffect(() => {
-    const handleStorageUpdate = () => {
-      setInvestigations(getSavedInvestigations(user?.id));
-      setActiveInvId(getActiveInvestigationId(user?.id));
-    };
-
-    window.addEventListener('probe:investigations-updated', handleStorageUpdate);
-    window.addEventListener('probe:active-investigation-changed', handleStorageUpdate);
-    return () => {
-      window.removeEventListener('probe:investigations-updated', handleStorageUpdate);
-      window.removeEventListener('probe:active-investigation-changed', handleStorageUpdate);
-    };
-  }, [user?.id]);
-
-  const handleStartNewChat = () => {
-    setActiveInvId('new');
-    setActiveInvestigationId('new', user?.id);
-    setIsMobileDrawerOpen(false);
-  };
-
-  const handleSelectInvestigation = (id: string) => {
-    setActiveInvId(id);
-    setActiveInvestigationId(id, user?.id);
-    setIsMobileDrawerOpen(false);
-  };
-
-  const handleCreateNewInvestigation = async (params: {
-    query: string;
-    documentContext?: any;
-    documentFileName?: string;
-  }) => {
-    const newRecord = await createNewInvestigation({
-      ...params,
-      userId: user?.id,
-    });
-    const updatedList = getSavedInvestigations(user?.id);
-    setInvestigations(updatedList);
-    setActiveInvId(newRecord.id);
-    setActiveInvestigationId(newRecord.id, user?.id);
-    setIsMobileDrawerOpen(false);
-  };
-
-  const handleDeleteInvestigation = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    deleteInvestigation(id, user?.id);
-    const updatedList = getSavedInvestigations(user?.id);
-    setInvestigations(updatedList);
-    if (activeInvId === id) {
-      setActiveInvId(updatedList[0]?.id || '');
-    }
-  };
-
-  const handleUpdateInvestigation = (updated: InvestigationRecord) => {
-    updateInvestigation(updated, user?.id);
-    setInvestigations(getSavedInvestigations(user?.id));
-  };
-
-  const handleShareInvestigation = (id?: string) => {
-    const target = (id ? investigations.find((inv) => inv.id === id) : null) || activeInvestigation;
-    if (target) {
-      setShareTargetInvestigation(target);
-      setIsShareModalOpen(true);
-    }
-  };
-
-  const handleSelectResearchNode = (nodeType: ResearchNodeType) => {
-    setSelectedResearchNodeType(nodeType);
-    setContextPanelCollapsed(false);
-  };
-
-  const handleLaunchExperiment = (exp: ValidationExperiment) => {
-    // Navigate to testing workspace and prefill
-    navigate('/app/testing');
-  };
-
-  const handleSignOut = async () => {
-    await signOut();
+  const handleSignOut = () => {
+    localStorage.removeItem('probe_auth_user');
     navigate('/');
   };
 
+  const handleSaveIdea = () => {
+    const clean = tempIdea.trim();
+    if (clean) {
+      setInvestigationIdea(clean);
+      localStorage.setItem('probe_active_idea', clean);
+    }
+    setIsEditingIdea(false);
+  };
+
+  // Convert SearchResult or DynamicEvidenceSource to EvidenceSource for modal
   const handleOpenSourceDetail = (source: any) => {
     if (!source) return;
     const formatted: EvidenceSource = {
@@ -272,219 +150,233 @@ export const WorkspacePage: React.FC = () => {
       sourceLabel: source.title || source.sourceName || 'Evidence Source',
       author: typeof source.author === 'string' ? source.author : source.author?.name || 'Practitioner',
       timeAgo: source.publishedAt || source.date || 'Recent',
-      quote: source.excerpt || source.text || source.title || '',
+      quote: source.text || source.excerpt || source.title || '',
       url: source.url || 'https://reddit.com',
-      sentiment: source.relationship === 'Challenges' || source.stance === 'CHALLENGES' ? 'contradict' : 'support',
-      confidenceScore: source.confidence ? Math.round(source.confidence * 100) : 85,
+      sentiment: source.relationship === 'Challenges' ? 'contradict' : 'support',
+      confidenceScore: source.confidence || Math.round((source.relevanceScore || 0.85) * 100),
       metrics: {
-        upvotes: 42,
-        replies: 12,
+        upvotes: source.metadata?.score || 42,
+        replies: source.metadata?.commentCount || 12,
       }
     };
     setSelectedSource(formatted);
   };
 
+  // Sync empirical product testing evidence directly to Living Evidence Graph
+  const handleProductTestSync = (evidence: any) => {
+    if (!evidence) return;
+    const dynamicSource: any = {
+      id: evidence.id,
+      sourceType: 'reddit',
+      sourceName: evidence.sourceName || 'PROBE PRODUCT TEST',
+      sourceIdentifier: evidence.sourceIdentifier,
+      date: 'Live Playwright Run',
+      excerpt: evidence.excerpt,
+      relationship: evidence.relationship === 'Supports' ? 'Supports' : 'Challenges',
+      url: evidence.productUrl,
+      topic: 'empirical_usability_verification',
+      confidence: evidence.confidence
+    };
+
+    setActiveGraphData((prev) => {
+      const existing = prev ? prev.sources : [];
+      const updated = [dynamicSource, ...existing.filter((s: any) => s.id !== dynamicSource.id)];
+      return {
+        query: prev?.query || evidence.productUrl,
+        coreAssumption: prev?.coreAssumption || evidence.task,
+        productName: evidence.sourceName,
+        sources: updated,
+        summary: {
+          supportingCount: updated.filter((s: any) => s.relationship === 'Supports').length,
+          challengingCount: updated.filter((s: any) => s.relationship === 'Challenges').length,
+          total: updated.length
+        }
+      };
+    });
+  };
+
   const navItems = [
-    { id: 'research', label: 'Investigations', path: '/app/research', icon: Search },
+    { id: 'research', label: 'Research', path: '/app/research', icon: Search },
     { id: 'testing', label: 'Product Testing', path: '/app/testing', icon: Compass },
     { id: 'evidence', label: 'Evidence Graph', path: '/app/evidence', icon: Layers },
-    { id: 'calendar', label: 'Timeline', path: '/app/calendar', icon: Calendar },
   ];
 
   return (
-    <div className="h-screen bg-[#FAFAFA] text-[#0A0D14] flex flex-col font-['Inter',-apple-system,sans-serif] overflow-hidden select-none">
-      {/* Show navigation bar only for separate tool subsystems (Testing, Evidence Graph, Calendar) */}
-      {activeTab !== 'research' && (
-        <header className="flex-shrink-0 bg-white border-b border-[#E5E7EB] px-4 sm:px-6 h-12 flex items-center justify-between shadow-2xs z-30">
-          <div className="flex items-center gap-3">
-            <Link to="/app" className="flex items-center gap-2 group">
-              <div className="w-6 h-6 rounded-md bg-[#0A0D14] flex items-center justify-center text-white shadow-2xs p-1">
-                <ProbeLogo className="w-3.5 h-3.5" inverted />
-              </div>
-              <span className="font-extrabold tracking-tight text-xs text-[#0A0D14] font-['Geist',sans-serif]">
-                PROBE
-              </span>
-            </Link>
-            <span className="text-[#9CA3AF]">/</span>
-            <span className="text-xs font-semibold text-[#0A0D14] capitalize">
-              {activeTab === 'testing' ? 'Playwright Testing' : activeTab === 'evidence' ? 'Evidence Graph' : 'Timeline'}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => navigate('/app')}
-              className="text-xs font-semibold text-[#0A0D14] hover:bg-[#F3F4F6] px-3 py-1.5 rounded-lg border border-[#E5E7EB] transition-colors"
-            >
-              ← Back to Research Chat
-            </button>
-          </div>
-        </header>
-      )}
-
-      {/* MAIN VIEW AREA */}
-      <main className="flex-1 flex overflow-hidden">
-        {activeTab === 'research' ? (
-          <div className="flex-1 flex w-full h-full overflow-hidden relative">
-            {/* Mobile Backdrop for Sidebar Drawer */}
-            {isMobileDrawerOpen && (
-              <div 
-                className="fixed inset-0 bg-black/40 backdrop-blur-xs z-40 md:hidden animate-in fade-in duration-200"
-                onClick={() => setIsMobileDrawerOpen(false)}
-              />
-            )}
-
-            {/* 1. LEFT SIDEBAR: Slide-over drawer on mobile, collapsible sidebar on desktop */}
-            <div className={`
-              fixed inset-y-0 left-0 z-50 md:static md:z-auto transition-transform duration-300 ease-in-out h-full
-              ${isMobileDrawerOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-              ${sidebarCollapsed ? 'md:hidden' : 'md:flex'}
-            `}>
-              <InvestigationSidebar
-                grouped={groupedInvestigations}
-                activeId={activeInvestigation?.id || ''}
-                user={user}
-                onSelectInvestigation={handleSelectInvestigation}
-                onNewInvestigation={handleStartNewChat}
-                onDeleteInvestigation={handleDeleteInvestigation}
-                onShareInvestigation={(id) => handleShareInvestigation(id)}
-                onSignOut={handleSignOut}
-                onNavigateSection={(tab) => {
-                  setIsMobileDrawerOpen(false);
-                  navigate(`/app/${tab}`);
-                }}
-                onCloseMobile={() => setIsMobileDrawerOpen(false)}
-              />
+    <div className="min-h-screen bg-[#FAFAFA] text-[#0A0D14] flex flex-col font-['Geist','Inter',-apple-system,sans-serif]">
+      {/* PERSISTENT WORKSPACE TOP BAR */}
+      <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-[#E5E7EB] px-4 sm:px-6 h-16 flex items-center justify-between shadow-2xs">
+        {/* Brand + Workspace Badge */}
+        <div className="flex items-center gap-3">
+          <Link to="/app/research" className="flex items-center gap-2 group">
+            <div className="w-8 h-8 rounded-lg bg-[#0A0D14] flex items-center justify-center text-white shadow-xs group-hover:scale-105 transition-transform p-1">
+              <ProbeLogo className="w-5 h-5" inverted />
             </div>
+            <span className="font-extrabold tracking-tight text-base text-[#0A0D14] font-['Geist',sans-serif]">
+              PROBE
+            </span>
+          </Link>
+          <span className="hidden sm:inline-block px-2 py-0.5 rounded-md bg-[#F1F3F5] text-[10px] font-mono font-bold uppercase tracking-wider text-[#525866]">
+            Workspace
+          </span>
+        </div>
 
-            {/* 2. MAIN RESEARCH CONVERSATION (Full Available Width) OR Empty Workspace for New Chat */}
-            {activeInvestigation ? (
-              <InvestigationConversation
-                investigation={activeInvestigation}
-                onUpdateInvestigation={handleUpdateInvestigation}
-                onLaunchExperiment={handleLaunchExperiment}
-                onOpenTestingTab={() => navigate('/app/testing')}
-                onShareInvestigation={() => handleShareInvestigation(activeInvestigation.id)}
-                onSelectResearchNode={handleSelectResearchNode}
-                selectedResearchNode={selectedResearchNodeType}
-                onToggleSidebar={() => {
-                  if (typeof window !== 'undefined' && window.innerWidth < 768) {
-                    setIsMobileDrawerOpen(!isMobileDrawerOpen);
-                  } else {
-                    setSidebarCollapsed(!sidebarCollapsed);
-                  }
-                }}
-                isSidebarCollapsed={sidebarCollapsed}
-                onNewChat={handleStartNewChat}
-                onSelectSource={handleOpenSourceDetail}
-              />
+        {/* IN-APP SECTION NAVIGATION TABS */}
+        <nav className="flex items-center gap-1 bg-[#F1F3F5] p-1 rounded-full border border-[#E5E7EB] text-xs">
+          {navItems.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => navigate(tab.path)}
+                className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-full font-medium transition-all cursor-pointer ${
+                  isActive
+                    ? 'bg-white text-[#0A0D14] font-bold shadow-xs'
+                    : 'text-[#525866] hover:text-[#0A0D14] hover:bg-white/60'
+                }`}
+              >
+                <Icon size={13} className={isActive ? 'text-[#0F52BA]' : 'text-[#868C98]'} />
+                <span className="hidden md:inline">{tab.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* ACTIVE IDEA PILL, VOICE BUTTON & USER CONTROLS */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Gemini Live Voice Control Button */}
+          <VoiceControlButton size="md" />
+
+          {/* Active Idea Pill */}
+          <div className="hidden lg:flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-[#E5E7EB] text-xs shadow-2xs max-w-xs">
+            <Sparkles size={12} className="text-[#0F52BA] flex-shrink-0" />
+            {isEditingIdea ? (
+              <div className="flex items-center gap-1">
+                <input
+                  type="text"
+                  value={tempIdea}
+                  onChange={(e) => setTempIdea(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSaveIdea()}
+                  autoFocus
+                  className="w-36 text-xs text-[#0A0D14] focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveIdea}
+                  className="text-[#10B981] hover:text-[#059669] p-0.5"
+                >
+                  <Check size={12} />
+                </button>
+              </div>
             ) : (
-              <EmptyWorkspaceView
-                userName={user?.name || user?.email?.split('@')[0]}
-                onCreateInvestigation={async (params) => {
-                  await handleCreateNewInvestigation(params);
-                }}
-                onToggleSidebar={() => {
-                  if (typeof window !== 'undefined' && window.innerWidth < 768) {
-                    setIsMobileDrawerOpen(!isMobileDrawerOpen);
-                  } else {
-                    setSidebarCollapsed(!sidebarCollapsed);
-                  }
-                }}
-                isSidebarCollapsed={sidebarCollapsed}
-              />
+              <div className="flex items-center gap-1 truncate">
+                <span className="text-[#868C98] font-mono text-[10px] uppercase">Idea:</span>
+                <span className="truncate max-w-[140px] text-[#0A0D14] font-medium" title={investigationIdea}>
+                  "{investigationIdea}"
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTempIdea(investigationIdea);
+                    setIsEditingIdea(true);
+                  }}
+                  className="text-[#868C98] hover:text-[#0A0D14] p-0.5 transition-colors"
+                  title="Change active idea"
+                >
+                  <Edit3 size={11} />
+                </button>
+              </div>
             )}
           </div>
-        ) : activeTab === 'testing' ? (
-          <div className="flex-1 overflow-y-auto">
-            <div className="pt-4 px-6 max-w-6xl mx-auto flex items-center justify-between text-xs text-[#64748B] font-mono border-b border-[#F1F3F5] pb-3 mb-4">
+
+          {/* User Badge */}
+          <div className="hidden sm:flex items-center gap-1.5 text-xs text-[#525866] font-medium">
+            <div className="w-6 h-6 rounded-full bg-[#E5E7EB] flex items-center justify-center text-[#525866]">
+              <User size={12} />
+            </div>
+            <span className="max-w-[100px] truncate">{user?.name || 'Founder'}</span>
+          </div>
+
+          {/* Sign Out Button */}
+          <button
+            type="button"
+            onClick={handleSignOut}
+            title="Sign out to landing page"
+            className="p-2 rounded-xl text-[#868C98] hover:text-[#EF4444] hover:bg-[#FEE2E2]/40 transition-colors cursor-pointer"
+            aria-label="Sign out"
+          >
+            <LogOut size={16} />
+          </button>
+        </div>
+      </header>
+
+      {/* ACTIVE WORKSPACE VIEW */}
+      <main className="flex-1 pb-16">
+        {activeTab === 'research' && (
+          <div>
+            <div className="pt-6 px-4 max-w-6xl mx-auto flex items-center justify-between text-xs text-[#64748B] font-mono border-b border-[#F1F3F5] pb-3 mb-6">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse" />
+                <span>RESEARCH WORKSPACE ACTIVE</span>
+              </div>
+              <span className="text-[#868C98]">Querying Reddit, ScholarXIV, X & LinkedIn</span>
+            </div>
+            <PressureTestWorkspace
+              externalIdea={investigationIdea}
+              onOpenSourceModal={(item) => handleOpenSourceDetail(item)}
+              onPressureTestUpdated={(data) => setActiveGraphData(data)}
+              onFocusProductTest={() => navigate('/app/testing')}
+            />
+          </div>
+        )}
+
+        {activeTab === 'testing' && (
+          <div>
+            <div className="pt-6 px-4 max-w-6xl mx-auto flex items-center justify-between text-xs text-[#64748B] font-mono border-b border-[#F1F3F5] pb-3 mb-6">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-[#3B82F6]" />
-                <span className="font-semibold text-[#0A0D14]">AUTONOMOUS PLAYWRIGHT TESTING ENVIRONMENT</span>
+                <span>LIVE PRODUCT TESTING SUBSYSTEM</span>
               </div>
-              <button
-                type="button"
-                onClick={() => navigate('/app/research')}
-                className="text-[#2563EB] hover:underline"
-              >
-                ← Back to Investigation
-              </button>
+              <span className="text-[#868C98]">Autonomous Browser Agent Environment</span>
             </div>
-            <TestingWorkspace onSyncToGraph={(ev) => handleOpenSourceDetail(ev)} />
+            <TestingWorkspace onSyncToGraph={handleProductTestSync} />
           </div>
-        ) : activeTab === 'evidence' ? (
-          <div className="flex-1 overflow-y-auto">
-            <div className="pt-4 px-6 max-w-6xl mx-auto flex items-center justify-between text-xs text-[#64748B] font-mono border-b border-[#F1F3F5] pb-3 mb-4">
+        )}
+
+        {activeTab === 'evidence' && (
+          <div>
+            <div className="pt-6 px-4 max-w-6xl mx-auto flex items-center justify-between text-xs text-[#64748B] font-mono border-b border-[#F1F3F5] pb-3 mb-6">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-[#8B5CF6]" />
-                <span className="font-semibold text-[#0A0D14]">LIVING EVIDENCE TOPOLOGY & STANCE GRAPH</span>
+                <span>LIVING EVIDENCE GRAPH</span>
               </div>
-              <button
-                type="button"
-                onClick={() => navigate('/app/research')}
-                className="text-[#2563EB] hover:underline"
-              >
-                ← Back to Investigation
-              </button>
+              <span className="text-[#868C98]">Topology & Stance Clustering</span>
             </div>
             <EvidenceGraph
               onSelectSource={(source) => handleOpenSourceDetail(source)}
               externalGraphData={activeGraphData}
+              roomId={roomCodeFromIdea(investigationIdea)}
               focusNodeId={focusNodeId}
-              onNavigateToCalendar={() => navigate('/app/calendar')}
-            />
-          </div>
-        ) : (
-          <div className="flex-1 overflow-y-auto">
-            <div className="pt-4 px-6 max-w-6xl mx-auto flex items-center justify-between text-xs text-[#64748B] font-mono border-b border-[#F1F3F5] pb-3 mb-4">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-[#10B981]" />
-                <span className="font-semibold text-[#0A0D14]">VALIDATION CALENDAR & SIGNAL TIMELINE</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => navigate('/app/research')}
-                className="text-[#2563EB] hover:underline"
-              >
-                ← Back to Investigation
-              </button>
-            </div>
-            <EvidenceTimeline
-              ideaQuery={investigationIdea}
-              onNavigateToGraphNode={(nodeId) => {
-                setFocusNodeId(nodeId);
-                navigate('/app/evidence');
-              }}
             />
           </div>
         )}
       </main>
 
       {/* MODALS */}
-      <NewInvestigationModal
-        isOpen={isNewModalOpen}
-        onClose={() => setIsNewModalOpen(false)}
-        onSubmit={handleCreateNewInvestigation}
-      />
-
-      {shareTargetInvestigation && (
-        <ShareInvestigationModal
-          isOpen={isShareModalOpen}
-          onClose={() => {
-            setIsShareModalOpen(false);
-            setShareTargetInvestigation(null);
-          }}
-          roomId={shareTargetInvestigation.id}
-          shareId={generateOpaqueShareId(shareTargetInvestigation.query)}
-          query={shareTargetInvestigation.query || shareTargetInvestigation.title}
-          collaborators={[]}
-        />
-      )}
-
       <EvidenceModal
         source={selectedSource}
         onClose={() => setSelectedSource(null)}
+      />
+
+      <TryModal
+        isOpen={isTryModalOpen}
+        onClose={() => setIsTryModalOpen(false)}
+        onSelectPrompt={(prompt) => {
+          setInvestigationIdea(prompt);
+          localStorage.setItem('probe_active_idea', prompt);
+          navigate('/app/research');
+        }}
       />
     </div>
   );

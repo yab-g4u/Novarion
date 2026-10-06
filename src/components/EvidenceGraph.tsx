@@ -44,11 +44,7 @@ import { useInvestigationRoom } from '../lib/collaboration/useInvestigationRoom'
 import { ShareInvestigationModal } from './collaboration/ShareInvestigationModal';
 import { NodeDetailDrawer, SelectedNodeContext } from './collaboration/NodeDetailDrawer';
 import { ValidationTest, NodeDecision } from '../types/collaboration';
-import {
-  updateProbeLiveState,
-  getProbeInternalState,
-  findMatchingAssumption,
-} from '../lib/voxide/probeVoxideBridge';
+import { VoiceControlButton } from './voice/VoiceControlButton';
 
 interface EvidenceGraphProps {
   onSelectSource?: (source: any) => void;
@@ -139,7 +135,6 @@ const SourceItemNodeComponent: React.FC<NodeProps> = ({ data }) => {
   const isSupport = source.relationship === 'Supports';
   const isChallenges = source.relationship === 'Challenges';
   const isUnknown = source.relationship === 'Unknown' || (source as any).relationship === 'unknown';
-  const isAcademic = source.sourceType === 'scholarxiv';
 
   return (
     <div
@@ -147,12 +142,6 @@ const SourceItemNodeComponent: React.FC<NodeProps> = ({ data }) => {
       className={`bg-white border rounded-2xl p-3.5 shadow-2xs hover:shadow-md transition-all cursor-pointer w-64 text-left group select-none relative ${
         isChallenged
           ? 'border-[#FDA4AF] ring-2 ring-[#FFE4E6]'
-          : isAcademic
-          ? isSupport
-            ? 'border-[#818CF8] bg-[#F5F3FF]/60 hover:border-[#6366F1] ring-1 ring-[#EEF2FF]'
-            : isChallenges
-            ? 'border-[#FDA4AF] bg-[#FFF1F2]/60 hover:border-[#E11D48] ring-1 ring-[#FFE4E6]'
-            : 'border-[#C7D2FE] bg-[#EEF2FF]/40 hover:border-[#818CF8]'
           : isSupport
           ? 'border-[#E2E8F0] hover:border-[#10B981]'
           : isChallenges
@@ -166,17 +155,7 @@ const SourceItemNodeComponent: React.FC<NodeProps> = ({ data }) => {
         type="target"
         position={isSupport ? Position.Right : isChallenges ? Position.Left : Position.Top}
         className={`!w-2 !h-2 !border-2 !border-white ${
-          isAcademic
-            ? isSupport
-              ? '!bg-[#6366F1]'
-              : '!bg-[#E11D48]'
-            : isSupport
-            ? '!bg-[#10B981]'
-            : isChallenges
-            ? '!bg-[#F43F5E]'
-            : isUnknown
-            ? '!bg-[#F59E0B]'
-            : '!bg-[#94A3B8]'
+          isSupport ? '!bg-[#10B981]' : isChallenges ? '!bg-[#F43F5E]' : isUnknown ? '!bg-[#F59E0B]' : '!bg-[#94A3B8]'
         }`}
       />
 
@@ -185,7 +164,7 @@ const SourceItemNodeComponent: React.FC<NodeProps> = ({ data }) => {
         <div className="flex items-center gap-1.5 min-w-0">
           <SourceIconSelector type={source.sourceType as any} size={16} />
           <span className="text-[11px] font-bold text-[#0A0D14] truncate max-w-[110px]">
-            {(source.sourceIdentifier || source.sourceName || (isAcademic ? 'ScholarXIV Paper' : 'Evidence')).split('·')[0]}
+            {source.sourceIdentifier.split('·')[0]}
           </span>
         </div>
         
@@ -198,13 +177,7 @@ const SourceItemNodeComponent: React.FC<NodeProps> = ({ data }) => {
           )}
 
           <span className={`text-[9px] font-mono px-2 py-0.5 rounded-full font-semibold ${
-            isAcademic
-              ? isSupport
-                ? 'bg-[#EEF2FF] text-[#4338CA] border border-[#C7D2FE]'
-                : isChallenges
-                ? 'bg-[#FFF1F2] text-[#BE123C] border border-[#FECDD3]'
-                : 'bg-[#F5F3FF] text-[#6D28D9] border border-[#DDD6FE]'
-              : isSupport
+            isSupport
               ? 'bg-[#ECFDF5] text-[#059669]'
               : isChallenges
               ? 'bg-[#FFF1F2] text-[#E11D48]'
@@ -212,19 +185,7 @@ const SourceItemNodeComponent: React.FC<NodeProps> = ({ data }) => {
               ? 'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]'
               : 'bg-[#F1F3F5] text-[#525866]'
           }`}>
-            {isAcademic
-              ? isSupport
-                ? '↑ Academic Supports'
-                : isChallenges
-                ? '↓ Academic Challenges'
-                : 'Academic Context'
-              : isSupport
-              ? '↑ Supports'
-              : isChallenges
-              ? '↓ Challenges'
-              : isUnknown
-              ? '? Blind Spot'
-              : 'Signal'}
+            {isSupport ? '↑ Supports' : isChallenges ? '↓ Challenges' : isUnknown ? '? Blind Spot' : 'Signal'}
           </span>
         </div>
       </div>
@@ -295,7 +256,7 @@ const TestItemNodeComponent: React.FC<NodeProps> = ({ data }) => {
       </p>
 
       <div className="mt-2.5 pt-2 border-t border-black/5 flex items-center justify-between text-[9px] font-mono text-[#525866]">
-        <span>{(test.methodLabel || 'Validation').split(' ')[0]} Test</span>
+        <span>{test.methodLabel.split(' ')[0]} Test</span>
         <span className="text-[#4F46E5] font-semibold">{test.scheduledDate}</span>
       </div>
     </div>
@@ -324,18 +285,7 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
   onTestCreated,
   focusNodeId
 }) => {
-  const [filterRelationship, setFilterRelationship] = useState<'all' | 'Supports' | 'Challenges' | 'Tests' | 'Decisions'>(() => {
-    const initialFilter = getProbeInternalState().evidenceGraphFilter;
-    if (
-      initialFilter === 'Supports' ||
-      initialFilter === 'Challenges' ||
-      initialFilter === 'Tests' ||
-      initialFilter === 'Decisions'
-    ) {
-      return initialFilter;
-    }
-    return 'all';
-  });
+  const [filterRelationship, setFilterRelationship] = useState<'all' | 'Supports' | 'Challenges' | 'Tests' | 'Decisions'>('all');
   const [isLayoutCalculating, setIsLayoutCalculating] = useState<boolean>(false);
   const [activeToast, setActiveToast] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
@@ -345,8 +295,6 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
   // Realtime collaborative room hook
   const {
     roomId,
-    shareId,
-    investigation,
     shareableUrl,
     currentUser,
     collaborators,
@@ -360,40 +308,11 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
     recordDecision,
     createNextTest,
     updateTestStatus,
-    persistWorkspaceNow,
-  } = useInvestigationRoom(
-    propRoomId,
-    externalGraphData?.query,
-    externalGraphData?.coreAssumption,
-    externalGraphData
-  );
+  } = useInvestigationRoom(propRoomId, externalGraphData?.query, externalGraphData?.coreAssumption);
 
   // Modals state
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [selectedNodeContext, setSelectedNodeContext] = useState<SelectedNodeContext | null>(null);
-
-  useEffect(() => {
-    updateProbeLiveState({
-      selectedNode: selectedNodeContext?.id || getProbeInternalState().selectedNode || null,
-      evidenceGraphFilter: filterRelationship,
-    });
-  }, [selectedNodeContext, filterRelationship]);
-
-  useEffect(() => {
-    const onVoxideOpenGraph = (e: Event) => {
-      const detail = (e as CustomEvent)?.detail;
-      if (detail?.filter) {
-        const f = String(detail.filter);
-        if (f === 'Supports' || f === 'SUPPORTS') setFilterRelationship('Supports');
-        else if (f === 'Challenges' || f === 'CHALLENGES') setFilterRelationship('Challenges');
-        else if (f === 'Tests') setFilterRelationship('Tests');
-        else if (f === 'Decisions') setFilterRelationship('Decisions');
-        else setFilterRelationship('all');
-      }
-    };
-    window.addEventListener('probe:voxide-open-graph', onVoxideOpenGraph);
-    return () => window.removeEventListener('probe:voxide-open-graph', onVoxideOpenGraph);
-  }, []);
 
   const toggleFullscreen = useCallback(() => {
     setIsFullscreen((prev) => {
@@ -431,19 +350,50 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
     };
   }, [isFullscreen]);
 
-  const handleCopyShareLink = useCallback(() => {
-    void persistWorkspaceNow();
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      void navigator.clipboard.writeText(shareableUrl);
-    }
-    setCopiedRoomCode(true);
-    setTimeout(() => setCopiedRoomCode(false), 2000);
-  }, [shareableUrl, persistWorkspaceNow]);
-
   const showToast = useCallback((msg: string) => {
     setActiveToast(msg);
     setTimeout(() => setActiveToast(null), 3000);
   }, []);
+
+  // Listen for voice-driven actions (experiment creation, share modal)
+  useEffect(() => {
+    const handleVoiceExperiment = (e: any) => {
+      const { title, hypothesis, method } = e?.detail || {};
+      if (title) {
+        createNextTest({
+          originatingNodeId: 'central-node',
+          originatingNodeLabel: 'Core Hypothesis',
+          question: title,
+          method: 'user_interviews',
+          methodLabel: method || 'Validation Test',
+          target: 'Target Users',
+          successSignal: hypothesis || 'Empirical signal',
+          scheduledDate: 'Upcoming',
+          day: 18,
+          monthIndex: 8
+        });
+        showToast(`Voice: Created experiment "${title}"`);
+      }
+    };
+
+    const handleVoiceShare = () => {
+      setIsShareModalOpen(true);
+    };
+
+    window.addEventListener('probe_create_experiment', handleVoiceExperiment);
+    window.addEventListener('probe_open_share_modal', handleVoiceShare);
+
+    return () => {
+      window.removeEventListener('probe_create_experiment', handleVoiceExperiment);
+      window.removeEventListener('probe_open_share_modal', handleVoiceShare);
+    };
+  }, [createNextTest, showToast]);
+
+  const handleCopyShareLink = useCallback(() => {
+    navigator.clipboard.writeText(shareableUrl);
+    setCopiedRoomCode(true);
+    setTimeout(() => setCopiedRoomCode(false), 2000);
+  }, [shareableUrl]);
 
   const isLive = Boolean(externalGraphData && externalGraphData.sources.length > 0);
   const activeProfile = REAL_PRODUCT_PROFILES['linear'];
@@ -572,60 +522,21 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
     });
   }, []);
 
-  // Handle focusNodeId navigation from calendar or Voxide voice commands
+  // Handle focusNodeId navigation from calendar
   useEffect(() => {
     if (!focusNodeId) return;
-    if (focusNodeId === 'center' || focusNodeId === 'central-idea') {
+    if (focusNodeId === 'center') {
       handleSelectCentralNode();
-      return;
-    }
-    const foundSource = filteredSources.find((s) => s.id === focusNodeId);
-    if (foundSource) {
-      handleSelectSourceNode(foundSource);
-      return;
-    }
-    const foundTest = tests.find((t) => t.id === focusNodeId);
-    if (foundTest) {
-      handleSelectTestNode(foundTest);
-      return;
-    }
-    const analyses = getProbeInternalState().latestPressureTest?.analysis || [];
-    const matchedAssumption = findMatchingAssumption(analyses, focusNodeId);
-    if (matchedAssumption) {
-      const supporting = filteredSources
-        .filter((s) => s.relationship === 'Supports')
-        .map((s) => ({
-          id: s.id,
-          source: s.sourceIdentifier,
-          excerpt: s.excerpt,
-          date: s.date,
-          url: s.url,
-        }));
-      const contradicting = filteredSources
-        .filter((s) => s.relationship === 'Challenges')
-        .map((s) => ({
-          id: s.id,
-          source: s.sourceIdentifier,
-          excerpt: s.excerpt,
-          date: s.date,
-          url: s.url,
-        }));
-      setSelectedNodeContext({
-        id: matchedAssumption.assumption.id,
-        type: 'centralNode',
-        category: 'ASSUMPTION',
-        title: `${matchedAssumption.assumption.id}: ${matchedAssumption.assumption.text}`,
-        subtitle: `${matchedAssumption.assumption.category.replace(/_/g, ' ').toUpperCase()} · ${matchedAssumption.status}`,
-        excerpt:
-          matchedAssumption.contradiction ||
-          matchedAssumption.assumption.text,
-        confidence: 85,
-        whyItMatters:
-          matchedAssumption.contradiction ||
-          'Critical product assumption under empirical pressure testing.',
-        supportingEvidence: supporting,
-        contradictingEvidence: contradicting,
-      });
+    } else {
+      const foundSource = filteredSources.find((s) => s.id === focusNodeId);
+      if (foundSource) {
+        handleSelectSourceNode(foundSource);
+      } else {
+        const foundTest = tests.find((t) => t.id === focusNodeId);
+        if (foundTest) {
+          handleSelectTestNode(foundTest);
+        }
+      }
     }
   }, [focusNodeId, filteredSources, tests, handleSelectCentralNode, handleSelectSourceNode, handleSelectTestNode]);
 
@@ -659,9 +570,6 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
     const rawEdges: Edge[] = [];
 
     // 1. Evidence source nodes
-    let supIdx = 0;
-    let chalIdx = 0;
-    let unkIdx = 0;
     if (filterRelationship !== 'Tests') {
       filteredSources.forEach((src) => {
         const isSupport = src.relationship === 'Supports';
@@ -670,21 +578,10 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
         const nodeComments = comments[src.id] || [];
         const nodeChallenge = challenges[src.id];
 
-        let fallbackPos = { x: 380, y: 360 + unkIdx * 130 };
-        if (isSupport) {
-          fallbackPos = { x: 40, y: 60 + supIdx * 135 };
-          supIdx++;
-        } else if (isChallenges) {
-          fallbackPos = { x: 740, y: 60 + chalIdx * 135 };
-          chalIdx++;
-        } else {
-          unkIdx++;
-        }
-
         rawNodes.push({
           id: src.id,
           type: 'sourceNode',
-          position: fallbackPos,
+          position: { x: 0, y: 0 },
           data: { 
             source: src, 
             commentsCount: nodeComments.length,
@@ -713,11 +610,11 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
 
     // 2. Real-World Validation Test nodes
     if (filterRelationship === 'all' || filterRelationship === 'Tests') {
-      tests.forEach((test, tIdx) => {
+      tests.forEach((test) => {
         rawNodes.push({
           id: test.id,
           type: 'testNode',
-          position: { x: 240 + tIdx * 280, y: 420 },
+          position: { x: 0, y: 0 },
           data: {
             test,
             onSelect: () => handleSelectTestNode(test),
@@ -762,10 +659,6 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
       })),
     };
 
-    // Set deterministic fallback positions immediately so graph is never empty while ELK calculates
-    setNodes(rawNodes);
-    setEdges(rawEdges);
-
     try {
       const layoutResult = await elk.layout(elkGraph);
 
@@ -774,8 +667,8 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
         return {
           ...node,
           position: {
-            x: layoutNode?.x ?? node.position.x,
-            y: layoutNode?.y ?? node.position.y,
+            x: layoutNode?.x || (node.id === 'center' ? 380 : 60),
+            y: layoutNode?.y || 100,
           },
         };
       });
@@ -848,10 +741,7 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
 
           <button
             type="button"
-            onClick={() => {
-              void persistWorkspaceNow();
-              setIsShareModalOpen(true);
-            }}
+            onClick={() => setIsShareModalOpen(true)}
             className="px-4 py-2 rounded-xl bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-transform active:scale-95 cursor-pointer"
           >
             <Share2 size={13} />
@@ -959,6 +849,7 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
             >
               <Maximize2 size={13} />
             </button>
+            <VoiceControlButton size="sm" />
           </div>
         </div>
       </div>
@@ -1214,10 +1105,8 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}
         roomId={roomId}
-        shareId={shareId}
-        query={externalGraphData?.query || investigation?.query || currentLabel}
+        query={externalGraphData?.query}
         collaborators={collaborators}
-        onPersistShare={persistWorkspaceNow}
       />
 
       {/* NODE CONTEXTUAL DETAIL DRAWER */}
