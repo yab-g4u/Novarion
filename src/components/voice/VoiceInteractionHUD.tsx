@@ -12,6 +12,7 @@ import {
   ChevronDown,
   AlertCircle
 } from 'lucide-react';
+import { BotAvatar } from 'bot-avatars';
 import { useVoice } from '../../contexts/VoiceContext';
 
 export const VoiceInteractionHUD: React.FC = () => {
@@ -37,6 +38,8 @@ export const VoiceInteractionHUD: React.FC = () => {
   if (!isConnected && !errorMessage) {
     return null;
   }
+
+  const isBusy = voiceState === 'listening' || voiceState === 'thinking' || voiceState === 'executing' || voiceState === 'speaking';
 
   const handleSendText = (e: React.FormEvent) => {
     e.preventDefault();
@@ -120,6 +123,13 @@ export const VoiceInteractionHUD: React.FC = () => {
           {/* TOP BAR: BADGE, MODEL TAG, CONTROLS */}
           <div className="flex items-center justify-between pb-2.5 border-b border-[#F1F3F5]">
             <div className="flex items-center gap-2">
+              <BotAvatar
+                type="clover"
+                size={22}
+                state={isBusy ? 'working' : 'default'}
+                face={voiceState === 'speaking' ? 'mouth' : 'eyes'}
+                shading="fabric"
+              />
               {getStatusBadge()}
               <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#868C98]">
                 Gemini 3.8 Live
@@ -209,9 +219,15 @@ export const VoiceInteractionHUD: React.FC = () => {
               {/* LIVE AGENT SPOKEN RESPONSE TRANSCRIPT */}
               {agentTranscript && (
                 <div className="flex items-start gap-2 text-xs">
-                  <span className="text-[10px] font-mono uppercase font-bold text-[#0F52BA] mt-0.5 shrink-0">
-                    Probe:
-                  </span>
+                  <div className="shrink-0 flex items-center gap-1 text-[10px] font-mono uppercase font-bold text-[#0F52BA] mt-0.5">
+                    <BotAvatar
+                      type="clover"
+                      size={16}
+                      state={voiceState === 'speaking' ? 'working' : 'default'}
+                      face={voiceState === 'speaking' ? 'mouth' : 'eyes'}
+                    />
+                    <span>Probe:</span>
+                  </div>
                   <p className="text-[#0A0D14] font-medium leading-relaxed bg-[#EFF6FF]/60 p-2 rounded-xl border border-[#DBEAFE] flex-1">
                     {agentTranscript}
                   </p>

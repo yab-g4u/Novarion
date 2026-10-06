@@ -11,6 +11,7 @@ import {
   ChevronDown,
   AlertCircle
 } from 'lucide-react';
+import { BotAvatar } from 'bot-avatars';
 import { useVoice } from '../../contexts/VoiceContext';
 
 export const FloatingVoicePill: React.FC = () => {
@@ -65,6 +66,7 @@ export const FloatingVoicePill: React.FC = () => {
   const isSpeaking = voiceState === 'speaking';
   const isThinking = voiceState === 'thinking';
   const isListening = voiceState === 'listening';
+  const isBusy = isConnected && (isExecuting || isSpeaking || isThinking || isListening);
 
   const formatActionName = (name: string | null) => {
     if (!name) return '';
@@ -102,6 +104,13 @@ export const FloatingVoicePill: React.FC = () => {
           {/* Card Header */}
           <div className="flex items-center justify-between pb-2.5 border-b border-[#F1F3F5]">
             <div className="flex items-center gap-2">
+              <BotAvatar
+                type="clover"
+                size={22}
+                state={isBusy ? 'working' : 'default'}
+                face={isSpeaking ? 'mouth' : 'eyes'}
+                shading="fabric"
+              />
               <span
                 className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
                   isSpeaking
@@ -208,7 +217,10 @@ export const FloatingVoicePill: React.FC = () => {
           {/* Live Agent Spoken Response */}
           {agentTranscript && (
             <div className="mt-2 flex items-start gap-2 text-xs">
-              <span className="text-[10px] font-mono font-bold uppercase text-[#0091FF] mt-0.5 shrink-0">Probe:</span>
+              <div className="shrink-0 flex items-center gap-1 text-[10px] font-mono font-bold uppercase text-[#0091FF] mt-0.5">
+                <BotAvatar type="clover" size={16} state={isSpeaking ? 'working' : 'default'} face={isSpeaking ? 'mouth' : 'eyes'} />
+                <span>Probe:</span>
+              </div>
               <p className="text-[#0A0D14] font-medium leading-relaxed bg-[#EFF6FF]/60 p-2 rounded-xl border border-[#DBEAFE] flex-1">
                 {agentTranscript}
               </p>
@@ -222,7 +234,7 @@ export const FloatingVoicePill: React.FC = () => {
         </div>
       )}
 
-      {/* 3. THE FLOATING PILL (EXACT CLONE OF USER'S ATTACHED IMAGE) */}
+      {/* 3. THE FLOATING PILL (EXACT CLONE WITH BOT AVATAR) */}
       <div className="relative group">
         <button
           type="button"
@@ -230,31 +242,32 @@ export const FloatingVoicePill: React.FC = () => {
           title={
             isConnected
               ? `Probe Voice Active (${voiceState.toUpperCase()}) — Click to toggle details or stop`
-              : 'Click to operate entire Probe app with voice'
+              : 'Click bot avatar to operate Probe with voice'
           }
           aria-label="Probe Voice Control"
-          className={`flex items-center gap-3.5 px-6 py-3 rounded-full transition-all duration-300 cursor-pointer select-none active:scale-95 ${
+          className={`flex items-center gap-3 px-5 py-2.5 rounded-full transition-all duration-300 cursor-pointer select-none active:scale-95 ${
             isConnected
               ? 'bg-[#0096FF] text-white shadow-[0_8px_30px_rgba(0,150,255,0.45),0_2px_8px_rgba(0,0,0,0.12)] ring-2 ring-white/40'
               : 'bg-[#0096FF] hover:bg-[#0088F0] text-white shadow-[0_8px_24px_rgba(0,150,255,0.38),0_2px_6px_rgba(0,0,0,0.1)] hover:shadow-[0_10px_28px_rgba(0,150,255,0.5)]'
           }`}
         >
-          {/* Microphone Icon on Left */}
-          <div className="shrink-0 flex items-center justify-center">
-            {isMuted ? (
-              <MicOff className="w-5 h-5 text-white/80" />
-            ) : isExecuting ? (
-              <Sparkles className="w-5 h-5 text-white animate-spin" />
-            ) : isThinking ? (
-              <Loader2 className="w-5 h-5 text-white animate-spin" />
-            ) : isSpeaking ? (
-              <Volume2 className="w-5 h-5 text-white animate-bounce" />
-            ) : (
-              <Mic className="w-5 h-5 text-white stroke-[2.2]" />
+          {/* Bot Avatar from Libraries.dev on Left */}
+          <div className="shrink-0 flex items-center justify-center relative">
+            <BotAvatar
+              type="clover"
+              size={30}
+              state={isBusy ? 'working' : isConnected ? 'default' : 'sleeping'}
+              face={isSpeaking ? 'mouth' : 'eyes'}
+              shading="fabric"
+            />
+            {isMuted && (
+              <span className="absolute -bottom-1 -right-1 bg-[#EF4444] text-white p-0.5 rounded-full ring-1 ring-white">
+                <MicOff size={10} />
+              </span>
             )}
           </div>
 
-          {/* Sequence of White Square Dots (Matches Attached Image: ▪ ▪ ▪ ▪ ▪ ▪) */}
+          {/* Sequence of White Square Dots (▪ ▪ ▪ ▪ ▪ ▪) */}
           <div className="flex items-center gap-1.5 shrink-0">
             {[0, 1, 2, 3, 4, 5].map((index) => {
               // Calculate dynamic height / scale when active
