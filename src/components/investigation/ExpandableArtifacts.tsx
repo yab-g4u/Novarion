@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { ResearchArtifact, AcademicResearchData, ValidationExperiment, ResearchContradiction } from '../../types/investigation';
 import { Assumption, EvidenceItem } from '../../lib/research/types';
+import { ScholarXivLogo } from '../ScholarXivLogo';
 
 interface ExpandableArtifactProps {
   artifact: ResearchArtifact;
@@ -195,9 +196,9 @@ export const ExpandableArtifact: React.FC<ExpandableArtifactProps> = ({
                         <button
                           type="button"
                           onClick={() => onResearchAssumptionScholarXiv(item.id, item.text)}
-                          className="flex items-center gap-1 text-[11px] font-medium text-[#2563EB] hover:text-[#1D4ED8] hover:underline cursor-pointer"
+                          className="flex items-center gap-1.5 text-[11px] font-medium text-[#2563EB] hover:text-[#1D4ED8] hover:underline cursor-pointer"
                         >
-                          <GraduationCap size={12} />
+                          <ScholarXivLogo className="w-3 h-3" />
                           <span>ScholarXIV</span>
                         </button>
                       )}
@@ -294,67 +295,103 @@ export const ExpandableArtifact: React.FC<ExpandableArtifactProps> = ({
           {/* 4. SCHOLARXIV ACADEMIC RESEARCH */}
           {artifact.type === 'scholarxiv_academic' && (
             <div>
-              {artifact.data?.conclusion && (
-                <div className="mb-3 p-3 rounded-lg bg-[#EFF6FF] border border-[#BFDBFE] text-xs text-[#1E40AF] leading-relaxed">
-                  <div className="flex items-center gap-1.5 font-bold uppercase font-mono text-[10px] text-[#2563EB] mb-1">
-                    <GraduationCap size={13} />
-                    <span>Peer-Reviewed Academic Synthesis</span>
-                  </div>
-                  {artifact.data.conclusion}
-                </div>
-              )}
+              <div className="mb-2 flex items-center justify-between text-[11px] font-mono text-[#4B5563]">
+                <span className="font-semibold text-[#0A0D14]">Academic Evidence</span>
+                <span className="text-[#4338CA] font-bold flex items-center gap-1.5">
+                  <ScholarXivLogo className="w-3.5 h-3.5" />
+                  <span>Powered by ScholarXIV</span>
+                </span>
+              </div>
 
-              <div className="space-y-3">
-                {artifact.data?.papers?.map((paper: any, idx: number) => (
-                  <div
-                    key={paper.id || idx}
-                    className="p-3 rounded-lg border border-[#E5E7EB] bg-[#FAFAFA] text-xs"
-                  >
-                    <div className="flex items-start justify-between gap-2 mb-1">
-                      <div className="flex items-center gap-1.5">
-                        <BookOpen size={13} className="text-[#2563EB] flex-shrink-0" />
-                        <h5 className="font-semibold text-[#0A0D14] leading-snug">
-                          {paper.title}
-                        </h5>
-                      </div>
-                      <span
-                        className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded flex-shrink-0 uppercase ${
-                          paper.stance === 'SUPPORTS'
-                            ? 'bg-[#DCFCE7] text-[#15803D]'
-                            : 'bg-[#FEE2E2] text-[#B91C1C]'
-                        }`}
-                      >
-                        {paper.stanceLabel || paper.stance}
-                      </span>
-                    </div>
-
-                    <p className="text-[11px] text-[#6B7280] font-mono mb-2">
-                      {paper.authors} {paper.year && `(${paper.year})`} • {paper.sourceLabel || 'ScholarXIV Repository'}
-                    </p>
-
-                    <div className="p-2 rounded bg-white border border-[#E5E7EB] text-[11px] text-[#374151] leading-relaxed mb-2">
-                      <span className="font-semibold text-[#0A0D14]">Key Finding: </span>
-                      {paper.shortFinding || paper.abstract}
-                    </div>
-
-                    {paper.url && (
-                      <div className="flex items-center justify-between text-[11px] text-[#6B7280]">
-                        <span className="font-mono text-[10px]">
-                          Confidence: {Math.round((paper.confidence || 0.9) * 100)}%
-                        </span>
-                        <a
-                          href={paper.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-[#2563EB] hover:underline"
+              <div className="space-y-3 mb-3">
+                {artifact.data?.papers?.map((paper: any, idx: number) => {
+                  const isSupport = paper.stance === 'SUPPORTS';
+                  const isChallenge = paper.stance === 'CHALLENGES';
+                  const isContext = paper.stance === 'CONTEXT';
+                  return (
+                    <div
+                      key={paper.id || idx}
+                      className="p-3 rounded-lg border border-[#E5E7EB] bg-[#FAFAFA] text-xs hover:bg-white transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <div className="flex items-center gap-1.5">
+                          <BookOpen size={13} className="text-[#4338CA] flex-shrink-0" />
+                          <h5 className="font-semibold text-[#0A0D14] leading-snug">
+                            {paper.title}
+                          </h5>
+                        </div>
+                        <span
+                          className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded flex-shrink-0 uppercase ${
+                            isSupport
+                              ? 'bg-[#DCFCE7] text-[#15803D] border border-[#BBF7D0]'
+                              : isChallenge
+                              ? 'bg-[#FEE2E2] text-[#B91C1C] border border-[#FECACA]'
+                              : isContext
+                              ? 'bg-[#EEF2FF] text-[#4338CA] border border-[#C7D2FE]'
+                              : 'bg-[#F3F4F6] text-[#4B5563] border border-[#E5E7EB]'
+                          }`}
                         >
-                          <span>Read Full Paper</span>
-                          <ExternalLink size={10} />
-                        </a>
+                          {isSupport ? 'SUPPORTS ASSUMPTION' : isChallenge ? 'CHALLENGES ASSUMPTION' : isContext ? 'PROVIDES CONTEXT' : 'INCONCLUSIVE'}
+                        </span>
                       </div>
-                    )}
+
+                      <p className="text-[11px] text-[#6B7280] font-mono mb-2">
+                        {paper.authors} {paper.year && `(${paper.year})`} • {paper.sourceLabel || 'ScholarXIV Repository'}
+                      </p>
+
+                      <div className="p-2 rounded bg-white border border-[#E5E7EB] text-[11px] text-[#374151] leading-relaxed mb-2">
+                        <span className="font-semibold text-[#0A0D14]">Finding: </span>
+                        {paper.shortFinding || paper.abstract}
+                      </div>
+
+                      {paper.url && (
+                        <div className="flex items-center justify-between text-[11px] text-[#6B7280]">
+                          <span className="font-mono text-[10px]">
+                            Confidence: {Math.round((paper.confidence || 0.9) * 100)}%
+                          </span>
+                          <a
+                            href={paper.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-[#4338CA] hover:underline"
+                          >
+                            <span>Read Paper</span>
+                            <ExternalLink size={10} />
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Academic Signal summary & Probe conclusion at bottom */}
+              <div className="p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] text-xs space-y-1.5">
+                <div className="text-[10px] font-mono text-[#64748B] uppercase font-bold tracking-wider">
+                  Academic signal:
+                </div>
+                <div className="flex items-center gap-4 text-xs font-mono">
+                  <span className="text-[#15803D] font-bold">
+                    Supporting: {artifact.data?.academicSignal?.supporting ?? artifact.data?.papers?.filter((p: any) => p.stance === 'SUPPORTS').length ?? 0}
+                  </span>
+                  <span className="text-[#B91C1C] font-bold">
+                    Challenging: {artifact.data?.academicSignal?.challenging ?? artifact.data?.papers?.filter((p: any) => p.stance === 'CHALLENGES').length ?? 0}
+                  </span>
+                  <span className="text-[#64748B] font-bold">
+                    Inconclusive: {artifact.data?.academicSignal?.inconclusive ?? artifact.data?.papers?.filter((p: any) => p.stance === 'INCONCLUSIVE' || p.stance === 'CONTEXT').length ?? 0}
+                  </span>
+                </div>
+
+                {artifact.data?.conclusion && (
+                  <div className="pt-1.5 border-t border-[#E2E8F0]">
+                    <div className="text-[10px] font-mono text-[#64748B] uppercase font-bold tracking-wider mb-0.5">
+                      Probe conclusion:
+                    </div>
+                    <p className="text-xs text-[#1E293B] italic leading-relaxed">
+                      "{artifact.data.conclusion}"
+                    </p>
                   </div>
-                ))}
+                )}
               </div>
             </div>
           )}

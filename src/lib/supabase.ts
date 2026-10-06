@@ -63,8 +63,9 @@ export const getSupabaseClient = (): SupabaseClient => {
     const { supabaseUrl, supabasePublishableKey } = resolveSupabaseConfig();
     supabaseInstance = createClient(supabaseUrl, supabasePublishableKey, {
       auth: {
-        persistSession: false,
-        autoRefreshToken: false,
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
       },
       realtime: {
         params: {

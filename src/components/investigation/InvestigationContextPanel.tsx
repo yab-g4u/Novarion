@@ -24,23 +24,39 @@ import {
   ResearchContradiction 
 } from '../../types/investigation';
 import { Assumption, EvidenceItem } from '../../lib/research/types';
+import { ScholarXivLogo } from '../ScholarXivLogo';
 
 interface InvestigationContextPanelProps {
   investigation: InvestigationRecord;
   onUpdateInvestigation: (updated: InvestigationRecord) => void;
   onLaunchExperiment?: (exp: ValidationExperiment) => void;
   onOpenSourceModal?: (source: any) => void;
+  activeTabOverride?: string | null;
+  onClose?: () => void;
 }
 
 export const InvestigationContextPanel: React.FC<InvestigationContextPanelProps> = ({
   investigation,
   onUpdateInvestigation,
   onLaunchExperiment,
-  onOpenSourceModal
+  onOpenSourceModal,
+  activeTabOverride,
+  onClose
 }) => {
   const [activeTab, setActiveTab] = useState<'assumptions' | 'evidence' | 'academic' | 'contradictions' | 'experiments'>('assumptions');
   const [evidenceFilter, setEvidenceFilter] = useState<'ALL' | 'SUPPORTS' | 'CHALLENGES'>('ALL');
   const [isQueryingScholarXiv, setIsQueryingScholarXiv] = useState<string | null>(null);
+
+  // Sync with activeTabOverride when user clicks a research node
+  React.useEffect(() => {
+    if (activeTabOverride) {
+      if (['assumptions', 'evidence', 'academic', 'contradictions', 'experiments'].includes(activeTabOverride)) {
+        setActiveTab(activeTabOverride as any);
+      } else if (activeTabOverride === 'web' || activeTabOverride === 'reddit' || activeTabOverride === 'competitors') {
+        setActiveTab('evidence');
+      }
+    }
+  }, [activeTabOverride]);
 
   const assumptions = investigation.assumptions || [];
   const evidence = investigation.evidence || [];
@@ -114,8 +130,8 @@ export const InvestigationContextPanel: React.FC<InvestigationContextPanelProps>
     { id: 'evidence', label: 'Evidence', icon: Search, count: evidence.length },
     { 
       id: 'academic', 
-      label: 'Academic Research', 
-      icon: GraduationCap, 
+      label: 'ScholarXIV', 
+      customIcon: ScholarXivLogo, 
       count: Object.values(academicResearch).reduce((acc, r) => acc + (r.papers?.length || 0), 0) 
     },
     { id: 'contradictions', label: 'Contradictions', icon: ShieldAlert, count: contradictions.length },
@@ -140,7 +156,8 @@ export const InvestigationContextPanel: React.FC<InvestigationContextPanelProps>
       <div className="px-3 pt-2.5 bg-white border-b border-[#E5E7EB]">
         <div className="flex items-center gap-1 overflow-x-auto pb-2 scrollbar-none text-xs">
           {tabs.map((tab) => {
-            const Icon = tab.icon;
+            const Icon = (tab as any).icon;
+            const CustomIcon = (tab as any).customIcon;
             const isActive = activeTab === tab.id;
             return (
               <button
@@ -153,7 +170,11 @@ export const InvestigationContextPanel: React.FC<InvestigationContextPanelProps>
                     : 'text-[#4B5563] hover:text-[#0A0D14] hover:bg-[#F3F4F6]'
                 }`}
               >
-                <Icon size={12} />
+                {CustomIcon ? (
+                  <CustomIcon className="w-3.5 h-3.5" inverted={isActive} />
+                ) : Icon ? (
+                  <Icon size={12} />
+                ) : null}
                 <span>{tab.label}</span>
                 {tab.count > 0 && (
                   <span
@@ -222,10 +243,10 @@ export const InvestigationContextPanel: React.FC<InvestigationContextPanelProps>
                       type="button"
                       onClick={() => handleQueryScholarXivForAssumption(item)}
                       disabled={isQueryingThis}
-                      className="flex items-center gap-1 text-[11px] text-[#2563EB] hover:text-[#1D4ED8] font-semibold cursor-pointer disabled:opacity-50"
+                      className="flex items-center gap-1.5 text-[11px] text-[#2563EB] hover:text-[#1D4ED8] font-semibold cursor-pointer disabled:opacity-50"
                       title="Run live ScholarXIV query to update verdict"
                     >
-                      <GraduationCap size={13} />
+                      <ScholarXivLogo className="w-3.5 h-3.5" />
                       {isQueryingThis ? (
                         <span className="animate-pulse">Searching ScholarXIV...</span>
                       ) : hasAcademicPapers ? (
@@ -336,7 +357,7 @@ export const InvestigationContextPanel: React.FC<InvestigationContextPanelProps>
           <div className="space-y-3">
             <div className="p-3 rounded-xl bg-[#EFF6FF] border border-[#BFDBFE] text-xs">
               <div className="flex items-center gap-2 font-bold text-[#1E40AF] mb-1">
-                <GraduationCap size={15} />
+                <ScholarXivLogo className="w-4 h-4 text-[#1E40AF]" />
                 <span>ScholarXIV Academic Workflow</span>
               </div>
               <p className="text-[11px] text-[#1D4ED8] leading-relaxed">
@@ -346,7 +367,7 @@ export const InvestigationContextPanel: React.FC<InvestigationContextPanelProps>
 
             {Object.keys(academicResearch).length === 0 ? (
               <div className="py-8 text-center px-4 bg-white rounded-xl border border-[#E5E7EB]">
-                <GraduationCap size={24} className="mx-auto text-[#9CA3AF] mb-2 opacity-60" />
+                <ScholarXivLogo className="w-8 h-8 mx-auto text-[#9CA3AF] mb-2 opacity-60" />
                 <p className="text-xs text-[#374151] font-semibold">No Academic Deep Dives Yet</p>
                 <p className="text-[11px] text-[#6B7280] mt-1 mb-3">
                   Click "ScholarXIV" on any assumption to search peer-reviewed papers.

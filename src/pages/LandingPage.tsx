@@ -73,8 +73,7 @@ export const LandingPage: React.FC = () => {
       {/* EXPERIENCE A: HERO SECTION (CINEMATIC VIDEO BACKGROUND, REFINED PROBE BRANDING) */}
       <ProbeHero
         onTryProbe={() => {
-          const el = document.getElementById('live-investigation');
-          if (el) el.scrollIntoView({ behavior: 'smooth' });
+          navigate('/signin');
         }}
         onExploreDemo={() => {
           const el = document.getElementById('section-evidence-graph');

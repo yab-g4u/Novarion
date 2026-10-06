@@ -546,59 +546,142 @@ function createSeedInvestigations(): InvestigationRecord[] {
   return [cookingInvestigation, codeInvestigation, housingInvestigation];
 }
 
-// Get all saved investigations
-export function getSavedInvestigations(): InvestigationRecord[] {
+export function getUserStorageKey(userId?: string | null): string {
+  if (userId && userId.trim()) {
+    return `probe_investigations_${userId.trim()}`;
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('probe_auth_user');
+      if (raw) {
+        const user = JSON.parse(raw);
+        if (user?.id) return `probe_investigations_${user.id}`;
+      }
+    } catch {}
+  }
+  return STORAGE_KEY;
+}
+
+export function getUserActiveIdKey(userId?: string | null): string {
+  if (userId && userId.trim()) {
+    return `probe_active_investigation_id_${userId.trim()}`;
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('probe_auth_user');
+      if (raw) {
+        const user = JSON.parse(raw);
+        if (user?.id) return `probe_active_investigation_id_${user.id}`;
+      }
+    } catch {}
+  }
+  return ACTIVE_ID_KEY;
+}
+
+// Concise title generator for clean sidebar presentation
+export function generateConciseInvestigationTitle(rawText: string): string {
+  const clean = rawText
+    .replace(/^(i\s+want\s+to\s+build|i'm\s+building|build|create|investigate|an?\s+app\s+for|a\s+platform\s+for|we\s+are\s+building)\s+/i, '')
+    .trim();
+  if (!clean) return 'New Investigation';
+  const words = clean.split(/\s+/).slice(0, 6).join(' ');
+  const capitalized = words.charAt(0).toUpperCase() + words.slice(1);
+  return capitalized.length > 45 ? `${capitalized.slice(0, 42)}...` : capitalized;
+}
+
+const MOCK_TITLES = new Set([
+  'AI Recipe & Meal Planner with Receipt OCR',
+  'Autonomous AI Code Reviewer for Pull Requests',
+  'Verified Student Sublet & Roommate Platform',
+]);
+
+const MOCK_IDS = new Set([
+  'inv_cooking_meal_planner',
+  'inv_seed_code_reviewer',
+  'inv_student_housing_marketplace',
+  'inv_seed_1',
+  'inv_seed_2',
+  'inv_seed_3'
+]);
+
+function isMockInvestigation(inv: InvestigationRecord): boolean {
+  if (!inv || !inv.id) return true;
+  if (MOCK_IDS.has(inv.id)) return true;
+  if (inv.id.startsWith('inv_seed_')) return true;
+  if (inv.id.startsWith('inv_cooking_')) return true;
+  if (inv.id.startsWith('inv_student_housing')) return true;
+  if (MOCK_TITLES.has(inv.title)) return true;
+  return false;
+}
+
+// Get all saved investigations (scoped to authenticated user.id if present)
+export function getSavedInvestigations(userId?: string | null): InvestigationRecord[] {
   if (typeof window === 'undefined') return [];
+  const key = getUserStorageKey(userId);
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+      if (Array.isArray(parsed)) {
+        // Strip out any legacy seed/mock investigations completely so users see only real, personal research
+        const cleanList = parsed.filter((inv: InvestigationRecord) => !isMockInvestigation(inv));
+        if (cleanList.length !== parsed.length) {
+          localStorage.setItem(key, JSON.stringify(cleanList));
+        }
+        return cleanList;
       }
     }
   } catch (err) {
     console.error('Failed to parse investigations from storage:', err);
   }
 
-  // Pre-seed if empty
-  const seeds = createSeedInvestigations();
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(seeds));
-  } catch {}
-  return seeds;
+  // When no investigations exist for user, return empty array. No mock or fake data.
+  return [];
 }
 
 // Save all investigations
-export function persistInvestigations(list: InvestigationRecord[]): void {
+export function persistInvestigations(list: InvestigationRecord[], userId?: string | null): void {
   if (typeof window === 'undefined') return;
+  const key = getUserStorageKey(userId);
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-    window.dispatchEvent(new CustomEvent('probe:investigations-updated', { detail: { count: list.length } }));
+    localStorage.setItem(key, JSON.stringify(list));
+    window.dispatchEvent(
+      new CustomEvent('probe:investigations-updated', {
+        detail: { count: list.length, userId },
+      })
+    );
   } catch (err) {
     console.error('Failed to persist investigations:', err);
   }
 }
 
 // Get active investigation ID
-export function getActiveInvestigationId(): string {
-  if (typeof window === 'undefined') return 'inv_seed_cooking_app';
-  const stored = localStorage.getItem(ACTIVE_ID_KEY);
-  if (stored) return stored;
-  const list = getSavedInvestigations();
-  return list[0]?.id || 'inv_seed_cooking_app';
+export function getActiveInvestigationId(userId?: string | null): string {
+  if (typeof window === 'undefined') return '';
+  const key = getUserActiveIdKey(userId);
+  const stored = localStorage.getItem(key);
+  const list = getSavedInvestigations(userId);
+  if (stored && list.some((inv) => inv.id === stored)) {
+    return stored;
+  }
+  return list[0]?.id || '';
 }
 
 // Set active investigation ID
-export function setActiveInvestigationId(id: string): void {
+export function setActiveInvestigationId(id: string, userId?: string | null): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(ACTIVE_ID_KEY, id);
-  window.dispatchEvent(new CustomEvent('probe:active-investigation-changed', { detail: { id } }));
+  const key = getUserActiveIdKey(userId);
+  localStorage.setItem(key, id);
+  window.dispatchEvent(
+    new CustomEvent('probe:active-investigation-changed', {
+      detail: { id, userId },
+    })
+  );
 }
 
 // Get specific investigation by ID
-export function getInvestigationById(id: string): InvestigationRecord | null {
-  const list = getSavedInvestigations();
+export function getInvestigationById(id: string, userId?: string | null): InvestigationRecord | null {
+  const list = getSavedInvestigations(userId);
   return list.find((item) => item.id === id) || null;
 }
 
@@ -607,13 +690,14 @@ export async function createNewInvestigation(params: {
   query: string;
   documentContext?: ExtractedDocumentContext;
   documentFileName?: string;
+  userId?: string | null;
 }): Promise<InvestigationRecord> {
-  const { query, documentContext, documentFileName } = params;
+  const { query, documentContext, documentFileName, userId } = params;
   const cleanQuery = query.trim();
   const id = generateInvestigationId();
   const now = Date.now();
 
-  const title = documentContext?.title || cleanQuery;
+  const title = documentContext?.title || generateConciseInvestigationTitle(cleanQuery);
 
   // Run or construct pressure test
   let pressureTestResult: PressureTestResponse;
@@ -808,10 +892,10 @@ export async function createNewInvestigation(params: {
     tags: documentContext ? ['Document', 'PRD', 'Deep Research'] : ['Idea', 'Research']
   };
 
-  const existing = getSavedInvestigations();
+  const existing = getSavedInvestigations(userId);
   const updated = [newRecord, ...existing];
-  persistInvestigations(updated);
-  setActiveInvestigationId(id);
+  persistInvestigations(updated, userId);
+  setActiveInvestigationId(id, userId);
 
   // Sync with Probe live state
   updateProbeLiveState({
@@ -824,34 +908,34 @@ export async function createNewInvestigation(params: {
 }
 
 // Update an existing investigation
-export function updateInvestigation(updated: InvestigationRecord): void {
-  const list = getSavedInvestigations();
+export function updateInvestigation(updated: InvestigationRecord, userId?: string | null): void {
+  const list = getSavedInvestigations(userId);
   const idx = list.findIndex((item) => item.id === updated.id);
   if (idx !== -1) {
     list[idx] = { ...updated, updatedAt: Date.now() };
-    persistInvestigations(list);
+    persistInvestigations(list, userId);
   }
 }
 
 // Delete an investigation
-export function deleteInvestigation(id: string): void {
-  const list = getSavedInvestigations();
+export function deleteInvestigation(id: string, userId?: string | null): void {
+  const list = getSavedInvestigations(userId);
   const filtered = list.filter((item) => item.id !== id);
-  persistInvestigations(filtered);
-  if (getActiveInvestigationId() === id) {
+  persistInvestigations(filtered, userId);
+  if (getActiveInvestigationId(userId) === id) {
     if (filtered.length > 0) {
-      setActiveInvestigationId(filtered[0].id);
+      setActiveInvestigationId(filtered[0].id, userId);
     }
   }
 }
 
 // Rename an investigation
-export function renameInvestigation(id: string, newTitle: string): void {
-  const list = getSavedInvestigations();
+export function renameInvestigation(id: string, newTitle: string, userId?: string | null): void {
+  const list = getSavedInvestigations(userId);
   const item = list.find((i) => i.id === id);
   if (item) {
     item.title = newTitle.trim();
     item.updatedAt = Date.now();
-    persistInvestigations(list);
+    persistInvestigations(list, userId);
   }
 }

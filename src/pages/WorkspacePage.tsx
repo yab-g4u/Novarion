@@ -14,7 +14,8 @@ import {
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
-  Plus
+  Plus,
+  Share2
 } from 'lucide-react';
 import { TestingWorkspace } from '../features/testing/components/TestingWorkspace';
 import { EvidenceGraph } from '../components/EvidenceGraph';
@@ -44,10 +45,21 @@ import {
   updateInvestigation, 
   deleteInvestigation 
 } from '../lib/investigations/investigationManager';
+import { 
+  AuthUser, 
+  getCurrentUser, 
+  subscribeToAuthState, 
+  signOut,
+  handleAuthRedirectCallback 
+} from '../lib/auth/authService';
 import { InvestigationSidebar } from '../components/investigation/InvestigationSidebar';
 import { InvestigationConversation } from '../components/investigation/InvestigationConversation';
 import { InvestigationContextPanel } from '../components/investigation/InvestigationContextPanel';
 import { NewInvestigationModal } from '../components/investigation/NewInvestigationModal';
+import { EmptyWorkspaceView } from '../components/investigation/EmptyWorkspaceView';
+import { ResearchNodeType } from '../components/investigation/InteractiveResearchNodes';
+import { ShareInvestigationModal } from '../components/collaboration/ShareInvestigationModal';
+import { generateOpaqueShareId } from '../lib/collaboration/investigationStore';
 
 export const WorkspacePage: React.FC = () => {
   const location = useLocation();
@@ -61,21 +73,71 @@ export const WorkspacePage: React.FC = () => {
   else if (path.includes('/app/calendar')) activeTab = 'calendar';
   else activeTab = 'research';
 
-  // Saved investigations state
+  // User auth state with Supabase session restoration
+  const [user, setUser] = useState<AuthUser | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const raw = localStorage.getItem('probe_auth_user');
+    return raw ? JSON.parse(raw) : null;
+  });
+
+  // Saved investigations state scoped to authenticated user
   const [investigations, setInvestigations] = useState<InvestigationRecord[]>(() => {
-    return getSavedInvestigations();
+    const raw = typeof window !== 'undefined' ? localStorage.getItem('probe_auth_user') : null;
+    const parsedUser = raw ? JSON.parse(raw) : null;
+    return getSavedInvestigations(parsedUser?.id);
   });
 
   const [activeInvId, setActiveInvId] = useState<string>(() => {
-    return getActiveInvestigationId();
+    const raw = typeof window !== 'undefined' ? localStorage.getItem('probe_auth_user') : null;
+    const parsedUser = raw ? JSON.parse(raw) : null;
+    return getActiveInvestigationId(parsedUser?.id);
   });
 
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [contextPanelCollapsed, setContextPanelCollapsed] = useState(false);
+  const [selectedResearchNodeType, setSelectedResearchNodeType] = useState<ResearchNodeType | null>(null);
 
-  // Active investigation object
+  // Sharing state
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [shareTargetInvestigation, setShareTargetInvestigation] = useState<InvestigationRecord | null>(null);
+
+  // Subscribe to auth state changes and restore session
+  useEffect(() => {
+    let isMounted = true;
+    
+    void (async () => {
+      await handleAuthRedirectCallback();
+      const currentUser = await getCurrentUser();
+      if (isMounted) {
+        if (currentUser) {
+          setUser(currentUser);
+          setInvestigations(getSavedInvestigations(currentUser.id));
+          setActiveInvId(getActiveInvestigationId(currentUser.id));
+        } else {
+          navigate('/signin', { replace: true });
+        }
+      }
+    })();
+
+    const unsubscribe = subscribeToAuthState((updatedUser) => {
+      if (isMounted) {
+        setUser(updatedUser);
+        const list = getSavedInvestigations(updatedUser?.id);
+        setInvestigations(list);
+        setActiveInvId(getActiveInvestigationId(updatedUser?.id));
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, []);
+
+  // Active investigation object (null if no investigations exist)
   const activeInvestigation = useMemo(() => {
+    if (investigations.length === 0) return null;
     return investigations.find((inv) => inv.id === activeInvId) || investigations[0] || null;
   }, [investigations, activeInvId]);
 
@@ -85,7 +147,7 @@ export const WorkspacePage: React.FC = () => {
   }, [investigations]);
 
   // Active idea for bridge & graph
-  const investigationIdea = activeInvestigation?.query || activeInvestigation?.title || 'Cooking app';
+  const investigationIdea = activeInvestigation?.query || activeInvestigation?.title || '';
 
   // Modal detail for evidence sources
   const [selectedSource, setSelectedSource] = useState<EvidenceSource | null>(null);
@@ -96,13 +158,7 @@ export const WorkspacePage: React.FC = () => {
     if (activeInvestigation?.pressureTestResult) {
       return buildGraphDataFromPressureTest(activeInvestigation.pressureTestResult);
     }
-    return generateDynamicInvestigation(investigationIdea).graphData;
-  });
-
-  // User auth state
-  const [user] = useState<{ name: string; email: string } | null>(() => {
-    const raw = localStorage.getItem('probe_auth_user');
-    return raw ? JSON.parse(raw) : { name: 'Founder', email: 'founder@probe.dev' };
+    return investigationIdea ? generateDynamicInvestigation(investigationIdea).graphData : null;
   });
 
   // Sync graph data when active investigation changes
@@ -125,8 +181,8 @@ export const WorkspacePage: React.FC = () => {
   // Listen for storage events across tabs or bridge
   useEffect(() => {
     const handleStorageUpdate = () => {
-      setInvestigations(getSavedInvestigations());
-      setActiveInvId(getActiveInvestigationId());
+      setInvestigations(getSavedInvestigations(user?.id));
+      setActiveInvId(getActiveInvestigationId(user?.id));
     };
 
     window.addEventListener('probe:investigations-updated', handleStorageUpdate);
@@ -135,11 +191,11 @@ export const WorkspacePage: React.FC = () => {
       window.removeEventListener('probe:investigations-updated', handleStorageUpdate);
       window.removeEventListener('probe:active-investigation-changed', handleStorageUpdate);
     };
-  }, []);
+  }, [user?.id]);
 
   const handleSelectInvestigation = (id: string) => {
     setActiveInvId(id);
-    setActiveInvestigationId(id);
+    setActiveInvestigationId(id, user?.id);
   };
 
   const handleCreateNewInvestigation = async (params: {
@@ -147,25 +203,41 @@ export const WorkspacePage: React.FC = () => {
     documentContext?: any;
     documentFileName?: string;
   }) => {
-    const newRecord = await createNewInvestigation(params);
-    const updatedList = getSavedInvestigations();
+    const newRecord = await createNewInvestigation({
+      ...params,
+      userId: user?.id,
+    });
+    const updatedList = getSavedInvestigations(user?.id);
     setInvestigations(updatedList);
     setActiveInvId(newRecord.id);
   };
 
   const handleDeleteInvestigation = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    deleteInvestigation(id);
-    const updatedList = getSavedInvestigations();
+    deleteInvestigation(id, user?.id);
+    const updatedList = getSavedInvestigations(user?.id);
     setInvestigations(updatedList);
-    if (activeInvId === id && updatedList.length > 0) {
-      setActiveInvId(updatedList[0].id);
+    if (activeInvId === id) {
+      setActiveInvId(updatedList[0]?.id || '');
     }
   };
 
   const handleUpdateInvestigation = (updated: InvestigationRecord) => {
-    updateInvestigation(updated);
-    setInvestigations(getSavedInvestigations());
+    updateInvestigation(updated, user?.id);
+    setInvestigations(getSavedInvestigations(user?.id));
+  };
+
+  const handleShareInvestigation = (id?: string) => {
+    const target = (id ? investigations.find((inv) => inv.id === id) : null) || activeInvestigation;
+    if (target) {
+      setShareTargetInvestigation(target);
+      setIsShareModalOpen(true);
+    }
+  };
+
+  const handleSelectResearchNode = (nodeType: ResearchNodeType) => {
+    setSelectedResearchNodeType(nodeType);
+    setContextPanelCollapsed(false);
   };
 
   const handleLaunchExperiment = (exp: ValidationExperiment) => {
@@ -173,8 +245,8 @@ export const WorkspacePage: React.FC = () => {
     navigate('/app/testing');
   };
 
-  const handleSignOut = () => {
-    localStorage.removeItem('probe_auth_user');
+  const handleSignOut = async () => {
+    await signOut();
     navigate('/');
   };
 
@@ -207,134 +279,94 @@ export const WorkspacePage: React.FC = () => {
 
   return (
     <div className="h-screen bg-[#FAFAFA] text-[#0A0D14] flex flex-col font-['Inter',-apple-system,sans-serif] overflow-hidden select-none">
-      {/* PERSISTENT WORKSPACE TOP BAR */}
-      <header className="flex-shrink-0 bg-white border-b border-[#E5E7EB] px-4 sm:px-6 h-14 flex items-center justify-between shadow-2xs z-30">
-        {/* Brand + Workspace Badge */}
-        <div className="flex items-center gap-3">
-          <Link to="/app/research" className="flex items-center gap-2 group">
-            <div className="w-7 h-7 rounded-lg bg-[#0A0D14] flex items-center justify-center text-white shadow-2xs group-hover:scale-105 transition-transform p-1">
-              <ProbeLogo className="w-4 h-4" inverted />
-            </div>
-            <span className="font-extrabold tracking-tight text-sm text-[#0A0D14] font-['Geist',sans-serif]">
-              PROBE
-            </span>
-          </Link>
-          <span className="hidden sm:inline-block px-2 py-0.5 rounded-md bg-[#F1F3F5] text-[10px] font-mono font-bold uppercase tracking-wider text-[#525866]">
-            Research Platform
-          </span>
-        </div>
-
-        {/* IN-APP SECTION NAVIGATION TABS */}
-        <nav className="flex items-center gap-1 bg-[#F1F3F5] p-1 rounded-full border border-[#E5E7EB] text-xs">
-          {navItems.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => navigate(tab.path)}
-                className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-full font-medium transition-all cursor-pointer ${
-                  isActive
-                    ? 'bg-white text-[#0A0D14] font-bold shadow-2xs'
-                    : 'text-[#525866] hover:text-[#0A0D14] hover:bg-white/60'
-                }`}
-              >
-                <Icon size={12} className={isActive ? 'text-[#0A0D14]' : 'text-[#868C98]'} />
-                <span className="hidden md:inline">{tab.label}</span>
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* CONTROLS & USER PROFILE */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          {/* Active Investigation Name Badge */}
-          {activeInvestigation && (
-            <div className="hidden lg:flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-[#E5E7EB] text-xs shadow-2xs max-w-xs">
-              <Sparkles size={11} className="text-[#0A0D14] flex-shrink-0" />
-              <span className="truncate max-w-[150px] text-[#0A0D14] font-medium" title={activeInvestigation.title}>
-                {activeInvestigation.title}
+      {/* Show navigation bar only for separate tool subsystems (Testing, Evidence Graph, Calendar) */}
+      {activeTab !== 'research' && (
+        <header className="flex-shrink-0 bg-white border-b border-[#E5E7EB] px-4 sm:px-6 h-12 flex items-center justify-between shadow-2xs z-30">
+          <div className="flex items-center gap-3">
+            <Link to="/app" className="flex items-center gap-2 group">
+              <div className="w-6 h-6 rounded-md bg-[#0A0D14] flex items-center justify-center text-white shadow-2xs p-1">
+                <ProbeLogo className="w-3.5 h-3.5" inverted />
+              </div>
+              <span className="font-extrabold tracking-tight text-xs text-[#0A0D14] font-['Geist',sans-serif]">
+                PROBE
               </span>
-            </div>
-          )}
-
-          {/* User Badge */}
-          <div className="hidden sm:flex items-center gap-1.5 text-xs text-[#525866] font-medium">
-            <div className="w-6 h-6 rounded-full bg-[#E5E7EB] flex items-center justify-center text-[#525866]">
-              <User size={12} />
-            </div>
-            <span className="max-w-[100px] truncate">{user?.name || 'Founder'}</span>
+            </Link>
+            <span className="text-[#9CA3AF]">/</span>
+            <span className="text-xs font-semibold text-[#0A0D14] capitalize">
+              {activeTab === 'testing' ? 'Playwright Testing' : activeTab === 'evidence' ? 'Evidence Graph' : 'Timeline'}
+            </span>
           </div>
 
-          {/* Sign Out Button */}
-          <button
-            type="button"
-            onClick={handleSignOut}
-            title="Sign out to landing page"
-            className="p-1.5 rounded-lg text-[#868C98] hover:text-[#EF4444] hover:bg-[#FEE2E2]/40 transition-colors cursor-pointer"
-            aria-label="Sign out"
-          >
-            <LogOut size={15} />
-          </button>
-        </div>
-      </header>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigate('/app')}
+              className="text-xs font-semibold text-[#0A0D14] hover:bg-[#F3F4F6] px-3 py-1.5 rounded-lg border border-[#E5E7EB] transition-colors"
+            >
+              ← Back to Research Chat
+            </button>
+          </div>
+        </header>
+      )}
 
       {/* MAIN VIEW AREA */}
       <main className="flex-1 flex overflow-hidden">
-        {activeTab === 'research' && activeInvestigation ? (
+        {activeTab === 'research' ? (
           <div className="flex-1 flex w-full h-full overflow-hidden">
-            {/* 1. LEFT SIDEBAR: Investigations Grouped by Today / Yesterday / Older */}
+            {/* 1. LEFT SIDEBAR: ChatGPT-style clean research workspace sidebar */}
             {!sidebarCollapsed && (
               <InvestigationSidebar
                 grouped={groupedInvestigations}
-                activeId={activeInvestigation.id}
+                activeId={activeInvestigation?.id || ''}
+                user={user}
                 onSelectInvestigation={handleSelectInvestigation}
-                onNewInvestigation={() => setIsNewModalOpen(true)}
+                onNewInvestigation={() => {
+                  setActiveInvId('');
+                }}
                 onDeleteInvestigation={handleDeleteInvestigation}
+                onShareInvestigation={(id) => handleShareInvestigation(id)}
+                onSignOut={handleSignOut}
                 onNavigateSection={(tab) => navigate(`/app/${tab}`)}
               />
             )}
 
-            {/* Sidebar toggle button */}
-            <div className="relative z-10">
-              <button
-                type="button"
-                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                className="absolute top-3 left-2 p-1.5 rounded-md bg-white border border-[#E5E7EB] text-[#6B7280] hover:text-[#0A0D14] shadow-2xs transition-colors"
-                title={sidebarCollapsed ? 'Open Sidebar' : 'Collapse Sidebar'}
-              >
-                {sidebarCollapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
-              </button>
-            </div>
+            {/* 2. CENTER: Main Research Conversation OR Empty Workspace for First-Time Users */}
+            {activeInvestigation ? (
+              <>
+                <InvestigationConversation
+                  investigation={activeInvestigation}
+                  onUpdateInvestigation={handleUpdateInvestigation}
+                  onLaunchExperiment={handleLaunchExperiment}
+                  onOpenTestingTab={() => navigate('/app/testing')}
+                  onShareInvestigation={() => handleShareInvestigation(activeInvestigation.id)}
+                  onSelectResearchNode={handleSelectResearchNode}
+                  selectedResearchNode={selectedResearchNodeType}
+                  onToggleContextPanel={() => setContextPanelCollapsed(!contextPanelCollapsed)}
+                  isContextPanelOpen={!contextPanelCollapsed}
+                  onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+                  isSidebarCollapsed={sidebarCollapsed}
+                />
 
-            {/* 2. CENTER: Main Research Conversation with Expandable Artifacts */}
-            <InvestigationConversation
-              investigation={activeInvestigation}
-              onUpdateInvestigation={handleUpdateInvestigation}
-              onLaunchExperiment={handleLaunchExperiment}
-              onOpenTestingTab={() => navigate('/app/testing')}
-            />
-
-            {/* Context panel toggle button */}
-            <div className="relative z-10">
-              <button
-                type="button"
-                onClick={() => setContextPanelCollapsed(!contextPanelCollapsed)}
-                className="absolute top-3 right-2 p-1.5 rounded-md bg-white border border-[#E5E7EB] text-[#6B7280] hover:text-[#0A0D14] shadow-2xs transition-colors"
-                title={contextPanelCollapsed ? 'Open Context' : 'Collapse Context'}
-              >
-                {contextPanelCollapsed ? <PanelRightOpen size={14} /> : <PanelRightClose size={14} />}
-              </button>
-            </div>
-
-            {/* 3. RIGHT PANEL: Current Investigation Context (Assumptions, Evidence, ScholarXIV, Contradictions, Experiments) */}
-            {!contextPanelCollapsed && (
-              <InvestigationContextPanel
-                investigation={activeInvestigation}
-                onUpdateInvestigation={handleUpdateInvestigation}
-                onLaunchExperiment={handleLaunchExperiment}
-                onOpenSourceModal={handleOpenSourceDetail}
+                {/* 3. RIGHT PANEL: Current Investigation Context */}
+                {!contextPanelCollapsed && (
+                  <InvestigationContextPanel
+                    investigation={activeInvestigation}
+                    onUpdateInvestigation={handleUpdateInvestigation}
+                    onLaunchExperiment={handleLaunchExperiment}
+                    onOpenSourceModal={handleOpenSourceDetail}
+                    activeTabOverride={selectedResearchNodeType}
+                    onClose={() => setContextPanelCollapsed(true)}
+                  />
+                )}
+              </>
+            ) : (
+              <EmptyWorkspaceView
+                userName={user?.name || user?.email?.split('@')[0]}
+                onCreateInvestigation={async (params) => {
+                  await handleCreateNewInvestigation(params);
+                }}
+                onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+                isSidebarCollapsed={sidebarCollapsed}
               />
             )}
           </div>
@@ -409,6 +441,20 @@ export const WorkspacePage: React.FC = () => {
         onClose={() => setIsNewModalOpen(false)}
         onSubmit={handleCreateNewInvestigation}
       />
+
+      {shareTargetInvestigation && (
+        <ShareInvestigationModal
+          isOpen={isShareModalOpen}
+          onClose={() => {
+            setIsShareModalOpen(false);
+            setShareTargetInvestigation(null);
+          }}
+          roomId={shareTargetInvestigation.id}
+          shareId={generateOpaqueShareId(shareTargetInvestigation.query)}
+          query={shareTargetInvestigation.query || shareTargetInvestigation.title}
+          collaborators={[]}
+        />
+      )}
 
       <EvidenceModal
         source={selectedSource}

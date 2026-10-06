@@ -80,6 +80,69 @@ export function createApiApp() {
     res.status(200).json({ status: 'ok', service: 'Probe Research Search Engine' });
   });
 
+  // Supabase Auth Public Configuration endpoint
+  app.get('/api/auth/config', (_req: Request, res: Response) => {
+    const rawUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
+    const cleanUrl = rawUrl.replace(/\/+(rest|realtime|auth|storage|functions)\/v1(\/.*)?$/i, '').replace(/\/+$/, '');
+    const anonKey = process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+      process.env.VITE_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_PUBLISHABLE_KEY ||
+      process.env.SUPABASE_ANON_KEY || '';
+    res.status(200).json({
+      supabaseUrl: cleanUrl,
+      supabaseAnonKey: anonKey,
+      isConfigured: Boolean(cleanUrl && anonKey),
+    });
+  });
+
+  // Supabase OAuth Callback Relay (for seamless popup and iframe authentication)
+  app.get('/api/auth/callback', (_req: Request, res: Response) => {
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Authenticating with Probe...</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #FAFAFA; color: #0A0D14; }
+    .card { text-align: center; background: white; padding: 2rem 2.5rem; border-radius: 1.25rem; border: 1px solid #E5E7EB; box-shadow: 0 4px 12px rgba(0,0,0,0.04); max-width: 380px; width: 90%; }
+    .spinner { width: 32px; height: 32px; border: 3px solid #E5E7EB; border-top-color: #0A0D14; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 1.25rem; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="spinner"></div>
+    <div style="font-weight: 700; font-size: 16px; letter-spacing: -0.01em;">Authenticating with Probe</div>
+    <div style="font-size: 13px; color: #6B7280; margin-top: 6px;">Finalizing secure Google verification...</div>
+  </div>
+  <script>
+    (function() {
+      try {
+        var hash = window.location.hash || '';
+        var search = window.location.search || '';
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage({
+            type: 'PROBE_SUPABASE_AUTH_CALLBACK',
+            hash: hash,
+            search: search,
+            href: window.location.href
+          }, '*');
+          setTimeout(function() { window.close(); }, 600);
+        } else {
+          // Direct navigation: redirect into workspace preserving tokens/codes
+          window.location.replace('/app' + (hash || search || ''));
+        }
+      } catch (err) {
+        window.location.replace('/app');
+      }
+    })();
+  </script>
+</body>
+</html>`;
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  });
+
   app.use(cors());
   app.use(express.json({ limit: '2mb' }));
 
