@@ -27,6 +27,12 @@ import { getProbeInternalState, updateProbeLiveState } from '../voxide/probeVoxi
 
 export { generateOpaqueShareId, generateInvestigationId, validateShareId };
 
+export const roomCodeFromIdea = (idea: string): string => {
+  if (!idea) return 'probe_room_default';
+  const clean = idea.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 32).replace(/^-+|-+$/g, '');
+  return clean ? `room_${clean}` : 'probe_room_default';
+};
+
 const COLLABORATOR_COLORS = [
   '#0F52BA', // Probe Blue
   '#10B981', // Emerald

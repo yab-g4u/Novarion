@@ -11,9 +11,9 @@ import {
   ExternalLink,
   ShieldCheck,
   Globe,
-  Terminal
+  Terminal,
+  Share2
 } from 'lucide-react';
-import { EvidenceMap } from './ui/probe-hero-utils/evidence-map';
 
 export const CapabilitiesPreview: React.FC = () => {
   return (
@@ -197,12 +197,32 @@ export const CapabilitiesPreview: React.FC = () => {
             </div>
           </div>
 
-          {/* Interactive Topology Preview using EvidenceMap */}
-          <div className="lg:col-span-7">
-            <EvidenceMap 
-              ideaLabel="Universal Merchant Verification App" 
-              onNodeClick={() => {}}
-            />
+          {/* Interactive Topology Preview */}
+          <div className="lg:col-span-7 bg-[#0A0D14] p-5 sm:p-6 rounded-3xl border border-[#222732] shadow-md text-white min-h-[260px] flex flex-col justify-between">
+            <div className="flex items-center justify-between pb-3 border-b border-[#1E232B] text-xs font-mono text-[#868C98]">
+              <div className="flex items-center gap-2">
+                <Share2 size={13} className="text-[#38BDF8]" />
+                <span className="text-[11px] text-[#CBD5E1]">Living Evidence Graph · ELK.js DAG</span>
+              </div>
+              <span className="px-2 py-0.5 rounded-full bg-[#0F52BA]/20 text-[#60A5FA] text-[10px] font-bold">
+                REALTIME ACTIVE
+              </span>
+            </div>
+            <div className="py-6 flex items-center justify-center">
+              <div className="text-center space-y-2">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#111622] border border-[#1E293B] text-xs font-mono text-[#E2E8F0]">
+                  <span className="w-2 h-2 rounded-full bg-[#10B981]" />
+                  <span>Universal Merchant Verification App</span>
+                </div>
+                <div className="text-[11px] text-[#94A3B8]">
+                  Automated dependency layout · 4 Assumptions · 12 Verified Evidence Signals
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-between text-[11px] font-mono text-[#94A3B8] pt-2 border-t border-[#1E232B]">
+              <span>Graph Layout: Hierarchical DAG</span>
+              <span className="text-[#38BDF8]">Multi-user Presence Supported</span>
+            </div>
           </div>
         </div>
       </div>

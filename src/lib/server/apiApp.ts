@@ -80,6 +80,18 @@ export function createApiApp() {
     res.status(200).json({ status: 'ok', service: 'Probe Research Search Engine' });
   });
 
+  // Gemini Live Voice Status endpoint
+  app.get('/api/voice/status', (_req: Request, res: Response) => {
+    const hasKey = Boolean(process.env.GEMINI_API_KEY);
+    res.status(200).json({
+      configured: hasKey,
+      model: 'gemini-2.0-flash-exp',
+      wsPath: '/api/voice/live',
+      supportedModalities: ['AUDIO'],
+      features: ['continuous_speech', 'barge_in', 'realtime_tools', 'live_transcription'],
+    });
+  });
+
   // Supabase Auth Public Configuration endpoint
   app.get('/api/auth/config', (_req: Request, res: Response) => {
     const rawUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';

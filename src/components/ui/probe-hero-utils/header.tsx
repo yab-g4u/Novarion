@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Menu, X, ArrowRight, Compass } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -53,16 +54,15 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
-  const handleTryClick = () => {
+  const navigate = useNavigate();
+
+  const handleSignInClick = () => {
     setMobileMenuOpen(false);
     if (onTryProbe) {
       onTryProbe();
       return;
     }
-    const el = document.getElementById('section-search');
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth' });
-    }
+    navigate('/signin');
   };
 
   return (
@@ -111,10 +111,10 @@ export const Header: React.FC<HeaderProps> = ({
         {/* CTA & Mobile Trigger */}
         <div className="flex items-center gap-2 sm:gap-3">
           <Button
-            onClick={handleTryClick}
+            onClick={handleSignInClick}
             className="hidden sm:inline-flex bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-semibold px-4 h-9 rounded-xl shadow-xs transition-all cursor-pointer items-center gap-1.5"
           >
-            <span>Start investigating</span>
+            <span>Sign In</span>
             <ArrowRight size={13} className="text-[#94A3B8]" />
           </Button>
 
@@ -156,10 +156,10 @@ export const Header: React.FC<HeaderProps> = ({
 
                 <div className="pt-4 border-t border-[#F1F3F5] mt-2">
                   <Button
-                    onClick={handleTryClick}
+                    onClick={handleSignInClick}
                     className="w-full bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-semibold h-10 rounded-xl"
                   >
-                    <span>Start investigating</span>
+                    <span>Sign In</span>
                     <ArrowRight size={13} className="ml-1 text-[#94A3B8]" />
                   </Button>
                 </div>

@@ -46,13 +46,20 @@ export const resolveSupabaseConfig = () => {
   const supabaseUrl = cleanedEnvUrl || 'https://placeholder.supabase.co';
   const supabasePublishableKey = cleanedEnvKey || 'sb_publishable_unconfigured';
 
+  const isConfigured = Boolean(
+    cleanedEnvUrl &&
+    cleanedEnvKey &&
+    !cleanedEnvUrl.includes('placeholder.supabase.co') &&
+    cleanedEnvKey !== 'sb_publishable_unconfigured'
+  );
+
   return {
     supabaseUrl,
     supabasePublishableKey,
     supabaseAnonKey: supabasePublishableKey,
     rawEnvUrl,
     wasUrlSanitized: Boolean(rawEnvUrl && cleanedEnvUrl !== rawEnvUrl.replace(/\/+$/, '')),
-    isConfigured: Boolean(cleanedEnvUrl && cleanedEnvKey),
+    isConfigured,
   };
 };
 

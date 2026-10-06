@@ -16,6 +16,7 @@ export const App: React.FC = () => {
 
         {/* 2. SIGN IN: Dedicated Authentication */}
         <Route path="/signin" element={<SignInPage />} />
+        <Route path="/auth" element={<Navigate to="/signin" replace />} />
 
         {/* 3. SHARED INVESTIGATION ROOM WORKSPACE (Realtime Collaboration) */}
         <Route path="/r/:roomId" element={<SharedInvestigationPage />} />

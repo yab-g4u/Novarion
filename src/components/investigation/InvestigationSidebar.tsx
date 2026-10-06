@@ -26,6 +26,7 @@ interface InvestigationSidebarProps {
   grouped: GroupedInvestigations;
   activeId: string;
   user?: AuthUser | null;
+  isCreatingChat?: boolean;
   onSelectInvestigation: (id: string) => void;
   onNewInvestigation: () => void;
   onDeleteInvestigation: (id: string, e: React.MouseEvent) => void;
@@ -39,6 +40,7 @@ export const InvestigationSidebar: React.FC<InvestigationSidebarProps> = ({
   grouped,
   activeId,
   user,
+  isCreatingChat,
   onSelectInvestigation,
   onNewInvestigation,
   onDeleteInvestigation,
@@ -188,11 +190,13 @@ export const InvestigationSidebar: React.FC<InvestigationSidebarProps> = ({
         <button
           type="button"
           onClick={onNewInvestigation}
-          className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-[#0A0D14] hover:bg-[#20252F] text-white text-xs font-semibold shadow-2xs transition-all cursor-pointer group"
+          disabled={isCreatingChat}
+          className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-[#0A0D14] hover:bg-[#20252F] text-white text-xs font-semibold shadow-2xs transition-all cursor-pointer group disabled:opacity-60 disabled:cursor-not-allowed"
+          title="Start a new chat (⌘K)"
         >
           <div className="flex items-center gap-2">
             <Plus size={14} className="group-hover:rotate-90 transition-transform duration-200" />
-            <span>+ New Chat</span>
+            <span>{isCreatingChat ? 'Starting...' : '+ New Chat'}</span>
           </div>
           <span className="text-[10px] text-white/50 font-mono">⌘K</span>
         </button>

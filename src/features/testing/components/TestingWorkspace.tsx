@@ -14,7 +14,7 @@ import {
   Box
 } from 'lucide-react';
 import { TestingSession } from './TestingSession';
-import { BrowserSessionData } from '../../../../apps/api/src/modules/testing/testing.types';
+import { BrowserSessionData } from '../../../lib/testing/testing.types';
 import { VoiceControlButton } from '../../../components/voice/VoiceControlButton';
 
 interface TestingWorkspaceProps {
