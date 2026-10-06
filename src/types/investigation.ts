@@ -98,7 +98,6 @@ export interface GroupedInvestigations {
 
 export interface InvestigationRecord {
   id: string;
-  userId?: string;
   title: string;
   query: string;
   createdAt: number;

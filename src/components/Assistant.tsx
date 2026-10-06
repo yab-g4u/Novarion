@@ -2,7 +2,6 @@
 import React, { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { VoxideClient, VoxideWidget } from "@voxide/react";
-import { ErrorBoundary } from "./ErrorBoundary";
 import { resolveLiveUrl } from "@voxide/react/core";
 import {
   VoiceState,
@@ -1803,12 +1802,8 @@ export function Assistant() {
     ai.setActiveRoute(location.pathname);
   }, [location.pathname]);
 
-  // Wrap in ErrorBoundary so voice widget never crashes the core research platform
-  return (
-    <ErrorBoundary name="VoxideWidget" fallback={null}>
-      <VoxideWidget client={ai} />
-    </ErrorBoundary>
-  );
+  // Pass nothing but the client so Voxide dashboard Appearance controls work without being overridden
+  return <VoxideWidget client={ai} />;
 }
 
 export default Assistant;

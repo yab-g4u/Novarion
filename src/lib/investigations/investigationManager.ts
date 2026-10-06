@@ -546,44 +546,11 @@ function createSeedInvestigations(): InvestigationRecord[] {
   return [cookingInvestigation, codeInvestigation, housingInvestigation];
 }
 
-export function getUserStorageKey(userId?: string | null): string {
-  if (userId && userId.trim()) {
-    return `probe_investigations_${userId.trim()}`;
-  }
-  if (typeof window !== 'undefined') {
-    try {
-      const raw = localStorage.getItem('probe_auth_user');
-      if (raw) {
-        const user = JSON.parse(raw);
-        if (user?.id) return `probe_investigations_${user.id}`;
-      }
-    } catch {}
-  }
-  return STORAGE_KEY;
-}
-
-export function getUserActiveIdKey(userId?: string | null): string {
-  if (userId && userId.trim()) {
-    return `probe_active_investigation_id_${userId.trim()}`;
-  }
-  if (typeof window !== 'undefined') {
-    try {
-      const raw = localStorage.getItem('probe_auth_user');
-      if (raw) {
-        const user = JSON.parse(raw);
-        if (user?.id) return `probe_active_investigation_id_${user.id}`;
-      }
-    } catch {}
-  }
-  return ACTIVE_ID_KEY;
-}
-
-// Get all saved investigations (scoped to authenticated user.id if present)
-export function getSavedInvestigations(userId?: string | null): InvestigationRecord[] {
+// Get all saved investigations
+export function getSavedInvestigations(): InvestigationRecord[] {
   if (typeof window === 'undefined') return [];
-  const key = getUserStorageKey(userId);
   try {
-    const raw = localStorage.getItem(key);
+    const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -594,78 +561,44 @@ export function getSavedInvestigations(userId?: string | null): InvestigationRec
     console.error('Failed to parse investigations from storage:', err);
   }
 
-  // If user-specific key is empty, check if there are investigations in the global STORAGE_KEY to adopt
-  if (key !== STORAGE_KEY) {
-    try {
-      const globalRaw = localStorage.getItem(STORAGE_KEY);
-      if (globalRaw) {
-        const globalParsed = JSON.parse(globalRaw);
-        if (Array.isArray(globalParsed) && globalParsed.length > 0) {
-          const userAdopted = globalParsed.map((inv: InvestigationRecord) => ({
-            ...inv,
-            userId: userId || undefined,
-          }));
-          localStorage.setItem(key, JSON.stringify(userAdopted));
-          return userAdopted;
-        }
-      }
-    } catch {}
-  }
-
   // Pre-seed if empty
   const seeds = createSeedInvestigations();
-  if (userId) {
-    seeds.forEach((s) => {
-      s.userId = userId;
-    });
-  }
   try {
-    localStorage.setItem(key, JSON.stringify(seeds));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(seeds));
   } catch {}
   return seeds;
 }
 
 // Save all investigations
-export function persistInvestigations(list: InvestigationRecord[], userId?: string | null): void {
+export function persistInvestigations(list: InvestigationRecord[]): void {
   if (typeof window === 'undefined') return;
-  const key = getUserStorageKey(userId);
   try {
-    localStorage.setItem(key, JSON.stringify(list));
-    window.dispatchEvent(
-      new CustomEvent('probe:investigations-updated', {
-        detail: { count: list.length, userId },
-      })
-    );
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    window.dispatchEvent(new CustomEvent('probe:investigations-updated', { detail: { count: list.length } }));
   } catch (err) {
     console.error('Failed to persist investigations:', err);
   }
 }
 
 // Get active investigation ID
-export function getActiveInvestigationId(userId?: string | null): string {
+export function getActiveInvestigationId(): string {
   if (typeof window === 'undefined') return 'inv_seed_cooking_app';
-  const key = getUserActiveIdKey(userId);
-  const stored = localStorage.getItem(key);
+  const stored = localStorage.getItem(ACTIVE_ID_KEY);
   if (stored) return stored;
-  const list = getSavedInvestigations(userId);
+  const list = getSavedInvestigations();
   return list[0]?.id || 'inv_seed_cooking_app';
 }
 
 // Set active investigation ID
-export function setActiveInvestigationId(id: string, userId?: string | null): void {
+export function setActiveInvestigationId(id: string): void {
   if (typeof window === 'undefined') return;
-  const key = getUserActiveIdKey(userId);
-  localStorage.setItem(key, id);
-  window.dispatchEvent(
-    new CustomEvent('probe:active-investigation-changed', {
-      detail: { id, userId },
-    })
-  );
+  localStorage.setItem(ACTIVE_ID_KEY, id);
+  window.dispatchEvent(new CustomEvent('probe:active-investigation-changed', { detail: { id } }));
 }
 
 // Get specific investigation by ID
-export function getInvestigationById(id: string, userId?: string | null): InvestigationRecord | null {
-  const list = getSavedInvestigations(userId);
+export function getInvestigationById(id: string): InvestigationRecord | null {
+  const list = getSavedInvestigations();
   return list.find((item) => item.id === id) || null;
 }
 
@@ -674,9 +607,8 @@ export async function createNewInvestigation(params: {
   query: string;
   documentContext?: ExtractedDocumentContext;
   documentFileName?: string;
-  userId?: string | null;
 }): Promise<InvestigationRecord> {
-  const { query, documentContext, documentFileName, userId } = params;
+  const { query, documentContext, documentFileName } = params;
   const cleanQuery = query.trim();
   const id = generateInvestigationId();
   const now = Date.now();
@@ -876,10 +808,10 @@ export async function createNewInvestigation(params: {
     tags: documentContext ? ['Document', 'PRD', 'Deep Research'] : ['Idea', 'Research']
   };
 
-  const existing = getSavedInvestigations(userId);
+  const existing = getSavedInvestigations();
   const updated = [newRecord, ...existing];
-  persistInvestigations(updated, userId);
-  setActiveInvestigationId(id, userId);
+  persistInvestigations(updated);
+  setActiveInvestigationId(id);
 
   // Sync with Probe live state
   updateProbeLiveState({
@@ -892,34 +824,34 @@ export async function createNewInvestigation(params: {
 }
 
 // Update an existing investigation
-export function updateInvestigation(updated: InvestigationRecord, userId?: string | null): void {
-  const list = getSavedInvestigations(userId);
+export function updateInvestigation(updated: InvestigationRecord): void {
+  const list = getSavedInvestigations();
   const idx = list.findIndex((item) => item.id === updated.id);
   if (idx !== -1) {
     list[idx] = { ...updated, updatedAt: Date.now() };
-    persistInvestigations(list, userId);
+    persistInvestigations(list);
   }
 }
 
 // Delete an investigation
-export function deleteInvestigation(id: string, userId?: string | null): void {
-  const list = getSavedInvestigations(userId);
+export function deleteInvestigation(id: string): void {
+  const list = getSavedInvestigations();
   const filtered = list.filter((item) => item.id !== id);
-  persistInvestigations(filtered, userId);
-  if (getActiveInvestigationId(userId) === id) {
+  persistInvestigations(filtered);
+  if (getActiveInvestigationId() === id) {
     if (filtered.length > 0) {
-      setActiveInvestigationId(filtered[0].id, userId);
+      setActiveInvestigationId(filtered[0].id);
     }
   }
 }
 
 // Rename an investigation
-export function renameInvestigation(id: string, newTitle: string, userId?: string | null): void {
-  const list = getSavedInvestigations(userId);
+export function renameInvestigation(id: string, newTitle: string): void {
+  const list = getSavedInvestigations();
   const item = list.find((i) => i.id === id);
   if (item) {
     item.title = newTitle.trim();
     item.updatedAt = Date.now();
-    persistInvestigations(list, userId);
+    persistInvestigations(list);
   }
 }

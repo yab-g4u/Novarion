@@ -2,10 +2,6 @@
 @import "@xyflow/react/dist/style.css";
 
 @layer base {
-  html {
-    scroll-behavior: smooth;
-  }
-
   :root {
     --bg-page: #f5f4f0;
     --bg-surface: #ffffff;
@@ -179,20 +175,5 @@
   }
   .connector-pulse {
     animation: none;
-  }
-}
-
-@keyframes marquee {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-50%);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .animate-\[marquee_30s_linear_infinite\] {
-    animation: none !important;
   }
 }

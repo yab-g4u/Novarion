@@ -44,12 +44,6 @@ import {
   updateInvestigation, 
   deleteInvestigation 
 } from '../lib/investigations/investigationManager';
-import { 
-  AuthUser, 
-  getCurrentUser, 
-  subscribeToAuthState, 
-  signOut 
-} from '../lib/auth/authService';
 import { InvestigationSidebar } from '../components/investigation/InvestigationSidebar';
 import { InvestigationConversation } from '../components/investigation/InvestigationConversation';
 import { InvestigationContextPanel } from '../components/investigation/InvestigationContextPanel';
@@ -67,55 +61,18 @@ export const WorkspacePage: React.FC = () => {
   else if (path.includes('/app/calendar')) activeTab = 'calendar';
   else activeTab = 'research';
 
-  // User auth state with Supabase session restoration
-  const [user, setUser] = useState<AuthUser | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const raw = localStorage.getItem('probe_auth_user');
-    return raw ? JSON.parse(raw) : null;
-  });
-
-  // Saved investigations state scoped to authenticated user
+  // Saved investigations state
   const [investigations, setInvestigations] = useState<InvestigationRecord[]>(() => {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem('probe_auth_user') : null;
-    const parsedUser = raw ? JSON.parse(raw) : null;
-    return getSavedInvestigations(parsedUser?.id);
+    return getSavedInvestigations();
   });
 
   const [activeInvId, setActiveInvId] = useState<string>(() => {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem('probe_auth_user') : null;
-    const parsedUser = raw ? JSON.parse(raw) : null;
-    return getActiveInvestigationId(parsedUser?.id);
+    return getActiveInvestigationId();
   });
 
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [contextPanelCollapsed, setContextPanelCollapsed] = useState(false);
-
-  // Subscribe to auth state changes and restore session
-  useEffect(() => {
-    let isMounted = true;
-    void getCurrentUser().then((currentUser) => {
-      if (isMounted && currentUser) {
-        setUser(currentUser);
-        setInvestigations(getSavedInvestigations(currentUser.id));
-        setActiveInvId(getActiveInvestigationId(currentUser.id));
-      }
-    });
-
-    const unsubscribe = subscribeToAuthState((updatedUser) => {
-      if (isMounted) {
-        setUser(updatedUser);
-        const list = getSavedInvestigations(updatedUser?.id);
-        setInvestigations(list);
-        setActiveInvId(getActiveInvestigationId(updatedUser?.id));
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
-  }, []);
 
   // Active investigation object
   const activeInvestigation = useMemo(() => {
@@ -142,6 +99,12 @@ export const WorkspacePage: React.FC = () => {
     return generateDynamicInvestigation(investigationIdea).graphData;
   });
 
+  // User auth state
+  const [user] = useState<{ name: string; email: string } | null>(() => {
+    const raw = localStorage.getItem('probe_auth_user');
+    return raw ? JSON.parse(raw) : { name: 'Founder', email: 'founder@probe.dev' };
+  });
+
   // Sync graph data when active investigation changes
   useEffect(() => {
     if (activeInvestigation) {
@@ -162,8 +125,8 @@ export const WorkspacePage: React.FC = () => {
   // Listen for storage events across tabs or bridge
   useEffect(() => {
     const handleStorageUpdate = () => {
-      setInvestigations(getSavedInvestigations(user?.id));
-      setActiveInvId(getActiveInvestigationId(user?.id));
+      setInvestigations(getSavedInvestigations());
+      setActiveInvId(getActiveInvestigationId());
     };
 
     window.addEventListener('probe:investigations-updated', handleStorageUpdate);
@@ -172,11 +135,11 @@ export const WorkspacePage: React.FC = () => {
       window.removeEventListener('probe:investigations-updated', handleStorageUpdate);
       window.removeEventListener('probe:active-investigation-changed', handleStorageUpdate);
     };
-  }, [user?.id]);
+  }, []);
 
   const handleSelectInvestigation = (id: string) => {
     setActiveInvId(id);
-    setActiveInvestigationId(id, user?.id);
+    setActiveInvestigationId(id);
   };
 
   const handleCreateNewInvestigation = async (params: {
@@ -184,19 +147,16 @@ export const WorkspacePage: React.FC = () => {
     documentContext?: any;
     documentFileName?: string;
   }) => {
-    const newRecord = await createNewInvestigation({
-      ...params,
-      userId: user?.id,
-    });
-    const updatedList = getSavedInvestigations(user?.id);
+    const newRecord = await createNewInvestigation(params);
+    const updatedList = getSavedInvestigations();
     setInvestigations(updatedList);
     setActiveInvId(newRecord.id);
   };
 
   const handleDeleteInvestigation = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    deleteInvestigation(id, user?.id);
-    const updatedList = getSavedInvestigations(user?.id);
+    deleteInvestigation(id);
+    const updatedList = getSavedInvestigations();
     setInvestigations(updatedList);
     if (activeInvId === id && updatedList.length > 0) {
       setActiveInvId(updatedList[0].id);
@@ -204,8 +164,8 @@ export const WorkspacePage: React.FC = () => {
   };
 
   const handleUpdateInvestigation = (updated: InvestigationRecord) => {
-    updateInvestigation(updated, user?.id);
-    setInvestigations(getSavedInvestigations(user?.id));
+    updateInvestigation(updated);
+    setInvestigations(getSavedInvestigations());
   };
 
   const handleLaunchExperiment = (exp: ValidationExperiment) => {
@@ -213,8 +173,8 @@ export const WorkspacePage: React.FC = () => {
     navigate('/app/testing');
   };
 
-  const handleSignOut = async () => {
-    await signOut();
+  const handleSignOut = () => {
+    localStorage.removeItem('probe_auth_user');
     navigate('/');
   };
 
@@ -299,23 +259,12 @@ export const WorkspacePage: React.FC = () => {
             </div>
           )}
 
-          {/* User Badge with Avatar */}
-          <div className="hidden sm:flex items-center gap-2 text-xs text-[#525866] font-medium pl-1">
-            {user?.avatarUrl ? (
-              <img
-                src={user.avatarUrl}
-                alt={user.name || 'User'}
-                className="w-6 h-6 rounded-full object-cover border border-[#E5E7EB] shadow-2xs"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div className="w-6 h-6 rounded-full bg-[#E5E7EB] flex items-center justify-center text-[#0A0D14] font-semibold text-[11px] shadow-2xs">
-                {user?.name ? user.name.charAt(0).toUpperCase() : <User size={12} />}
-              </div>
-            )}
-            <span className="max-w-[120px] truncate text-[#0A0D14] font-semibold text-xs">
-              {user?.name || user?.email?.split('@')[0] || 'Founder'}
-            </span>
+          {/* User Badge */}
+          <div className="hidden sm:flex items-center gap-1.5 text-xs text-[#525866] font-medium">
+            <div className="w-6 h-6 rounded-full bg-[#E5E7EB] flex items-center justify-center text-[#525866]">
+              <User size={12} />
+            </div>
+            <span className="max-w-[100px] truncate">{user?.name || 'Founder'}</span>
           </div>
 
           {/* Sign Out Button */}

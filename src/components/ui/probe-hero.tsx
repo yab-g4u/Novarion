@@ -3,6 +3,7 @@ import Header from './probe-hero-utils/header';
 import { useProbeMotion } from '@/motion/useProbeMotion';
 import { EASE, gsap } from '@/motion/gsapConfig';
 import { ArrowDown } from 'lucide-react';
+import { Grainient } from '@/components/Grainient';
 
 export interface ProbeHeroProps {
   onTryProbe?: () => void;

@@ -11,7 +11,7 @@
     "dev": "tsx server.ts",
     "build": "tsc && vite build && npx esbuild server.ts --bundle --platform=node --format=cjs --packages=external --log-override:empty-import-meta=silent --outfile=dist/server.cjs",
     "lint": "tsc --noEmit",
-    "test": "tsx tests/integration/document-investigation.test.ts && tsx tests/integration/build-brief.test.ts && tsx tests/integration/domain-isolation.test.ts && tsx tests/integration/pressure-test.test.ts && tsx tests/integration/product-testing.test.ts && tsx tests/integration/investigation-platform.test.ts && tsx tests/integration/supabase-auth.test.ts",
+    "test": "tsx tests/integration/document-investigation.test.ts && tsx tests/integration/build-brief.test.ts && tsx tests/integration/domain-isolation.test.ts && tsx tests/integration/pressure-test.test.ts && tsx tests/integration/product-testing.test.ts && tsx tests/integration/investigation-platform.test.ts",
     "start": "NODE_ENV=production node --max-old-space-size=160 dist/server.cjs",
     "preview": "vite preview --host 0.0.0.0 --port 3000"
   },
