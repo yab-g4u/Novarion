@@ -93,8 +93,8 @@ export const ShareInvestigationModal: React.FC<ShareInvestigationModalProps> = (
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-xs p-4 animate-in fade-in duration-150 select-none">
-      <div className="bg-white rounded-3xl border border-[#E5E7EB] p-6 sm:p-7 max-w-md w-full shadow-2xl space-y-5 text-left font-['Geist','Inter',sans-serif]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in duration-150 select-none">
+      <div className="bg-white rounded-3xl border border-[#E5E7EB] p-5 sm:p-7 max-w-md w-full max-h-[90vh] overflow-y-auto shadow-2xl space-y-5 text-left font-['Geist','Inter',sans-serif]">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-[#F1F3F5]">
           <div className="flex items-center gap-2">

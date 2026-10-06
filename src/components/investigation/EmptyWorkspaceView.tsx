@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Sparkles, Paperclip, Send, FileText, X, ArrowRight, PanelLeftOpen, PanelLeftClose } from 'lucide-react';
+import { Sparkles, Paperclip, Send, FileText, X, ArrowRight, PanelLeftOpen, PanelLeftClose, Menu } from 'lucide-react';
 import { ProbeLogo } from '../ProbeLogo';
 import { ScholarXivLogo } from '../ScholarXivLogo';
 import { ExtractedDocumentContext } from '../../types/document';
@@ -101,11 +101,19 @@ export const EmptyWorkspaceView: React.FC<EmptyWorkspaceViewProps> = ({
     <div className="flex-1 flex flex-col h-full bg-[#FAFAFA] overflow-y-auto select-none relative">
       {/* Top minimal bar with sidebar toggle */}
       {onToggleSidebar && (
-        <div className="p-3 absolute top-0 left-0 z-20">
+        <div className="p-3 absolute top-0 left-0 z-20 flex items-center gap-2">
           <button
             type="button"
             onClick={onToggleSidebar}
-            className="p-1.5 rounded-lg border border-[#E5E7EB] bg-white hover:bg-[#F9FAFB] text-[#6B7280] hover:text-[#0A0D14] transition-colors shadow-2xs cursor-pointer"
+            className="p-1.5 rounded-lg border border-[#E5E7EB] bg-white hover:bg-[#F9FAFB] text-[#6B7280] hover:text-[#0A0D14] transition-colors shadow-2xs cursor-pointer md:hidden"
+            title="Open menu"
+          >
+            <Menu size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={onToggleSidebar}
+            className="hidden md:flex p-1.5 rounded-lg border border-[#E5E7EB] bg-white hover:bg-[#F9FAFB] text-[#6B7280] hover:text-[#0A0D14] transition-colors shadow-2xs cursor-pointer"
             title={isSidebarCollapsed ? 'Open sidebar' : 'Collapse sidebar'}
           >
             {isSidebarCollapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}

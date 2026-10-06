@@ -95,7 +95,8 @@ export const WorkspacePage: React.FC = () => {
 
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [contextPanelCollapsed, setContextPanelCollapsed] = useState(false);
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
+  const [contextPanelCollapsed, setContextPanelCollapsed] = useState(true);
   const [selectedResearchNodeType, setSelectedResearchNodeType] = useState<ResearchNodeType | null>(null);
 
   // Sharing state
@@ -115,7 +116,11 @@ export const WorkspacePage: React.FC = () => {
           setInvestigations(getSavedInvestigations(currentUser.id));
           setActiveInvId(getActiveInvestigationId(currentUser.id));
         } else {
-          navigate('/signin', { replace: true });
+          // Double-check local storage before redirecting to prevent loops
+          const cached = typeof window !== 'undefined' ? localStorage.getItem('probe_auth_user') : null;
+          if (!cached) {
+            navigate('/signin', { replace: true });
+          }
         }
       }
     })();
@@ -135,10 +140,10 @@ export const WorkspacePage: React.FC = () => {
     };
   }, []);
 
-  // Active investigation object (null if no investigations exist)
+  // Active investigation object (null if in new chat mode or no investigations exist)
   const activeInvestigation = useMemo(() => {
-    if (investigations.length === 0) return null;
-    return investigations.find((inv) => inv.id === activeInvId) || investigations[0] || null;
+    if (!activeInvId || activeInvId === 'new') return null;
+    return investigations.find((inv) => inv.id === activeInvId) || null;
   }, [investigations, activeInvId]);
 
   // Grouped investigations for sidebar
@@ -193,9 +198,16 @@ export const WorkspacePage: React.FC = () => {
     };
   }, [user?.id]);
 
+  const handleStartNewChat = () => {
+    setActiveInvId('new');
+    setActiveInvestigationId('new', user?.id);
+    setIsMobileDrawerOpen(false);
+  };
+
   const handleSelectInvestigation = (id: string) => {
     setActiveInvId(id);
     setActiveInvestigationId(id, user?.id);
+    setIsMobileDrawerOpen(false);
   };
 
   const handleCreateNewInvestigation = async (params: {
@@ -210,6 +222,8 @@ export const WorkspacePage: React.FC = () => {
     const updatedList = getSavedInvestigations(user?.id);
     setInvestigations(updatedList);
     setActiveInvId(newRecord.id);
+    setActiveInvestigationId(newRecord.id, user?.id);
+    setIsMobileDrawerOpen(false);
   };
 
   const handleDeleteInvestigation = (id: string, e: React.MouseEvent) => {
@@ -312,60 +326,72 @@ export const WorkspacePage: React.FC = () => {
       {/* MAIN VIEW AREA */}
       <main className="flex-1 flex overflow-hidden">
         {activeTab === 'research' ? (
-          <div className="flex-1 flex w-full h-full overflow-hidden">
-            {/* 1. LEFT SIDEBAR: ChatGPT-style clean research workspace sidebar */}
-            {!sidebarCollapsed && (
+          <div className="flex-1 flex w-full h-full overflow-hidden relative">
+            {/* Mobile Backdrop for Sidebar Drawer */}
+            {isMobileDrawerOpen && (
+              <div 
+                className="fixed inset-0 bg-black/40 backdrop-blur-xs z-40 md:hidden animate-in fade-in duration-200"
+                onClick={() => setIsMobileDrawerOpen(false)}
+              />
+            )}
+
+            {/* 1. LEFT SIDEBAR: Slide-over drawer on mobile, collapsible sidebar on desktop */}
+            <div className={`
+              fixed inset-y-0 left-0 z-50 md:static md:z-auto transition-transform duration-300 ease-in-out h-full
+              ${isMobileDrawerOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+              ${sidebarCollapsed ? 'md:hidden' : 'md:flex'}
+            `}>
               <InvestigationSidebar
                 grouped={groupedInvestigations}
                 activeId={activeInvestigation?.id || ''}
                 user={user}
                 onSelectInvestigation={handleSelectInvestigation}
-                onNewInvestigation={() => {
-                  setActiveInvId('');
-                }}
+                onNewInvestigation={handleStartNewChat}
                 onDeleteInvestigation={handleDeleteInvestigation}
                 onShareInvestigation={(id) => handleShareInvestigation(id)}
                 onSignOut={handleSignOut}
-                onNavigateSection={(tab) => navigate(`/app/${tab}`)}
+                onNavigateSection={(tab) => {
+                  setIsMobileDrawerOpen(false);
+                  navigate(`/app/${tab}`);
+                }}
+                onCloseMobile={() => setIsMobileDrawerOpen(false)}
               />
-            )}
+            </div>
 
-            {/* 2. CENTER: Main Research Conversation OR Empty Workspace for First-Time Users */}
+            {/* 2. MAIN RESEARCH CONVERSATION (Full Available Width) OR Empty Workspace for New Chat */}
             {activeInvestigation ? (
-              <>
-                <InvestigationConversation
-                  investigation={activeInvestigation}
-                  onUpdateInvestigation={handleUpdateInvestigation}
-                  onLaunchExperiment={handleLaunchExperiment}
-                  onOpenTestingTab={() => navigate('/app/testing')}
-                  onShareInvestigation={() => handleShareInvestigation(activeInvestigation.id)}
-                  onSelectResearchNode={handleSelectResearchNode}
-                  selectedResearchNode={selectedResearchNodeType}
-                  onToggleContextPanel={() => setContextPanelCollapsed(!contextPanelCollapsed)}
-                  isContextPanelOpen={!contextPanelCollapsed}
-                  onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
-                  isSidebarCollapsed={sidebarCollapsed}
-                />
-
-                {/* 3. RIGHT PANEL: Current Investigation Context */}
-                {!contextPanelCollapsed && (
-                  <InvestigationContextPanel
-                    investigation={activeInvestigation}
-                    onUpdateInvestigation={handleUpdateInvestigation}
-                    onLaunchExperiment={handleLaunchExperiment}
-                    onOpenSourceModal={handleOpenSourceDetail}
-                    activeTabOverride={selectedResearchNodeType}
-                    onClose={() => setContextPanelCollapsed(true)}
-                  />
-                )}
-              </>
+              <InvestigationConversation
+                investigation={activeInvestigation}
+                onUpdateInvestigation={handleUpdateInvestigation}
+                onLaunchExperiment={handleLaunchExperiment}
+                onOpenTestingTab={() => navigate('/app/testing')}
+                onShareInvestigation={() => handleShareInvestigation(activeInvestigation.id)}
+                onSelectResearchNode={handleSelectResearchNode}
+                selectedResearchNode={selectedResearchNodeType}
+                onToggleSidebar={() => {
+                  if (typeof window !== 'undefined' && window.innerWidth < 768) {
+                    setIsMobileDrawerOpen(!isMobileDrawerOpen);
+                  } else {
+                    setSidebarCollapsed(!sidebarCollapsed);
+                  }
+                }}
+                isSidebarCollapsed={sidebarCollapsed}
+                onNewChat={handleStartNewChat}
+                onSelectSource={handleOpenSourceDetail}
+              />
             ) : (
               <EmptyWorkspaceView
                 userName={user?.name || user?.email?.split('@')[0]}
                 onCreateInvestigation={async (params) => {
                   await handleCreateNewInvestigation(params);
                 }}
-                onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+                onToggleSidebar={() => {
+                  if (typeof window !== 'undefined' && window.innerWidth < 768) {
+                    setIsMobileDrawerOpen(!isMobileDrawerOpen);
+                  } else {
+                    setSidebarCollapsed(!sidebarCollapsed);
+                  }
+                }}
                 isSidebarCollapsed={sidebarCollapsed}
               />
             )}

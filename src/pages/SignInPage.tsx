@@ -19,6 +19,16 @@ export const SignInPage: React.FC = () => {
     let isMounted = true;
 
     async function checkExistingAuth() {
+      // 0. Instant local session check to prevent redundant sign-in screens
+      const localCached = typeof window !== 'undefined' ? localStorage.getItem('probe_auth_user') : null;
+      if (localCached && isMounted && !window.location.hash.includes('error=')) {
+        if (initialIdea) {
+          localStorage.setItem('probe_active_idea', initialIdea);
+        }
+        navigate('/app', { replace: true });
+        return;
+      }
+
       // 1. Process any redirect hash/code from Google OAuth
       const callbackUser = await handleAuthRedirectCallback();
       if (callbackUser && isMounted) {

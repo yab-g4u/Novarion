@@ -55,7 +55,15 @@ export const LandingPage: React.FC = () => {
   };
 
   const handleStartInvestigating = (idea?: string) => {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem('probe_auth_user') : null;
     const targetIdea = idea || currentInvestigation.query;
+    if (raw) {
+      if (targetIdea) {
+        localStorage.setItem('probe_active_idea', targetIdea);
+      }
+      navigate('/app');
+      return;
+    }
     if (targetIdea) {
       navigate(`/signin?idea=${encodeURIComponent(targetIdea)}`);
     } else {
@@ -64,7 +72,7 @@ export const LandingPage: React.FC = () => {
   };
 
   const handleExploreProduct = () => {
-    navigate('/app/research');
+    navigate('/app');
   };
 
   return (
@@ -73,7 +81,12 @@ export const LandingPage: React.FC = () => {
       {/* EXPERIENCE A: HERO SECTION (CINEMATIC VIDEO BACKGROUND, REFINED PROBE BRANDING) */}
       <ProbeHero
         onTryProbe={() => {
-          navigate('/signin');
+          const raw = typeof window !== 'undefined' ? localStorage.getItem('probe_auth_user') : null;
+          if (raw) {
+            navigate('/app');
+          } else {
+            navigate('/signin');
+          }
         }}
         onExploreDemo={() => {
           const el = document.getElementById('section-evidence-graph');

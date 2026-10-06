@@ -93,8 +93,8 @@ export const NewInvestigationModal: React.FC<NewInvestigationModalProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs select-none animate-in fade-in duration-150">
-      <div className="bg-white border border-[#E5E7EB] rounded-2xl max-w-xl w-full shadow-xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/40 backdrop-blur-xs select-none animate-in fade-in duration-150">
+      <div className="bg-white border border-[#E5E7EB] rounded-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto shadow-xl">
         {/* Header */}
         <div className="px-6 py-4 border-b border-[#E5E7EB] flex items-center justify-between">
           <div className="flex items-center gap-2.5">

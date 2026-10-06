@@ -14,7 +14,8 @@ import {
   Clock,
   Share2,
   LogOut,
-  User
+  User,
+  X
 } from 'lucide-react';
 import { InvestigationRecord, GroupedInvestigations } from '../../types/investigation';
 import { AuthUser } from '../../lib/auth/authService';
@@ -31,6 +32,7 @@ interface InvestigationSidebarProps {
   onShareInvestigation?: (id: string, e: React.MouseEvent) => void;
   onSignOut?: () => void;
   onNavigateSection?: (tab: 'testing' | 'evidence' | 'calendar') => void;
+  onCloseMobile?: () => void;
 }
 
 export const InvestigationSidebar: React.FC<InvestigationSidebarProps> = ({
@@ -42,7 +44,8 @@ export const InvestigationSidebar: React.FC<InvestigationSidebarProps> = ({
   onDeleteInvestigation,
   onShareInvestigation,
   onSignOut,
-  onNavigateSection
+  onNavigateSection,
+  onCloseMobile
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -167,6 +170,17 @@ export const InvestigationSidebar: React.FC<InvestigationSidebarProps> = ({
             </div>
           </div>
         </div>
+
+        {onCloseMobile && (
+          <button
+            type="button"
+            onClick={onCloseMobile}
+            className="md:hidden p-1.5 rounded-lg text-[#64748B] hover:text-[#0A0D14] hover:bg-[#E5E7EB] transition-colors"
+            title="Close sidebar"
+          >
+            <X size={16} />
+          </button>
+        )}
       </div>
 
       {/* Action: + New Chat */}
