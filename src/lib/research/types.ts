@@ -30,6 +30,8 @@ export interface Assumption {
   testability: number; // 0 - 100
   priority: number; // 1 - 5 (1 is highest)
   querySeeds: string[];
+  status?: AssumptionStatus;
+  contradiction?: string;
 }
 
 export interface RawSearchResult {

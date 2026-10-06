@@ -80,6 +80,21 @@ export function createApiApp() {
     res.status(200).json({ status: 'ok', service: 'Probe Research Search Engine' });
   });
 
+  app.get('/api/auth/config', (_req: Request, res: Response) => {
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
+    const supabaseAnonKey =
+      process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+      process.env.VITE_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_PUBLISHABLE_KEY ||
+      '';
+    res.json({
+      supabaseUrl,
+      supabaseAnonKey,
+      isConfigured: Boolean(supabaseUrl && supabaseAnonKey),
+    });
+  });
+
   app.use(cors());
   app.use(express.json({ limit: '2mb' }));
 

@@ -20,16 +20,39 @@ export const sanitizeSupabaseProjectUrl = (rawUrl: string): string => {
   }
 };
 
+let runtimeConfigOverride: { supabaseUrl?: string; supabasePublishableKey?: string } | null = null;
+
+if (typeof window !== 'undefined') {
+  // Try fetching backend auth config in background if not already in client bundle
+  fetch('/api/auth/config')
+    .then((r) => r.json())
+    .then((cfg) => {
+      if (cfg?.supabaseUrl && cfg?.supabaseAnonKey) {
+        runtimeConfigOverride = {
+          supabaseUrl: cfg.supabaseUrl,
+          supabasePublishableKey: cfg.supabaseAnonKey,
+        };
+        // If previous instance was using placeholder, re-initialize
+        if (!supabaseInstance || supabaseInstance['supabaseUrl']?.includes('placeholder.supabase.co')) {
+          supabaseInstance = null;
+        }
+      }
+    })
+    .catch(() => {});
+}
+
 export const resolveSupabaseConfig = () => {
   const metaEnv = typeof import.meta !== 'undefined' ? (import.meta as any).env : undefined;
 
   const rawEnvUrl =
+    runtimeConfigOverride?.supabaseUrl ||
     metaEnv?.VITE_SUPABASE_URL ||
     (typeof process !== 'undefined' &&
       (process.env?.VITE_SUPABASE_URL || process.env?.SUPABASE_URL)) ||
     '';
 
   const rawEnvKey =
+    runtimeConfigOverride?.supabasePublishableKey ||
     metaEnv?.VITE_SUPABASE_PUBLISHABLE_KEY ||
     metaEnv?.VITE_SUPABASE_ANON_KEY ||
     (typeof process !== 'undefined' &&
@@ -63,8 +86,10 @@ export const getSupabaseClient = (): SupabaseClient => {
     const { supabaseUrl, supabasePublishableKey } = resolveSupabaseConfig();
     supabaseInstance = createClient(supabaseUrl, supabasePublishableKey, {
       auth: {
-        persistSession: false,
-        autoRefreshToken: false,
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        storageKey: 'probe_supabase_auth_token',
       },
       realtime: {
         params: {

@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { Menu, X, ArrowRight, Compass } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Menu, X, ArrowRight, Compass, User, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -9,6 +10,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { ProbeLogo } from '@/components/ProbeLogo';
+import { AuthUser, getCurrentUser, subscribeToAuthState } from '@/lib/auth/authService';
 
 export interface NavigationItem {
   title: string;
@@ -33,7 +35,25 @@ export const Header: React.FC<HeaderProps> = ({
   onTryProbe,
   onNavigate,
 }) => {
+  const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const raw = localStorage.getItem('probe_auth_user');
+    return raw ? JSON.parse(raw) : null;
+  });
+
+  useEffect(() => {
+    void getCurrentUser().then((currentUser) => {
+      if (currentUser) setUser(currentUser);
+    });
+
+    const unsubscribe = subscribeToAuthState((updatedUser) => {
+      setUser(updatedUser);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const handleLinkClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
     e.preventDefault();
@@ -110,6 +130,35 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* CTA & Mobile Trigger */}
         <div className="flex items-center gap-2 sm:gap-3">
+          {user ? (
+            <Link
+              to="/app"
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border border-[#E5E7EB] bg-white hover:bg-[#F9FAFB] text-xs font-semibold text-[#0A0D14] shadow-2xs transition-all"
+            >
+              {user.avatarUrl ? (
+                <img
+                  src={user.avatarUrl}
+                  alt={user.name || 'User'}
+                  className="w-5 h-5 rounded-full object-cover border border-[#E5E7EB]"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="w-5 h-5 rounded-full bg-[#0A0D14] text-white flex items-center justify-center text-[10px]">
+                  {user.name ? user.name.charAt(0).toUpperCase() : <User size={10} />}
+                </div>
+              )}
+              <span className="hidden sm:inline">Workspace</span>
+            </Link>
+          ) : (
+            <Link
+              to="/signin"
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-[#525866] hover:text-[#0A0D14] hover:bg-[#F1F3F5] transition-colors"
+            >
+              <LogIn size={13} />
+              <span>Sign in</span>
+            </Link>
+          )}
+
           <Button
             onClick={handleTryClick}
             className="hidden sm:inline-flex bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-semibold px-4 h-9 rounded-xl shadow-xs transition-all cursor-pointer items-center gap-1.5"
@@ -154,7 +203,26 @@ export const Header: React.FC<HeaderProps> = ({
                   </a>
                 ))}
 
-                <div className="pt-4 border-t border-[#F1F3F5] mt-2">
+                <div className="pt-4 border-t border-[#F1F3F5] mt-2 space-y-2">
+                  {user ? (
+                    <Link
+                      to="/app"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="w-full flex items-center justify-center gap-2 border border-[#E5E7EB] bg-white text-[#0A0D14] text-xs font-semibold h-10 rounded-xl"
+                    >
+                      <User size={13} />
+                      <span>Open Workspace ({user.name || 'Founder'})</span>
+                    </Link>
+                  ) : (
+                    <Link
+                      to="/signin"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="w-full flex items-center justify-center gap-2 border border-[#E5E7EB] bg-white text-[#0A0D14] text-xs font-semibold h-10 rounded-xl"
+                    >
+                      <LogIn size={13} />
+                      <span>Sign In</span>
+                    </Link>
+                  )}
                   <Button
                     onClick={handleTryClick}
                     className="w-full bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-semibold h-10 rounded-xl"

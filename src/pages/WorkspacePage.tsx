@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { 
   Search, 
@@ -9,14 +9,17 @@ import {
   Sparkles, 
   Edit3, 
   Check, 
-  User
+  User,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  Plus
 } from 'lucide-react';
-import { PressureTestWorkspace } from '../components/PressureTestWorkspace';
 import { TestingWorkspace } from '../features/testing/components/TestingWorkspace';
 import { EvidenceGraph } from '../components/EvidenceGraph';
 import { EvidenceTimeline } from '../components/EvidenceTimeline';
 import { EvidenceModal } from '../components/EvidenceModal';
-import { TryModal } from '../components/TryModal';
 import { EvidenceSource } from '../types';
 import { DynamicGraphData } from '../types/evidenceGraph';
 import { ProbeLogo } from '../components/ProbeLogo';
@@ -26,6 +29,31 @@ import {
   getProbeInternalState,
   updateProbeLiveState
 } from '../lib/voxide/probeVoxideBridge';
+
+// Investigation Platform imports
+import { 
+  InvestigationRecord, 
+  ValidationExperiment 
+} from '../types/investigation';
+import { 
+  getSavedInvestigations, 
+  groupInvestigationsByDate, 
+  getActiveInvestigationId, 
+  setActiveInvestigationId, 
+  createNewInvestigation, 
+  updateInvestigation, 
+  deleteInvestigation 
+} from '../lib/investigations/investigationManager';
+import { 
+  AuthUser, 
+  getCurrentUser, 
+  subscribeToAuthState, 
+  signOut 
+} from '../lib/auth/authService';
+import { InvestigationSidebar } from '../components/investigation/InvestigationSidebar';
+import { InvestigationConversation } from '../components/investigation/InvestigationConversation';
+import { InvestigationContextPanel } from '../components/investigation/InvestigationContextPanel';
+import { NewInvestigationModal } from '../components/investigation/NewInvestigationModal';
 
 export const WorkspacePage: React.FC = () => {
   const location = useLocation();
@@ -39,141 +67,157 @@ export const WorkspacePage: React.FC = () => {
   else if (path.includes('/app/calendar')) activeTab = 'calendar';
   else activeTab = 'research';
 
-  // Idea initialized from localStorage or live bridge state
-  const [investigationIdea, setInvestigationIdea] = useState<string>(() => {
-    return (
-      getProbeInternalState().currentIdea ||
-      localStorage.getItem('probe_active_idea') ||
-      'I want to build a cooking app'
-    );
-  });
-
-  // State
-  const [selectedSource, setSelectedSource] = useState<EvidenceSource | null>(null);
-  const [isTryModalOpen, setIsTryModalOpen] = useState<boolean>(false);
-  const [activeGraphData, setActiveGraphData] = useState<DynamicGraphData | null>(() => {
-    const internal = getProbeInternalState();
-    if (internal.latestPressureTest) {
-      return buildGraphDataFromPressureTest(internal.latestPressureTest, internal.customEvidence);
-    }
-    const initial =
-      internal.currentIdea ||
-      localStorage.getItem('probe_active_idea') ||
-      'I want to build a cooking app';
-
-    let savedDoc: any = undefined;
-    try {
-      const raw = localStorage.getItem('probe_active_document_context');
-      if (raw) savedDoc = JSON.parse(raw);
-    } catch {}
-
-    return generateDynamicInvestigation(initial, savedDoc).graphData;
-  });
-  const [focusNodeId, setFocusNodeId] = useState<string | null>(() => {
-    return getProbeInternalState().selectedNode;
-  });
-
-  const [isEditingIdea, setIsEditingIdea] = useState(false);
-  const [tempIdea, setTempIdea] = useState(investigationIdea);
-
-  // User info
-  const [user, setUser] = useState<{ name: string; email: string } | null>(() => {
+  // User auth state with Supabase session restoration
+  const [user, setUser] = useState<AuthUser | null>(() => {
+    if (typeof window === 'undefined') return null;
     const raw = localStorage.getItem('probe_auth_user');
-    return raw ? JSON.parse(raw) : { name: 'Founder', email: 'founder@probe.dev' };
+    return raw ? JSON.parse(raw) : null;
   });
 
-  const handleSignOut = () => {
-    localStorage.removeItem('probe_auth_user');
+  // Saved investigations state scoped to authenticated user
+  const [investigations, setInvestigations] = useState<InvestigationRecord[]>(() => {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem('probe_auth_user') : null;
+    const parsedUser = raw ? JSON.parse(raw) : null;
+    return getSavedInvestigations(parsedUser?.id);
+  });
+
+  const [activeInvId, setActiveInvId] = useState<string>(() => {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem('probe_auth_user') : null;
+    const parsedUser = raw ? JSON.parse(raw) : null;
+    return getActiveInvestigationId(parsedUser?.id);
+  });
+
+  const [isNewModalOpen, setIsNewModalOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [contextPanelCollapsed, setContextPanelCollapsed] = useState(false);
+
+  // Subscribe to auth state changes and restore session
+  useEffect(() => {
+    let isMounted = true;
+    void getCurrentUser().then((currentUser) => {
+      if (isMounted && currentUser) {
+        setUser(currentUser);
+        setInvestigations(getSavedInvestigations(currentUser.id));
+        setActiveInvId(getActiveInvestigationId(currentUser.id));
+      }
+    });
+
+    const unsubscribe = subscribeToAuthState((updatedUser) => {
+      if (isMounted) {
+        setUser(updatedUser);
+        const list = getSavedInvestigations(updatedUser?.id);
+        setInvestigations(list);
+        setActiveInvId(getActiveInvestigationId(updatedUser?.id));
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, []);
+
+  // Active investigation object
+  const activeInvestigation = useMemo(() => {
+    return investigations.find((inv) => inv.id === activeInvId) || investigations[0] || null;
+  }, [investigations, activeInvId]);
+
+  // Grouped investigations for sidebar
+  const groupedInvestigations = useMemo(() => {
+    return groupInvestigationsByDate(investigations);
+  }, [investigations]);
+
+  // Active idea for bridge & graph
+  const investigationIdea = activeInvestigation?.query || activeInvestigation?.title || 'Cooking app';
+
+  // Modal detail for evidence sources
+  const [selectedSource, setSelectedSource] = useState<EvidenceSource | null>(null);
+  const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
+
+  // Dynamic Graph data for Evidence Graph view
+  const [activeGraphData, setActiveGraphData] = useState<DynamicGraphData | null>(() => {
+    if (activeInvestigation?.pressureTestResult) {
+      return buildGraphDataFromPressureTest(activeInvestigation.pressureTestResult);
+    }
+    return generateDynamicInvestigation(investigationIdea).graphData;
+  });
+
+  // Sync graph data when active investigation changes
+  useEffect(() => {
+    if (activeInvestigation) {
+      updateProbeLiveState({
+        currentInvestigationId: activeInvestigation.id,
+        currentIdea: activeInvestigation.query,
+        latestPressureTest: activeInvestigation.pressureTestResult || null
+      });
+
+      if (activeInvestigation.pressureTestResult) {
+        setActiveGraphData(buildGraphDataFromPressureTest(activeInvestigation.pressureTestResult));
+      } else {
+        setActiveGraphData(generateDynamicInvestigation(activeInvestigation.query).graphData);
+      }
+    }
+  }, [activeInvestigation?.id]);
+
+  // Listen for storage events across tabs or bridge
+  useEffect(() => {
+    const handleStorageUpdate = () => {
+      setInvestigations(getSavedInvestigations(user?.id));
+      setActiveInvId(getActiveInvestigationId(user?.id));
+    };
+
+    window.addEventListener('probe:investigations-updated', handleStorageUpdate);
+    window.addEventListener('probe:active-investigation-changed', handleStorageUpdate);
+    return () => {
+      window.removeEventListener('probe:investigations-updated', handleStorageUpdate);
+      window.removeEventListener('probe:active-investigation-changed', handleStorageUpdate);
+    };
+  }, [user?.id]);
+
+  const handleSelectInvestigation = (id: string) => {
+    setActiveInvId(id);
+    setActiveInvestigationId(id, user?.id);
+  };
+
+  const handleCreateNewInvestigation = async (params: {
+    query: string;
+    documentContext?: any;
+    documentFileName?: string;
+  }) => {
+    const newRecord = await createNewInvestigation({
+      ...params,
+      userId: user?.id,
+    });
+    const updatedList = getSavedInvestigations(user?.id);
+    setInvestigations(updatedList);
+    setActiveInvId(newRecord.id);
+  };
+
+  const handleDeleteInvestigation = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    deleteInvestigation(id, user?.id);
+    const updatedList = getSavedInvestigations(user?.id);
+    setInvestigations(updatedList);
+    if (activeInvId === id && updatedList.length > 0) {
+      setActiveInvId(updatedList[0].id);
+    }
+  };
+
+  const handleUpdateInvestigation = (updated: InvestigationRecord) => {
+    updateInvestigation(updated, user?.id);
+    setInvestigations(getSavedInvestigations(user?.id));
+  };
+
+  const handleLaunchExperiment = (exp: ValidationExperiment) => {
+    // Navigate to testing workspace and prefill
+    navigate('/app/testing');
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
     navigate('/');
   };
 
-  const handleSaveIdea = () => {
-    const clean = tempIdea.trim();
-    if (clean) {
-      setInvestigationIdea(clean);
-      localStorage.setItem('probe_active_idea', clean);
-      let savedDoc: any = undefined;
-      try {
-        const raw = localStorage.getItem('probe_active_document_context');
-        if (raw) savedDoc = JSON.parse(raw);
-      } catch {}
-      setActiveGraphData(generateDynamicInvestigation(clean, savedDoc).graphData);
-      updateProbeLiveState({ currentIdea: clean });
-    }
-    setIsEditingIdea(false);
-  };
-
-  useEffect(() => {
-    const onVoxideInvestigate = (e: Event) => {
-      const detail = (e as CustomEvent)?.detail;
-      if (!detail) return;
-      if (detail.idea) {
-        setInvestigationIdea(detail.idea);
-        setTempIdea(detail.idea);
-      }
-      if (detail.pressureTest) {
-        const extra = getProbeInternalState().customEvidence;
-        setActiveGraphData(buildGraphDataFromPressureTest(detail.pressureTest, extra));
-      } else if (detail.idea) {
-        setActiveGraphData(generateDynamicInvestigation(detail.idea).graphData);
-      }
-    };
-
-    const onVoxideEvidenceUpdated = (e: Event) => {
-      const detail = (e as CustomEvent)?.detail;
-      if (!detail) return;
-      if (detail.pressureTest) {
-        const extra = getProbeInternalState().customEvidence;
-        setActiveGraphData(buildGraphDataFromPressureTest(detail.pressureTest, extra));
-      } else if (detail.graphData) {
-        setActiveGraphData(detail.graphData);
-      }
-    };
-
-    const onVoxideAddEvidence = (e: Event) => {
-      const detail = (e as CustomEvent)?.detail;
-      if (!detail?.evidence) return;
-      const newSource = detail.evidence;
-      setActiveGraphData((prev) => {
-        const existing = prev ? prev.sources : [];
-        const updated = [newSource, ...existing.filter((s: any) => s.id !== newSource.id)];
-        return {
-          query: prev?.query || investigationIdea,
-          coreAssumption: prev?.coreAssumption || investigationIdea,
-          productName: prev?.productName || 'PROBE INVESTIGATION',
-          sources: updated,
-          summary: {
-            supportingCount: updated.filter((s: any) => s.relationship === 'Supports').length,
-            challengingCount: updated.filter((s: any) => s.relationship === 'Challenges').length,
-            total: updated.length
-          }
-        };
-      });
-    };
-
-    const onVoxideOpenGraph = (e: Event) => {
-      const detail = (e as CustomEvent)?.detail;
-      if (detail?.focusNodeId) {
-        setFocusNodeId(detail.focusNodeId);
-      }
-    };
-
-    window.addEventListener('probe:voxide-investigate-start', onVoxideInvestigate);
-    window.addEventListener('probe:voxide-investigate', onVoxideInvestigate);
-    window.addEventListener('probe:voxide-investigation-updated', onVoxideEvidenceUpdated);
-    window.addEventListener('probe:voxide-add-evidence', onVoxideAddEvidence);
-    window.addEventListener('probe:voxide-open-graph', onVoxideOpenGraph);
-
-    return () => {
-      window.removeEventListener('probe:voxide-investigate-start', onVoxideInvestigate);
-      window.removeEventListener('probe:voxide-investigate', onVoxideInvestigate);
-      window.removeEventListener('probe:voxide-investigation-updated', onVoxideEvidenceUpdated);
-      window.removeEventListener('probe:voxide-add-evidence', onVoxideAddEvidence);
-      window.removeEventListener('probe:voxide-open-graph', onVoxideOpenGraph);
-    };
-  }, [investigationIdea]);
-
-  // Convert SearchResult or DynamicEvidenceSource to EvidenceSource for modal
   const handleOpenSourceDetail = (source: any) => {
     if (!source) return;
     const formatted: EvidenceSource = {
@@ -182,74 +226,41 @@ export const WorkspacePage: React.FC = () => {
       sourceLabel: source.title || source.sourceName || 'Evidence Source',
       author: typeof source.author === 'string' ? source.author : source.author?.name || 'Practitioner',
       timeAgo: source.publishedAt || source.date || 'Recent',
-      quote: source.text || source.excerpt || source.title || '',
+      quote: source.excerpt || source.text || source.title || '',
       url: source.url || 'https://reddit.com',
-      sentiment: source.relationship === 'Challenges' ? 'contradict' : 'support',
-      confidenceScore: source.confidence || Math.round((source.relevanceScore || 0.85) * 100),
+      sentiment: source.relationship === 'Challenges' || source.stance === 'CHALLENGES' ? 'contradict' : 'support',
+      confidenceScore: source.confidence ? Math.round(source.confidence * 100) : 85,
       metrics: {
-        upvotes: source.metadata?.score || 42,
-        replies: source.metadata?.commentCount || 12,
+        upvotes: 42,
+        replies: 12,
       }
     };
     setSelectedSource(formatted);
   };
 
-  // Sync empirical product testing evidence directly to Living Evidence Graph
-  const handleProductTestSync = (evidence: any) => {
-    if (!evidence) return;
-    const dynamicSource: any = {
-      id: evidence.id,
-      sourceType: 'reddit',
-      sourceName: evidence.sourceName || 'PROBE PRODUCT TEST',
-      sourceIdentifier: evidence.sourceIdentifier,
-      date: 'Live Playwright Run',
-      excerpt: evidence.excerpt,
-      relationship: evidence.relationship === 'Supports' ? 'Supports' : 'Challenges',
-      url: evidence.productUrl,
-      topic: 'empirical_usability_verification',
-      confidence: evidence.confidence
-    };
-
-    setActiveGraphData((prev) => {
-      const existing = prev ? prev.sources : [];
-      const updated = [dynamicSource, ...existing.filter((s: any) => s.id !== dynamicSource.id)];
-      return {
-        query: prev?.query || evidence.productUrl,
-        coreAssumption: prev?.coreAssumption || evidence.task,
-        productName: evidence.sourceName,
-        sources: updated,
-        summary: {
-          supportingCount: updated.filter((s: any) => s.relationship === 'Supports').length,
-          challengingCount: updated.filter((s: any) => s.relationship === 'Challenges').length,
-          total: updated.length
-        }
-      };
-    });
-  };
-
   const navItems = [
-    { id: 'research', label: 'Research', path: '/app/research', icon: Search },
+    { id: 'research', label: 'Investigations', path: '/app/research', icon: Search },
     { id: 'testing', label: 'Product Testing', path: '/app/testing', icon: Compass },
     { id: 'evidence', label: 'Evidence Graph', path: '/app/evidence', icon: Layers },
-    { id: 'calendar', label: 'Calendar', path: '/app/calendar', icon: Calendar },
+    { id: 'calendar', label: 'Timeline', path: '/app/calendar', icon: Calendar },
   ];
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] text-[#0A0D14] flex flex-col font-['Geist','Inter',-apple-system,sans-serif]">
+    <div className="h-screen bg-[#FAFAFA] text-[#0A0D14] flex flex-col font-['Inter',-apple-system,sans-serif] overflow-hidden select-none">
       {/* PERSISTENT WORKSPACE TOP BAR */}
-      <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-[#E5E7EB] px-4 sm:px-6 h-16 flex items-center justify-between shadow-2xs">
+      <header className="flex-shrink-0 bg-white border-b border-[#E5E7EB] px-4 sm:px-6 h-14 flex items-center justify-between shadow-2xs z-30">
         {/* Brand + Workspace Badge */}
         <div className="flex items-center gap-3">
           <Link to="/app/research" className="flex items-center gap-2 group">
-            <div className="w-8 h-8 rounded-lg bg-[#0A0D14] flex items-center justify-center text-white shadow-xs group-hover:scale-105 transition-transform p-1">
-              <ProbeLogo className="w-5 h-5" inverted />
+            <div className="w-7 h-7 rounded-lg bg-[#0A0D14] flex items-center justify-center text-white shadow-2xs group-hover:scale-105 transition-transform p-1">
+              <ProbeLogo className="w-4 h-4" inverted />
             </div>
-            <span className="font-extrabold tracking-tight text-base text-[#0A0D14] font-['Geist',sans-serif]">
+            <span className="font-extrabold tracking-tight text-sm text-[#0A0D14] font-['Geist',sans-serif]">
               PROBE
             </span>
           </Link>
           <span className="hidden sm:inline-block px-2 py-0.5 rounded-md bg-[#F1F3F5] text-[10px] font-mono font-bold uppercase tracking-wider text-[#525866]">
-            Workspace
+            Research Platform
           </span>
         </div>
 
@@ -265,67 +276,46 @@ export const WorkspacePage: React.FC = () => {
                 onClick={() => navigate(tab.path)}
                 className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-full font-medium transition-all cursor-pointer ${
                   isActive
-                    ? 'bg-white text-[#0A0D14] font-bold shadow-xs'
+                    ? 'bg-white text-[#0A0D14] font-bold shadow-2xs'
                     : 'text-[#525866] hover:text-[#0A0D14] hover:bg-white/60'
                 }`}
               >
-                <Icon size={13} className={isActive ? 'text-[#0F52BA]' : 'text-[#868C98]'} />
+                <Icon size={12} className={isActive ? 'text-[#0A0D14]' : 'text-[#868C98]'} />
                 <span className="hidden md:inline">{tab.label}</span>
               </button>
             );
           })}
         </nav>
 
-        {/* ACTIVE IDEA PILL & USER CONTROLS */}
+        {/* CONTROLS & USER PROFILE */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Active Idea Pill */}
-          <div className="hidden lg:flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-[#E5E7EB] text-xs shadow-2xs max-w-xs">
-            <Sparkles size={12} className="text-[#0F52BA] flex-shrink-0" />
-            {isEditingIdea ? (
-              <div className="flex items-center gap-1">
-                <input
-                  type="text"
-                  value={tempIdea}
-                  onChange={(e) => setTempIdea(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSaveIdea()}
-                  autoFocus
-                  className="w-36 text-xs text-[#0A0D14] focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={handleSaveIdea}
-                  className="text-[#10B981] hover:text-[#059669] p-0.5"
-                >
-                  <Check size={12} />
-                </button>
-              </div>
+          {/* Active Investigation Name Badge */}
+          {activeInvestigation && (
+            <div className="hidden lg:flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-[#E5E7EB] text-xs shadow-2xs max-w-xs">
+              <Sparkles size={11} className="text-[#0A0D14] flex-shrink-0" />
+              <span className="truncate max-w-[150px] text-[#0A0D14] font-medium" title={activeInvestigation.title}>
+                {activeInvestigation.title}
+              </span>
+            </div>
+          )}
+
+          {/* User Badge with Avatar */}
+          <div className="hidden sm:flex items-center gap-2 text-xs text-[#525866] font-medium pl-1">
+            {user?.avatarUrl ? (
+              <img
+                src={user.avatarUrl}
+                alt={user.name || 'User'}
+                className="w-6 h-6 rounded-full object-cover border border-[#E5E7EB] shadow-2xs"
+                referrerPolicy="no-referrer"
+              />
             ) : (
-              <div className="flex items-center gap-1 truncate">
-                <span className="text-[#868C98] font-mono text-[10px] uppercase">Idea:</span>
-                <span className="truncate max-w-[140px] text-[#0A0D14] font-medium" title={investigationIdea}>
-                  "{investigationIdea}"
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTempIdea(investigationIdea);
-                    setIsEditingIdea(true);
-                  }}
-                  className="text-[#868C98] hover:text-[#0A0D14] p-0.5 transition-colors"
-                  title="Change active idea"
-                >
-                  <Edit3 size={11} />
-                </button>
+              <div className="w-6 h-6 rounded-full bg-[#E5E7EB] flex items-center justify-center text-[#0A0D14] font-semibold text-[11px] shadow-2xs">
+                {user?.name ? user.name.charAt(0).toUpperCase() : <User size={12} />}
               </div>
             )}
-          </div>
-
-          {/* User Badge */}
-          <div className="hidden sm:flex items-center gap-1.5 text-xs text-[#525866] font-medium">
-            <div className="w-6 h-6 rounded-full bg-[#E5E7EB] flex items-center justify-center text-[#525866]">
-              <User size={12} />
-            </div>
-            <span className="max-w-[100px] truncate">{user?.name || 'Founder'}</span>
+            <span className="max-w-[120px] truncate text-[#0A0D14] font-semibold text-xs">
+              {user?.name || user?.email?.split('@')[0] || 'Founder'}
+            </span>
           </div>
 
           {/* Sign Out Button */}
@@ -333,61 +323,103 @@ export const WorkspacePage: React.FC = () => {
             type="button"
             onClick={handleSignOut}
             title="Sign out to landing page"
-            className="p-2 rounded-xl text-[#868C98] hover:text-[#EF4444] hover:bg-[#FEE2E2]/40 transition-colors cursor-pointer"
+            className="p-1.5 rounded-lg text-[#868C98] hover:text-[#EF4444] hover:bg-[#FEE2E2]/40 transition-colors cursor-pointer"
             aria-label="Sign out"
           >
-            <LogOut size={16} />
+            <LogOut size={15} />
           </button>
         </div>
       </header>
 
-      {/* ACTIVE WORKSPACE VIEW */}
-      <main className="flex-1 pb-16">
-        {activeTab === 'research' && (
-          <div>
-            <div className="pt-6 px-4 max-w-6xl mx-auto flex items-center justify-between text-xs text-[#64748B] font-mono border-b border-[#F1F3F5] pb-3 mb-6">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse" />
-                <span>RESEARCH WORKSPACE ACTIVE</span>
-              </div>
-              <span className="text-[#868C98]">Querying Reddit, ScholarXIV, X & LinkedIn</span>
-            </div>
-            <PressureTestWorkspace
-              externalIdea={investigationIdea}
-              onOpenSourceModal={(item) => handleOpenSourceDetail(item)}
-              onPressureTestUpdated={(data) => {
-                setActiveGraphData(data);
-                if (data.query && data.query.trim()) {
-                  setInvestigationIdea(data.query.trim());
-                  localStorage.setItem('probe_active_idea', data.query.trim());
-                }
-              }}
-              onFocusProductTest={() => navigate('/app/testing')}
-            />
-          </div>
-        )}
+      {/* MAIN VIEW AREA */}
+      <main className="flex-1 flex overflow-hidden">
+        {activeTab === 'research' && activeInvestigation ? (
+          <div className="flex-1 flex w-full h-full overflow-hidden">
+            {/* 1. LEFT SIDEBAR: Investigations Grouped by Today / Yesterday / Older */}
+            {!sidebarCollapsed && (
+              <InvestigationSidebar
+                grouped={groupedInvestigations}
+                activeId={activeInvestigation.id}
+                onSelectInvestigation={handleSelectInvestigation}
+                onNewInvestigation={() => setIsNewModalOpen(true)}
+                onDeleteInvestigation={handleDeleteInvestigation}
+                onNavigateSection={(tab) => navigate(`/app/${tab}`)}
+              />
+            )}
 
-        {activeTab === 'testing' && (
-          <div>
-            <div className="pt-6 px-4 max-w-6xl mx-auto flex items-center justify-between text-xs text-[#64748B] font-mono border-b border-[#F1F3F5] pb-3 mb-6">
+            {/* Sidebar toggle button */}
+            <div className="relative z-10">
+              <button
+                type="button"
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                className="absolute top-3 left-2 p-1.5 rounded-md bg-white border border-[#E5E7EB] text-[#6B7280] hover:text-[#0A0D14] shadow-2xs transition-colors"
+                title={sidebarCollapsed ? 'Open Sidebar' : 'Collapse Sidebar'}
+              >
+                {sidebarCollapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
+              </button>
+            </div>
+
+            {/* 2. CENTER: Main Research Conversation with Expandable Artifacts */}
+            <InvestigationConversation
+              investigation={activeInvestigation}
+              onUpdateInvestigation={handleUpdateInvestigation}
+              onLaunchExperiment={handleLaunchExperiment}
+              onOpenTestingTab={() => navigate('/app/testing')}
+            />
+
+            {/* Context panel toggle button */}
+            <div className="relative z-10">
+              <button
+                type="button"
+                onClick={() => setContextPanelCollapsed(!contextPanelCollapsed)}
+                className="absolute top-3 right-2 p-1.5 rounded-md bg-white border border-[#E5E7EB] text-[#6B7280] hover:text-[#0A0D14] shadow-2xs transition-colors"
+                title={contextPanelCollapsed ? 'Open Context' : 'Collapse Context'}
+              >
+                {contextPanelCollapsed ? <PanelRightOpen size={14} /> : <PanelRightClose size={14} />}
+              </button>
+            </div>
+
+            {/* 3. RIGHT PANEL: Current Investigation Context (Assumptions, Evidence, ScholarXIV, Contradictions, Experiments) */}
+            {!contextPanelCollapsed && (
+              <InvestigationContextPanel
+                investigation={activeInvestigation}
+                onUpdateInvestigation={handleUpdateInvestigation}
+                onLaunchExperiment={handleLaunchExperiment}
+                onOpenSourceModal={handleOpenSourceDetail}
+              />
+            )}
+          </div>
+        ) : activeTab === 'testing' ? (
+          <div className="flex-1 overflow-y-auto">
+            <div className="pt-4 px-6 max-w-6xl mx-auto flex items-center justify-between text-xs text-[#64748B] font-mono border-b border-[#F1F3F5] pb-3 mb-4">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-[#3B82F6]" />
-                <span>LIVE PRODUCT TESTING SUBSYSTEM</span>
+                <span className="font-semibold text-[#0A0D14]">AUTONOMOUS PLAYWRIGHT TESTING ENVIRONMENT</span>
               </div>
-              <span className="text-[#868C98]">Autonomous Browser Agent Environment</span>
+              <button
+                type="button"
+                onClick={() => navigate('/app/research')}
+                className="text-[#2563EB] hover:underline"
+              >
+                ← Back to Investigation
+              </button>
             </div>
-            <TestingWorkspace onSyncToGraph={handleProductTestSync} />
+            <TestingWorkspace onSyncToGraph={(ev) => handleOpenSourceDetail(ev)} />
           </div>
-        )}
-
-        {activeTab === 'evidence' && (
-          <div>
-            <div className="pt-6 px-4 max-w-6xl mx-auto flex items-center justify-between text-xs text-[#64748B] font-mono border-b border-[#F1F3F5] pb-3 mb-6">
+        ) : activeTab === 'evidence' ? (
+          <div className="flex-1 overflow-y-auto">
+            <div className="pt-4 px-6 max-w-6xl mx-auto flex items-center justify-between text-xs text-[#64748B] font-mono border-b border-[#F1F3F5] pb-3 mb-4">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-[#8B5CF6]" />
-                <span>LIVING EVIDENCE GRAPH</span>
+                <span className="font-semibold text-[#0A0D14]">LIVING EVIDENCE TOPOLOGY & STANCE GRAPH</span>
               </div>
-              <span className="text-[#868C98]">Topology & Stance Clustering</span>
+              <button
+                type="button"
+                onClick={() => navigate('/app/research')}
+                className="text-[#2563EB] hover:underline"
+              >
+                ← Back to Investigation
+              </button>
             </div>
             <EvidenceGraph
               onSelectSource={(source) => handleOpenSourceDetail(source)}
@@ -396,16 +428,20 @@ export const WorkspacePage: React.FC = () => {
               onNavigateToCalendar={() => navigate('/app/calendar')}
             />
           </div>
-        )}
-
-        {activeTab === 'calendar' && (
-          <div>
-            <div className="pt-6 px-4 max-w-6xl mx-auto flex items-center justify-between text-xs text-[#64748B] font-mono border-b border-[#F1F3F5] pb-3 mb-2">
+        ) : (
+          <div className="flex-1 overflow-y-auto">
+            <div className="pt-4 px-6 max-w-6xl mx-auto flex items-center justify-between text-xs text-[#64748B] font-mono border-b border-[#F1F3F5] pb-3 mb-4">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-[#10B981]" />
-                <span>VALIDATION CALENDAR & SIGNAL TIMELINE</span>
+                <span className="font-semibold text-[#0A0D14]">VALIDATION CALENDAR & SIGNAL TIMELINE</span>
               </div>
-              <span className="text-[#868C98]">12-Month Signal Artifacts & Scheduled Tests</span>
+              <button
+                type="button"
+                onClick={() => navigate('/app/research')}
+                className="text-[#2563EB] hover:underline"
+              >
+                ← Back to Investigation
+              </button>
             </div>
             <EvidenceTimeline
               ideaQuery={investigationIdea}
@@ -419,19 +455,15 @@ export const WorkspacePage: React.FC = () => {
       </main>
 
       {/* MODALS */}
+      <NewInvestigationModal
+        isOpen={isNewModalOpen}
+        onClose={() => setIsNewModalOpen(false)}
+        onSubmit={handleCreateNewInvestigation}
+      />
+
       <EvidenceModal
         source={selectedSource}
         onClose={() => setSelectedSource(null)}
-      />
-
-      <TryModal
-        isOpen={isTryModalOpen}
-        onClose={() => setIsTryModalOpen(false)}
-        onSelectPrompt={(prompt) => {
-          setInvestigationIdea(prompt);
-          localStorage.setItem('probe_active_idea', prompt);
-          navigate('/app/research');
-        }}
       />
     </div>
   );

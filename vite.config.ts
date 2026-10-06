@@ -10,7 +10,35 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
-    dedupe: ['react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'react-router-dom'],
+    dedupe: [
+      'react',
+      'react-dom',
+      'react/jsx-runtime',
+      'react/jsx-dev-runtime',
+      'react-router-dom',
+    ],
+  },
+  define: {
+    'process.env.VITE_SUPABASE_URL': JSON.stringify(
+      process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || ''
+    ),
+    'process.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(
+      process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+      process.env.VITE_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_PUBLISHABLE_KEY ||
+      ''
+    ),
+    'process.env.SUPABASE_URL': JSON.stringify(
+      process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || ''
+    ),
+    'process.env.SUPABASE_ANON_KEY': JSON.stringify(
+      process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+      process.env.VITE_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_PUBLISHABLE_KEY ||
+      ''
+    ),
   },
   optimizeDeps: {
     include: [
@@ -22,6 +50,8 @@ export default defineConfig({
       'react-router-dom',
       'lucide-react',
       'gsap',
+      'gsap/ScrollTrigger',
+      'gsap/MotionPathPlugin',
       '@gsap/react',
       '@xyflow/react',
       'ogl',
@@ -29,7 +59,15 @@ export default defineConfig({
       'tailwind-merge',
       '@supabase/supabase-js',
       '@voxide/react',
-      'framer-motion',
+      '@voxide/react/core',
+      '@google/genai',
+      '@radix-ui/react-dialog',
+      '@radix-ui/react-slot',
+      '@radix-ui/react-icons',
+      '@radix-ui/react-label',
+      '@radix-ui/react-navigation-menu',
+      'class-variance-authority',
+      'elkjs/lib/elk.bundled.js',
     ],
   },
   server: {
