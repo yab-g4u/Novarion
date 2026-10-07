@@ -116,7 +116,7 @@ export const ResearchThinkingCanvas: React.FC<ResearchThinkingCanvasProps> = ({
       </div>
 
       {/* Visual Node Graph Animation matching image.png */}
-      <div className="py-2 bg-[#FAFAFA] rounded-2xl border border-[#F1F3F5] overflow-hidden my-3">
+      <div className="py-2 px-1 sm:px-2 bg-[#FAFAFA] rounded-2xl border border-[#F1F3F5] my-3">
         <InteractiveEvidenceNodeGraph
           ideaText={query}
           supportItems={dynamicData.supportItems}

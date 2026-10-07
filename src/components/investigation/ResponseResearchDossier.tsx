@@ -72,7 +72,7 @@ export const ResponseResearchDossier: React.FC<ResponseResearchDossierProps> = (
             </span>
           </div>
           <span className="text-[11px] font-mono text-[#64748B]">
-            Click any node below to expand source quotes
+            Drag nodes to reposition • Scroll or click Contradictions to reveal opposing signals
           </span>
         </div>
 
