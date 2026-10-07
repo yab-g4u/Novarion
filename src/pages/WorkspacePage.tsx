@@ -19,6 +19,7 @@ import {
   Bookmark
 } from 'lucide-react';
 import { TestingWorkspace } from '../features/testing/components/TestingWorkspace';
+import { ProductTestingWorkspace } from '../features/testing/components/ProductTestingWorkspace';
 import { EvidenceGraph } from '../components/EvidenceGraph';
 import { EvidenceModal } from '../components/EvidenceModal';
 import { TryModal } from '../components/TryModal';
@@ -108,13 +109,13 @@ export const WorkspacePage: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'research' | 'testing' | 'evidence'>(initialTab);
   const [activeSidebarSection, setActiveSidebarSection] = useState<SidebarSection>(
-    initialTab === 'evidence' ? 'evidence' : initialTab === 'testing' ? 'experiments' : 'investigations'
+    initialTab === 'evidence' ? 'evidence' : initialTab === 'testing' ? 'product_testing' : 'investigations'
   );
 
   useEffect(() => {
     if (path.includes('/app/testing')) {
       setActiveTab('testing');
-      setActiveSidebarSection('experiments');
+      setActiveSidebarSection('product_testing');
     } else if (path.includes('/app/evidence')) {
       setActiveTab('evidence');
       setActiveSidebarSection('evidence');
@@ -477,13 +478,24 @@ export const WorkspacePage: React.FC = () => {
 
   const handleNavigateSection = (section: SidebarSection) => {
     setActiveSidebarSection(section);
-    if (section === 'investigations') {
+    if (section === 'product_testing') {
+      setActiveTab('testing');
+      navigate('/app/testing');
+    } else if (section === 'investigations') {
+      setActiveTab('research');
       navigate('/app/research');
     } else if (section === 'evidence') {
+      setActiveTab('evidence');
       navigate('/app/evidence');
-    } else if (section === 'experiments') {
+    } else if (section === 'competitors') {
+      setActiveTab('research');
+      setShowEvidencePanel(true);
+      setSelectedResearchNode('competitors');
+    } else if (section === 'validation_lab' || section === 'experiments') {
+      setActiveTab('testing');
       navigate('/app/testing');
     } else if (section === 'saved') {
+      setActiveTab('research');
       navigate('/app/research');
     } else if (section === 'settings') {
       setIsSettingsOpen(true);
@@ -650,47 +662,41 @@ export const WorkspacePage: React.FC = () => {
           </div>
         )}
 
-        {/* SECTION B: PLAYWRIGHT EXPERIMENTS / TESTING */}
+        {/* SECTION B: PRODUCT TESTING (CLONED EXACTLY FROM image.png) */}
         {activeTab === 'testing' && (
           <div className="flex-1 flex flex-col h-full overflow-y-auto bg-[#FAFAFA]">
-            {/* Header */}
-            <div className="p-3 sm:p-4 border-b border-[#E5E7EB] bg-white flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2">
+            {isSidebarCollapsed && (
+              <div className="hidden md:flex p-2 px-4 border-b border-[#E5E7EB] bg-white items-center gap-2 shrink-0">
                 <button
                   type="button"
-                  onClick={() => {
-                    if (window.innerWidth < 768) setIsMobileSidebarOpen(true);
-                    else setIsSidebarCollapsed((prev) => !prev);
-                  }}
-                  className="p-1.5 rounded-lg border border-[#E5E7EB] bg-white hover:bg-[#F9FAFB] text-[#6B7280] transition-colors cursor-pointer mr-1"
+                  onClick={() => setIsSidebarCollapsed(false)}
+                  className="p-1.5 rounded-lg border border-[#E5E7EB] bg-white hover:bg-[#F9FAFB] text-[#6B7280] transition-colors cursor-pointer"
+                  title="Open Sidebar"
                 >
                   <Menu size={15} />
                 </button>
-                <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse" />
-                <h2 className="text-xs sm:text-sm font-bold text-[#0A0D14]">
-                  Playwright Validation Experiments
-                </h2>
+                <span className="text-xs font-bold text-[#0A0D14]">Probe Product Testing</span>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => navigate('/app/research')}
-                  className="px-3 py-1.5 rounded-lg border border-[#E5E7EB] bg-white text-xs font-semibold hover:bg-[#F9FAFB] transition-colors cursor-pointer"
-                >
-                  Back to Research
-                </button>
-              </div>
+            )}
+            <div className="md:hidden p-2.5 px-4 border-b border-[#E5E7EB] bg-white flex items-center justify-between shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsMobileSidebarOpen(true)}
+                className="p-1.5 rounded-lg border border-[#E5E7EB] bg-white hover:bg-[#F9FAFB] text-[#6B7280] transition-colors cursor-pointer"
+                title="Open Navigation"
+              >
+                <Menu size={15} />
+              </button>
+              <span className="text-xs font-bold text-[#0A0D14]">Probe Product Testing</span>
             </div>
-
-            <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full pb-16">
-              <TestingWorkspace 
-                onSyncToGraph={() => {
-                  if (activeInvestigation) {
-                    setActiveGraphData(investigationToGraphData(activeInvestigation));
-                  }
-                }} 
-              />
-            </div>
+            <ProductTestingWorkspace
+              onBackToInvestigations={() => handleNavigateSection('investigations')}
+              onSyncToGraph={() => {
+                if (activeInvestigation) {
+                  setActiveGraphData(investigationToGraphData(activeInvestigation));
+                }
+              }}
+            />
           </div>
         )}
 
