@@ -202,8 +202,8 @@ export class TwoTierResearchEngine {
     const questionsToAnswer: QuestionToAnswer[] = classification.assumptions.slice(0, 3).map((a, i) => ({
       id: `q_${Date.now()}_${i}`,
       question: `How do we validate whether: "${a.text}" holds true in production?`,
-      status: 'open',
-      priority: a.riskLevel === 'HIGH' ? 'critical' : 'medium'
+      underlyingAssumption: a.text,
+      status: 'investigating'
     }));
 
     const actionTriggers = [
@@ -661,7 +661,7 @@ ${JSON.stringify(contextPayload, null, 2)}`;
       relatedAssumptionIds: [s.targetAssumptionId],
       relevanceScore: s.relevanceScore,
       sourceQualityScore: 85,
-      evidenceStrength: s.relevanceScore >= 80 ? 'STRONG' : 'MODERATE',
+      evidenceStrength: s.relevanceScore >= 80 ? 85 : 65,
       confidence: s.confidence,
       independenceScore: 90,
       noveltyScore: 80,

@@ -107,7 +107,7 @@ export const InvestigationThinkingMode: React.FC<InvestigationThinkingModeProps>
   const handleSkip = () => {
     if (completedRef.current) return;
     completedRef.current = true;
-    setIsWorking(false);
+    setInternalWorking(false);
     if (onSkip) {
       onSkip();
     } else if (onComplete) {
