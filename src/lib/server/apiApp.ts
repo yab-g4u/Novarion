@@ -1,7 +1,12 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import { z } from 'zod';
-import { researchRateLimiter } from './llm/rateLimiter';
+import {
+  probeResearchRateLimiter,
+  geminiApiRateLimiter,
+  generalApiRateLimiter,
+  geminiUsageLimiter,
+} from '../api';
 import { getLLMProvider } from './llm/providerRegistry';
 import { twoTierResearchEngine } from './llm/twoTierResearchEngine';
 
@@ -161,25 +166,8 @@ export function createApiApp() {
   app.use(cors());
   app.use(express.json({ limit: '2mb' }));
 
-  // Basic in-memory rate-limiter: 120 requests per minute per IP
-  const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-  app.use('/api', (req: Request, res: Response, next: NextFunction) => {
-    const ip = req.ip || req.headers['x-forwarded-for'] || 'client';
-    const now = Date.now();
-    const clientRecord = rateLimitMap.get(String(ip));
-
-    if (!clientRecord || now > clientRecord.resetAt) {
-      rateLimitMap.set(String(ip), { count: 1, resetAt: now + 60000 });
-      return next();
-    }
-
-    if (clientRecord.count >= 120) {
-      return res.status(429).json({ error: 'Rate limit exceeded. Please wait a moment.' });
-    }
-
-    clientRecord.count += 1;
-    next();
-  });
+  // Global rate limiter for API endpoints
+  app.use('/api', generalApiRateLimiter.middleware);
 
   // REST API: GET /api/investigations
   app.get('/api/investigations', (_req: Request, res: Response) => {
@@ -334,7 +322,7 @@ export function createApiApp() {
   });
 
   // REST API: POST /api/documents/extract (Extracts context from PDF / PRD / brief)
-  app.post('/api/documents/extract', async (req: Request, res: Response) => {
+  app.post('/api/documents/extract', geminiApiRateLimiter.middleware, async (req: Request, res: Response) => {
     const parseResult = DocumentExtractRequestSchema.safeParse(req.body);
     if (!parseResult.success) {
       return res.status(400).json({
@@ -360,7 +348,7 @@ export function createApiApp() {
   });
 
   // REST API: POST /api/pressure-test (lazy-loads pressureTestPipeline on request)
-  app.post('/api/pressure-test', async (req: Request, res: Response) => {
+  app.post('/api/pressure-test', geminiApiRateLimiter.middleware, async (req: Request, res: Response) => {
     const parseResult = PressureTestRequestSchema.safeParse(req.body);
     if (!parseResult.success) {
       return res.status(400).json({
@@ -383,7 +371,7 @@ export function createApiApp() {
     }
   });
 
-  // REST API: GET /api/llm/config (Inspect two-tier model configuration)
+  // REST API: GET /api/llm/config (Inspect two-tier model configuration and rate limits)
   app.get('/api/llm/config', (_req: Request, res: Response) => {
     const provider = getLLMProvider();
     return res.status(200).json({
@@ -413,14 +401,25 @@ export function createApiApp() {
         }
       },
       rateLimits: {
-        maxRequestsPerMinute: 30,
-        maxConcurrent: 4
+        researchLimit: {
+          maxRequestsPerMinute: probeResearchRateLimiter.max,
+          maxConcurrent: probeResearchRateLimiter.maxConcurrent,
+        },
+        geminiInferenceLimit: {
+          maxRequestsPerMinute: geminiApiRateLimiter.max,
+          maxConcurrent: geminiApiRateLimiter.maxConcurrent,
+        },
+        generalApiLimit: {
+          maxRequestsPerMinute: generalApiRateLimiter.max,
+          maxConcurrent: generalApiRateLimiter.maxConcurrent,
+        },
+        currentUsage: geminiUsageLimiter.getUsageStats(),
       }
     });
   });
 
   // REST API: POST /api/research/stream (Server-Sent Events: Two-tier LLM research pipeline with live progress)
-  app.post('/api/research/stream', researchRateLimiter.middleware, async (req: Request, res: Response) => {
+  app.post('/api/research/stream', probeResearchRateLimiter.middleware, async (req: Request, res: Response) => {
     const body = req.body || {};
     const query = String(body.query || body.idea || '').trim();
     if (!query) {
@@ -471,7 +470,7 @@ export function createApiApp() {
   });
 
   // REST API: POST /api/research/synthesize (Two-tier LLM Research Engine with Rate Limiting)
-  app.post('/api/research/synthesize', researchRateLimiter.middleware, async (req: Request, res: Response) => {
+  app.post('/api/research/synthesize', probeResearchRateLimiter.middleware, async (req: Request, res: Response) => {
     try {
       const body = req.body || {};
       const query = String(body.query || body.idea || '').trim();
@@ -497,7 +496,7 @@ export function createApiApp() {
   });
 
   // REST API: POST /api/research/assumption (Researches an assumption via ScholarXIV)
-  app.post(['/api/research/assumption', '/api/scholarxiv/research-assumption'], async (req: Request, res: Response) => {
+  app.post(['/api/research/assumption', '/api/scholarxiv/research-assumption'], geminiApiRateLimiter.middleware, async (req: Request, res: Response) => {
     const parseResult = ResearchAssumptionSchema.safeParse(req.body);
     if (!parseResult.success) {
       return res.status(400).json({
