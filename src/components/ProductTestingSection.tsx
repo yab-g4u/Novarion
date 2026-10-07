@@ -221,7 +221,8 @@ export const ProductTestingSection: React.FC = () => {
             }
 
             // Check if finished
-            if (sess.status === 'COMPLETED' || sess.status === 'FAILED') {
+            const isTerminal = sess.status === 'COMPLETED' || sess.status === 'FAILED' || sess.status === 'BLOCKED' || sess.status === 'AUTHENTICATION_REQUIRED' || sess.status === 'TIMEOUT' || sess.status === 'STOPPED';
+            if (isTerminal) {
               if (pollingTimerRef.current) {
                 clearInterval(pollingTimerRef.current);
                 pollingTimerRef.current = null;

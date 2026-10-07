@@ -1,5 +1,17 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { 
+  Sparkles, 
+  ArrowRight, 
+  Layers, 
+  ShieldAlert, 
+  Globe, 
+  MessageSquare, 
+  CheckCircle2, 
+  Loader2,
+  Cpu
+} from 'lucide-react';
 import { ThoughtLine } from '../ui/ThoughtLine';
+import { ScholarXivLogo } from '../ScholarXivLogo';
 
 export interface InvestigationThinkingModeProps {
   query: string;
@@ -34,6 +46,7 @@ export const InvestigationThinkingMode: React.FC<InvestigationThinkingModeProps>
 }) => {
   const [internalWorking, setInternalWorking] = useState<boolean>(true);
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState<number>(1);
   const completedRef = useRef(false);
 
   const isWorking = typeof isLiveWorking === 'boolean' ? isLiveWorking : internalWorking;
@@ -44,14 +57,23 @@ export const InvestigationThinkingMode: React.FC<InvestigationThinkingModeProps>
     return q.replace(/^search\s+(about|for)\s+/i, '');
   }, [query]);
 
-  // Specific research steps tailored to the user's inquiry (fallback if liveSteps is empty)
+  // Elapsed timer ticker for 5-15s thinking process
+  useEffect(() => {
+    if (!isWorking) return;
+    const interval = setInterval(() => {
+      setElapsedSeconds((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isWorking]);
+
+  // Specific research steps tailored to the user's inquiry
   const defaultSteps = useMemo(() => [
-    'Classifying inquiry & extracting assumptions',
-    'Generated search queries & detected competitors',
-    'Gathering empirical signals across SearXNG, Reddit, ScholarXIV & web',
+    'Classifying inquiry & isolating core assumptions',
+    'Generating targeted search queries & detecting competitors',
+    'Gathering empirical signals across Reddit, ScholarXIV & web discussions',
     'Categorizing evidence & testing contradictions',
     'Synthesizing founder PRD & pressure-testing recommendations',
-    'Finalizing research dossier & actionable next steps'
+    'Finalizing interactive research topology'
   ], []);
 
   // Step progression animation when not driven by live stream
@@ -60,11 +82,11 @@ export const InvestigationThinkingMode: React.FC<InvestigationThinkingModeProps>
 
     const timers: NodeJS.Timeout[] = [];
 
-    timers.push(setTimeout(() => setCurrentStepIndex(1), 1200));
-    timers.push(setTimeout(() => setCurrentStepIndex(2), 2400));
-    timers.push(setTimeout(() => setCurrentStepIndex(3), 3600));
-    timers.push(setTimeout(() => setCurrentStepIndex(4), 4800));
-    timers.push(setTimeout(() => setCurrentStepIndex(5), 6000));
+    timers.push(setTimeout(() => setCurrentStepIndex(1), 1400));
+    timers.push(setTimeout(() => setCurrentStepIndex(2), 2800));
+    timers.push(setTimeout(() => setCurrentStepIndex(3), 4400));
+    timers.push(setTimeout(() => setCurrentStepIndex(4), 6200));
+    timers.push(setTimeout(() => setCurrentStepIndex(5), 8000));
 
     timers.push(
       setTimeout(() => {
@@ -75,7 +97,7 @@ export const InvestigationThinkingMode: React.FC<InvestigationThinkingModeProps>
             onComplete();
           }
         }
-      }, 7200)
+      }, 9500)
     );
 
     return () => {
@@ -100,40 +122,60 @@ export const InvestigationThinkingMode: React.FC<InvestigationThinkingModeProps>
     }
   };
 
+  const getTierLabel = () => {
+    if (activeTier === 'fast' || currentStepIndex < 2) return 'Fast Classifier';
+    if (activeTier === 'retrieval' || currentStepIndex === 2) return 'Multi-Source Retrieval';
+    if (activeTier === 'strong' || currentStepIndex >= 4) return 'Strong Synthesis Model';
+    return 'Fast Categorizer';
+  };
+
   return (
-    <div className={`w-full max-w-2xl mx-auto ${className}`}>
-      {/* Linear-like, minimal off-white container */}
-      <div className="bg-[#FAFAFA] border border-[#E5E7EB] rounded-2xl p-4 sm:p-5 shadow-2xs transition-all">
-        {/* Top Header: Quiet metadata + Skip button */}
-        <div className="flex items-center justify-between pb-3 mb-3 border-b border-[#F0F2F5] text-xs">
+    <div className={`w-full max-w-3xl mx-auto ${className}`}>
+      {/* Polished Thinking State Container */}
+      <div className="bg-white border border-[#E5E7EB] rounded-2xl p-4 sm:p-5 shadow-xs transition-all space-y-4">
+        {/* 1. Header: Status + Live Elapsed Timer + Model Tier Badge + Skip Button */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[#F0F2F5] text-xs">
           <div className="flex items-center gap-2 min-w-0">
-            <span className={`w-1.5 h-1.5 rounded-full ${isWorking ? 'bg-[#0091FF] animate-pulse' : 'bg-[#10B981]'}`} />
-            <span className="font-mono text-[10px] font-semibold tracking-wider uppercase text-[#868C98] shrink-0">
-              Probe Investigation
+            <span className={`w-2 h-2 rounded-full ${isWorking ? 'bg-[#0091FF] animate-pulse' : 'bg-[#10B981]'}`} />
+            <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#64748B] shrink-0">
+              Probe Research Engine
             </span>
             <span className="text-[#D1D5DB] shrink-0">/</span>
-            <span className="font-medium text-[#0A0D14] truncate max-w-[200px] sm:max-w-xs text-xs">
+            <span className="font-semibold text-[#0A0D14] truncate max-w-[200px] sm:max-w-xs text-xs">
               {cleanQuery}
             </span>
           </div>
 
-          {(onSkip || onComplete) && isWorking && (
-            <button
-              type="button"
-              onClick={handleSkip}
-              className="text-[11px] font-mono text-[#868C98] hover:text-[#0A0D14] transition-colors flex items-center gap-1 cursor-pointer select-none shrink-0 ml-2"
-            >
-              <span>Skip</span>
-              <span className="text-[10px]">→</span>
-            </button>
-          )}
+          <div className="flex items-center gap-2.5 shrink-0">
+            {/* Live Model Tier Pill */}
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#EFF6FF] border border-[#BFDBFE] text-[10px] font-mono font-semibold text-[#1D4ED8]">
+              <Cpu size={11} className="animate-pulse" />
+              <span>{getTierLabel()}</span>
+            </div>
+
+            {/* Timer */}
+            <span className="text-[11px] font-mono text-[#64748B]">
+              00:{elapsedSeconds < 10 ? `0${elapsedSeconds}` : elapsedSeconds}
+            </span>
+
+            {(onSkip || onComplete) && isWorking && (
+              <button
+                type="button"
+                onClick={handleSkip}
+                className="text-[11px] font-mono text-[#0A0D14] hover:text-[#0091FF] transition-colors flex items-center gap-1 cursor-pointer select-none font-semibold px-2 py-0.5 rounded-md hover:bg-[#F3F4F6]"
+              >
+                <span>Skip</span>
+                <span className="text-[10px]">→</span>
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* ThoughtLine Investigation Indicator */}
-        <div className="py-0.5">
+        {/* 2. Linear ThoughtLine Step Indicator */}
+        <div className="py-1">
           <ThoughtLine
             working={isWorking}
-            label="Investigating idea & cross-referencing evidence…"
+            label="Investigating idea & cross-referencing multi-source evidence…"
             doneLabel="Investigation completed in"
             glyph="sparkle"
             glyphColor="#0091FF"
@@ -144,7 +186,7 @@ export const InvestigationThinkingMode: React.FC<InvestigationThinkingModeProps>
             settleDuration={350}
             collapsible={true}
             collapseOnSettle={false}
-            showTimer={true}
+            showTimer={false}
             steps={activeSteps}
             onSettle={() => {
               if (!completedRef.current) {
@@ -155,14 +197,100 @@ export const InvestigationThinkingMode: React.FC<InvestigationThinkingModeProps>
           />
         </div>
 
-        {/* Footer: Quiet Linear-style status bar */}
-        <div className="mt-3.5 pt-2.5 border-t border-[#F0F2F5] flex items-center justify-between text-[11px] font-mono text-[#868C98]">
+        {/* 3. Node-Based Thinking UI (Matches image.png) */}
+        <div className="p-3 sm:p-4 rounded-xl bg-[#FAFAFA] border border-[#E5E7EB] space-y-3">
+          <div className="flex items-center justify-between text-[11px] font-mono text-[#64748B]">
+            <span className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[#0A0D14]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#0091FF] animate-ping" />
+              <span>Evidence Nodes Processing</span>
+            </span>
+            <span>Live Signal Discovery</span>
+          </div>
+
+          {/* Compact Visual Topology Preview */}
+          <div className="relative py-4 flex flex-col sm:flex-row items-center justify-between gap-4 px-2">
+            {/* Left: Support Signals (Reddit, Web, GitHub) */}
+            <div className="flex flex-row sm:flex-col gap-2 shrink-0">
+              <div className="flex items-center gap-2 p-2 rounded-lg bg-white border border-[#E5E7EB] shadow-2xs text-left">
+                <div className="w-6 h-6 rounded-md bg-[#FFF7ED] text-[#EA580C] flex items-center justify-center p-1">
+                  <MessageSquare size={12} />
+                </div>
+                <div className="hidden sm:block">
+                  <div className="text-[11px] font-bold text-[#0A0D14]">Reddit Discussions</div>
+                  <div className="text-[9px] font-mono text-[#10B981] flex items-center gap-1">
+                    <span className="w-1 h-1 rounded-full bg-[#10B981] animate-pulse" />
+                    <span>User friction & complaints</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 p-2 rounded-lg bg-white border border-[#E5E7EB] shadow-2xs text-left">
+                <div className="w-6 h-6 rounded-md bg-[#EFF6FF] text-[#2563EB] flex items-center justify-center p-1">
+                  <Globe size={12} />
+                </div>
+                <div className="hidden sm:block">
+                  <div className="text-[11px] font-bold text-[#0A0D14]">Web & SearXNG</div>
+                  <div className="text-[9px] font-mono text-[#10B981] flex items-center gap-1">
+                    <span className="w-1 h-1 rounded-full bg-[#10B981] animate-pulse" />
+                    <span>Incumbent solutions</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Center: Core Idea Node */}
+            <div className="p-3.5 rounded-2xl bg-white border-2 border-[#0A0D14] shadow-xs text-center max-w-[220px] relative">
+              <span className="absolute -top-2 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full bg-[#0A0D14] text-white text-[9px] font-mono uppercase font-bold">
+                Idea Core
+              </span>
+              <p className="text-xs font-bold text-[#0A0D14] truncate font-['Geist',sans-serif] mt-0.5">
+                {cleanQuery}
+              </p>
+              <div className="flex items-center justify-center gap-1 mt-1 text-[10px] font-mono text-[#0091FF]">
+                <Loader2 size={10} className="animate-spin" />
+                <span>Pressure-testing</span>
+              </div>
+            </div>
+
+            {/* Right: Opposing & Academic Signals */}
+            <div className="flex flex-row sm:flex-col gap-2 shrink-0">
+              <div className="flex items-center gap-2 p-2 rounded-lg bg-white border border-[#E5E7EB] shadow-2xs text-left">
+                <div className="w-6 h-6 rounded-md bg-[#EEF2FF] text-[#4F46E5] flex items-center justify-center p-1">
+                  <ScholarXivLogo className="w-3.5 h-3.5 text-[#4F46E5]" />
+                </div>
+                <div className="hidden sm:block">
+                  <div className="text-[11px] font-bold text-[#0A0D14]">ScholarXIV Consensus</div>
+                  <div className="text-[9px] font-mono text-[#6366F1] flex items-center gap-1">
+                    <span className="w-1 h-1 rounded-full bg-[#6366F1] animate-pulse" />
+                    <span>Peer-reviewed papers</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 p-2 rounded-lg bg-white border border-[#E5E7EB] shadow-2xs text-left">
+                <div className="w-6 h-6 rounded-md bg-[#FEF2F2] text-[#DC2626] flex items-center justify-center p-1">
+                  <ShieldAlert size={12} />
+                </div>
+                <div className="hidden sm:block">
+                  <div className="text-[11px] font-bold text-[#0A0D14]">Contradictions</div>
+                  <div className="text-[9px] font-mono text-[#DC2626] flex items-center gap-1">
+                    <span className="w-1 h-1 rounded-full bg-[#DC2626] animate-pulse" />
+                    <span>Disproving signals</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 4. Footer Status Bar */}
+        <div className="pt-2 border-t border-[#F0F2F5] flex items-center justify-between text-[11px] font-mono text-[#868C98]">
           <span className="flex items-center gap-1.5 truncate mr-2">
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#10B981] shrink-0" />
-            <span className="truncate">Sources: SearXNG · Reddit · ScholarXIV · Web</span>
+            <span className="truncate">Active Pipelines: SearXNG · Reddit · ScholarXIV · Playwright</span>
           </span>
-          <span className="shrink-0 text-[10px] flex items-center gap-2">
-            <span>{isWorking ? `${activeSteps.length} of ${liveSteps?.length || defaultSteps.length} stages` : 'Evidence compiled'}</span>
+          <span className="shrink-0 text-[10px]">
+            {isWorking ? `${activeSteps.length} of ${defaultSteps.length} stages` : 'Complete'}
           </span>
         </div>
       </div>

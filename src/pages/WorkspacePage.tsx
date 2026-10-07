@@ -42,7 +42,12 @@ import {
   InvestigationRecord, 
   GroupedInvestigations 
 } from '../types/investigation';
-import { AuthUser } from '../lib/auth/authService';
+import { 
+  AuthUser, 
+  getCurrentUser, 
+  handleAuthRedirectCallback, 
+  subscribeToAuthState 
+} from '../lib/auth/authService';
 import { 
   getSavedInvestigations, 
   persistInvestigations, 
@@ -131,6 +136,36 @@ export const WorkspacePage: React.FC = () => {
     return raw ? JSON.parse(raw) : { id: 'user_founder', name: 'Founder', email: 'founder@probe.dev' };
   });
 
+  // Persistent authentication: check existing session and handle OAuth callbacks on load
+  useEffect(() => {
+    let isMounted = true;
+
+    void (async () => {
+      await handleAuthRedirectCallback();
+      const current = await getCurrentUser();
+      if (isMounted && current) {
+        setUser(current);
+        try {
+          localStorage.setItem('probe_auth_user', JSON.stringify(current));
+        } catch {}
+      }
+    })();
+
+    const unsubscribe = subscribeToAuthState((updatedUser) => {
+      if (isMounted && updatedUser) {
+        setUser(updatedUser);
+        try {
+          localStorage.setItem('probe_auth_user', JSON.stringify(updatedUser));
+        } catch {}
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, []);
+
   // Saved Investigations List
   const [savedInvestigations, setSavedInvestigations] = useState<InvestigationRecord[]>(() => {
     return getSavedInvestigations(user?.id);
@@ -148,8 +183,6 @@ export const WorkspacePage: React.FC = () => {
   // UI state for Panels
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  // Right Evidence Panel is kept minimal/closed by default
-  const [showEvidencePanel, setShowEvidencePanel] = useState<boolean>(false);
   const [selectedResearchNode, setSelectedResearchNode] = useState<string | null>(null);
   const [activePipelineStage, setActivePipelineStage] = useState<PipelineStage>('evidence');
 
@@ -171,14 +204,13 @@ export const WorkspacePage: React.FC = () => {
   // Synchronize active investigation with query parameter
   useEffect(() => {
     const chatIdParam = searchParams.get('chat');
-    const isNew = searchParams.get('new') === 'true';
+    const isNew = searchParams.get('new') === 'true' || chatIdParam === 'new';
 
     if (isNew) {
       setActiveInvestigationIdState('');
       setActiveInvestigation(null);
       setActiveGraphData(null);
       setInvestigationIdea('');
-      setShowEvidencePanel(false);
       return;
     }
 
@@ -194,7 +226,7 @@ export const WorkspacePage: React.FC = () => {
       }
     }
 
-    // Default to last active investigation or first available
+    // If on /app/research without ?chat=, check if active chat was remembered, else show clean empty view
     const lastActiveId = getActiveInvestigationId(user?.id);
     if (lastActiveId) {
       const match = getInvestigationById(lastActiveId, user?.id);
@@ -207,20 +239,11 @@ export const WorkspacePage: React.FC = () => {
       }
     }
 
-    const currentList = getSavedInvestigations(user?.id);
-    if (currentList.length > 0) {
-      const first = currentList[0];
-      setActiveInvestigationIdState(first.id);
-      setActiveInvestigation(first);
-      setActiveInvestigationId(first.id, user?.id);
-      setActiveGraphData(investigationToGraphData(first));
-      setInvestigationIdea(first.query);
-    } else {
-      setActiveInvestigationIdState('');
-      setActiveInvestigation(null);
-      setActiveGraphData(null);
-      setInvestigationIdea('');
-    }
+    // Default to clean empty view so user can start a fresh investigation
+    setActiveInvestigationIdState('');
+    setActiveInvestigation(null);
+    setActiveGraphData(null);
+    setInvestigationIdea('');
   }, [searchParams, user?.id]);
 
   // Keep Gemini Live aware of active workspace context
@@ -239,37 +262,30 @@ export const WorkspacePage: React.FC = () => {
   }, [investigationIdea, activeTab, activeGraphData, updateVoiceContext]);
 
   // =========================================================================
-  // CORE ACTION: New Investigation
+  // CORE ACTION: New Investigation (Reliable, fast, clean)
   // =========================================================================
   const handleNewInvestigation = useCallback(() => {
-    if (isCreatingChatRef.current) return;
-    isCreatingChatRef.current = true;
-    setIsCreatingChat(true);
+    isCreatingChatRef.current = false;
+    setIsCreatingChat(false);
     setCreationError(null);
+    setIsInvestigating(false);
+    setThinkingQuery('');
+
+    // Reset investigation state
+    setActiveInvestigationIdState('');
+    setActiveInvestigation(null);
+    setActiveGraphData(null);
+    setInvestigationIdea('');
+    setSelectedResearchNode(null);
 
     try {
-      const newSessionId = generateInvestigationId();
-
-      setActiveInvestigationIdState('');
-      setActiveInvestigation(null);
-      setActiveGraphData(null);
-      setInvestigationIdea('');
-      setShowEvidencePanel(false);
-      setSelectedResearchNode(null);
       localStorage.removeItem('probe_active_idea');
-      setActiveInvestigationId('', user?.id);
+    } catch {}
+    setActiveInvestigationId('', user?.id);
 
-      navigate(`/app/research?chat=${newSessionId}&new=true`, { replace: true });
-      setIsMobileSidebarOpen(false);
-    } catch (err: any) {
-      console.error('[Workspace] Failed to create new chat:', err);
-      setCreationError(err?.message || 'Failed to start a new chat. Please try again.');
-    } finally {
-      setTimeout(() => {
-        isCreatingChatRef.current = false;
-        setIsCreatingChat(false);
-      }, 200);
-    }
+    // Cleanly navigate to research root without query params
+    navigate('/app/research', { replace: true });
+    setIsMobileSidebarOpen(false);
   }, [navigate, user?.id]);
 
   // Global Keyboard Shortcut: Cmd+K / Ctrl+K for New Investigation
@@ -349,6 +365,9 @@ export const WorkspacePage: React.FC = () => {
 
     const saved = getSavedInvestigations(user?.id);
     setSavedInvestigations(saved);
+
+    // Immediately update URL to active chat
+    navigate(`/app/research?chat=${initialRecord.id}`, { replace: true });
 
     // 2. Start single background stream for live progress and direct result
     let streamSucceeded = false;
@@ -489,7 +508,6 @@ export const WorkspacePage: React.FC = () => {
       navigate('/app/evidence');
     } else if (section === 'competitors') {
       setActiveTab('research');
-      setShowEvidencePanel(true);
       setSelectedResearchNode('competitors');
     } else if (section === 'validation_lab' || section === 'experiments') {
       setActiveTab('testing');
@@ -578,8 +596,8 @@ export const WorkspacePage: React.FC = () => {
         {/* SECTION A: RESEARCH WORKSPACE (DEFAULT & PRIMARY) */}
         {activeTab === 'research' && (
           <div className="flex-1 flex h-full overflow-hidden relative">
-            {/* Main Center Area */}
-            <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#FAFAFA]">
+            {/* Main Center Area - Full Width */}
+            <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#FAFAFA] w-full">
               {activeInvestigation && activeInvestigation.messages.length > 0 ? (
                 /* CONVERSATION STREAM: User query pill, inline thinking mode, and editorial results */
                 <InvestigationConversation
@@ -587,7 +605,6 @@ export const WorkspacePage: React.FC = () => {
                   onUpdateInvestigation={handleUpdateInvestigation}
                   onSelectResearchNode={(nodeType) => {
                     setSelectedResearchNode(nodeType);
-                    setShowEvidencePanel(true);
                   }}
                   selectedResearchNode={selectedResearchNode}
                   onOpenTestingTab={() => navigate('/app/testing')}
@@ -602,8 +619,6 @@ export const WorkspacePage: React.FC = () => {
                   onNewChat={handleNewInvestigation}
                   isCreatingChat={isCreatingChat}
                   onSelectSource={handleOpenSourceDetail}
-                  isRightPanelOpen={showEvidencePanel}
-                  onToggleRightPanel={() => setShowEvidencePanel((prev) => !prev)}
                   isLiveInvestigating={isInvestigating}
                   liveSteps={streamedSteps}
                   activeTier={streamedTier}
@@ -625,40 +640,6 @@ export const WorkspacePage: React.FC = () => {
                 />
               )}
             </div>
-
-            {/* ========================================================================= */}
-            {/* 3. RIGHT PANEL: COLLAPSIBLE EVIDENCE & SOURCES PANEL (CLOSED BY DEFAULT) */}
-            {/* ========================================================================= */}
-            {showEvidencePanel && activeInvestigation && (
-              <div className="hidden lg:block w-80 xl:w-96 border-l border-[#E5E7EB] bg-[#FBFBFA] h-full overflow-y-auto shrink-0 animate-in slide-in-from-right-4 duration-200">
-                <InvestigationContextPanel
-                  investigation={activeInvestigation}
-                  onUpdateInvestigation={handleUpdateInvestigation}
-                  activeTabOverride={selectedResearchNode}
-                  onOpenSourceModal={handleOpenSourceDetail}
-                  onClose={() => setShowEvidencePanel(false)}
-                />
-              </div>
-            )}
-
-            {/* Mobile Slide-Over Evidence Panel */}
-            {showEvidencePanel && activeInvestigation && (
-              <div className="fixed inset-0 z-50 lg:hidden flex justify-end">
-                <div 
-                  className="fixed inset-0 bg-black/40 backdrop-blur-xs" 
-                  onClick={() => setShowEvidencePanel(false)} 
-                />
-                <div className="relative w-80 max-w-[85vw] bg-[#FBFBFA] h-full shadow-2xl z-10">
-                  <InvestigationContextPanel
-                    investigation={activeInvestigation}
-                    onUpdateInvestigation={handleUpdateInvestigation}
-                    activeTabOverride={selectedResearchNode}
-                    onOpenSourceModal={handleOpenSourceDetail}
-                    onClose={() => setShowEvidencePanel(false)}
-                  />
-                </div>
-              </div>
-            )}
           </div>
         )}
 

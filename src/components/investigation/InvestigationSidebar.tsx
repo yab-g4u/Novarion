@@ -49,19 +49,6 @@ interface InvestigationSidebarProps {
   onCloseMobile?: () => void;
 }
 
-// Default chat history items matching image.png
-const DEFAULT_CHAT_HISTORY = [
-  { id: 'chat-product-test', title: 'Test your product', timeAgo: '2h ago', isTest: true },
-  { id: 'chat-cooking-app', title: 'Cooking App Market Research', timeAgo: '2h ago' },
-  { id: 'chat-ai-tutor', title: 'AI Tutor for University Students', timeAgo: '1d ago' },
-  { id: 'chat-sustainable-fashion', title: 'Sustainable Fashion Brand', timeAgo: '2d ago' },
-  { id: 'chat-freelance', title: 'Freelance Marketplace', timeAgo: '3d ago' },
-  { id: 'chat-study-planner', title: 'Study Planner App', timeAgo: '5d ago' },
-  { id: 'chat-smart-home', title: 'Smart Home Energy Monitor', timeAgo: '1w ago' },
-  { id: 'chat-fitness-coach', title: 'Fitness Coach App', timeAgo: '1w ago' },
-  { id: 'chat-ecommerce-crafts', title: 'E-commerce for Local Crafts', timeAgo: '1w ago' },
-];
-
 export const InvestigationSidebar: React.FC<InvestigationSidebarProps> = ({
   grouped,
   activeId,
@@ -78,22 +65,24 @@ export const InvestigationSidebar: React.FC<InvestigationSidebarProps> = ({
 }) => {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
-  // User display info (defaults to Yeabsera Sisay as shown in image.png)
-  const displayName = user?.name || 'Yeabsera Sisay';
-  const displayEmail = user?.email && !user.email.includes('founder@probe.dev') ? user.email : 'yeabsera@gmail.com';
+  // User display info (from real authenticated session)
+  const displayName = user?.name || 'Researcher';
+  const displayEmail = user?.email || 'founder@probe.dev';
 
-  // Merge real saved investigations with sample history
+  // Only real user-initiated investigations, strictly NO mock chat history
   const allSaved = [...grouped.today, ...grouped.yesterday, ...grouped.older];
-  
-  const displayHistory = allSaved.length > 0 
-    ? allSaved.map((item, idx) => ({
-        id: item.id,
-        title: item.title,
-        timeAgo: idx === 0 ? '2h ago' : idx < 3 ? '1d ago' : idx < 6 ? '3d ago' : '1w ago',
-        isTest: false,
-        realItem: item
-      }))
-    : DEFAULT_CHAT_HISTORY;
+
+  const formatTimeAgo = (timestamp?: number) => {
+    if (!timestamp) return 'Recently';
+    const diffMs = Date.now() - timestamp;
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 60) return `${Math.max(1, diffMins)}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return `${Math.floor(diffDays / 7)}w ago`;
+  };
 
   return (
     <aside className="w-64 sm:w-72 bg-[#FAFAFA] border-r border-[#E5E7EB] flex flex-col h-full select-none text-[#0A0D14] font-['Geist','Inter',sans-serif]">
@@ -241,48 +230,65 @@ export const InvestigationSidebar: React.FC<InvestigationSidebarProps> = ({
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 sm:px-3 py-1 space-y-0.5 text-xs">
-        {displayHistory.map((item, idx) => {
-          const isItemActive = 
-            (activeSection === 'product_testing' && item.isTest) || 
-            (activeSection === 'investigations' && (item.id === activeId || idx === 0));
+        {allSaved.length === 0 ? (
+          <div className="py-6 px-3 text-center text-[#9CA3AF]">
+            <p className="text-xs font-medium text-[#6B7280]">No chats yet</p>
+            <p className="text-[11px] mt-1 text-[#9CA3AF]">Start a new investigation to log your research.</p>
+          </div>
+        ) : (
+          allSaved.map((item) => {
+            const isItemActive = activeSection === 'investigations' && item.id === activeId;
+            const isHovered = hoveredId === item.id;
 
-          return (
-            <div
-              key={item.id}
-              onClick={() => {
-                if (item.isTest) {
-                  onNavigateSection?.('product_testing');
-                } else {
-                  if (item.id && !item.id.startsWith('chat-')) {
-                    onSelectInvestigation(item.id);
-                  }
+            return (
+              <div
+                key={item.id}
+                onClick={() => {
+                  onSelectInvestigation(item.id);
                   onNavigateSection?.('investigations');
-                }
-              }}
-              onMouseEnter={() => setHoveredId(item.id)}
-              onMouseLeave={() => setHoveredId(null)}
-              className={`group flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition-colors cursor-pointer select-none ${
-                isItemActive
-                  ? 'bg-[#F4F4F5] text-[#0A0D14] font-medium'
-                  : 'text-[#64748B] hover:text-[#0A0D14] hover:bg-[#F4F4F5]/70'
-              }`}
-            >
-              <div className="flex items-center gap-2.5 min-w-0 pr-2">
-                <span 
-                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                    isItemActive ? 'bg-[#0091FF]' : 'bg-[#94A3B8]'
-                  }`} 
-                />
-                <span className="truncate text-xs">
-                  {item.title}
-                </span>
+                }}
+                onMouseEnter={() => setHoveredId(item.id)}
+                onMouseLeave={() => setHoveredId(null)}
+                className={`group flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition-colors cursor-pointer select-none ${
+                  isItemActive
+                    ? 'bg-[#F4F4F5] text-[#0A0D14] font-semibold'
+                    : 'text-[#475569] hover:text-[#0A0D14] hover:bg-[#F4F4F5]/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0 pr-2 flex-1">
+                  <span 
+                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                      isItemActive ? 'bg-[#0091FF]' : 'bg-[#94A3B8]'
+                    }`} 
+                  />
+                  <span className="truncate text-xs font-medium" title={item.title}>
+                    {item.title}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {isHovered && onDeleteInvestigation ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteInvestigation(item.id, e);
+                      }}
+                      className="p-1 rounded text-[#9CA3AF] hover:text-[#EF4444] hover:bg-white transition-colors"
+                      title="Delete chat"
+                    >
+                      <X size={12} />
+                    </button>
+                  ) : (
+                    <span className="text-[10px] font-mono text-[#94A3B8]">
+                      {formatTimeAgo(item.createdAt)}
+                    </span>
+                  )}
+                </div>
               </div>
-              <span className="text-[10px] font-mono text-[#94A3B8] shrink-0">
-                {item.timeAgo}
-              </span>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
 
       {/* 5. USER PROFILE FOOTER (Matches image.png) */}

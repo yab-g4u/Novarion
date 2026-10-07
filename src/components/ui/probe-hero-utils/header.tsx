@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Menu, X, ArrowRight, Compass } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -55,9 +55,42 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   const navigate = useNavigate();
+  const [currentUser, setCurrentUser] = useState<any>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem('probe_auth_user');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    const check = () => {
+      try {
+        const raw = localStorage.getItem('probe_auth_user');
+        setCurrentUser(raw ? JSON.parse(raw) : null);
+      } catch {
+        setCurrentUser(null);
+      }
+    };
+    check();
+    window.addEventListener('probe_auth_changed', check);
+    window.addEventListener('probe:auth-state-changed', check);
+    window.addEventListener('storage', check);
+    return () => {
+      window.removeEventListener('probe_auth_changed', check);
+      window.removeEventListener('probe:auth-state-changed', check);
+      window.removeEventListener('storage', check);
+    };
+  }, []);
 
   const handleSignInClick = () => {
     setMobileMenuOpen(false);
+    if (currentUser) {
+      navigate('/app');
+      return;
+    }
     if (onTryProbe) {
       onTryProbe();
       return;
@@ -114,7 +147,7 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={handleSignInClick}
             className="hidden sm:inline-flex bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-semibold px-4 h-9 rounded-xl shadow-xs transition-all cursor-pointer items-center gap-1.5"
           >
-            <span>Sign In</span>
+            <span>{currentUser ? 'Open Workspace' : 'Sign In'}</span>
             <ArrowRight size={13} className="text-[#94A3B8]" />
           </Button>
 
@@ -159,7 +192,7 @@ export const Header: React.FC<HeaderProps> = ({
                     onClick={handleSignInClick}
                     className="w-full bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-semibold h-10 rounded-xl"
                   >
-                    <span>Sign In</span>
+                    <span>{currentUser ? 'Open Workspace' : 'Sign In'}</span>
                     <ArrowRight size={13} className="ml-1 text-[#94A3B8]" />
                   </Button>
                 </div>
