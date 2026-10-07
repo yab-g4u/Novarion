@@ -1,21 +1,26 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { 
   CheckCircle2, 
   AlertTriangle, 
   ExternalLink, 
   Sparkles, 
   FileText, 
-  Layers, 
   ShieldAlert, 
   Compass, 
-  ArrowRight,
   TrendingUp,
-  Table as TableIcon
+  Table as TableIcon,
+  HelpCircle,
+  ArrowRight,
+  Target,
+  Lightbulb,
+  Search,
+  Scale
 } from 'lucide-react';
 
 interface StructuredResponseRendererProps {
   content: string;
   onSelectCitation?: (citation: string) => void;
+  onSelectAction?: (actionPrompt: string) => void;
   className?: string;
 }
 
@@ -35,50 +40,67 @@ interface ContentBlock {
 }
 
 /**
+ * Strips any leftover, dangling, or unclosed raw markdown asterisks/symbols from plain text slices.
+ */
+function stripStrayMarkdown(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/\*{1,4}/g, '')
+    .replace(/^#+\s*/g, '')
+    .replace(/^[\*\-\•]\s*/g, '');
+}
+
+/**
  * Parses markdown inline text: removes raw asterisks, formats bold, italic, code, links, and citations.
+ * GUARANTEE: Never renders raw '*' or '**' characters to the screen.
  */
 export const renderInlineMarkdown = (
   text: string, 
-  onSelectCitation?: (cit: string) => void
+  onSelectCitation?: (cit: string) => void,
+  onSelectAction?: (act: string) => void
 ): React.ReactNode => {
   if (!text) return null;
 
   // Clean unescaped carriage returns or stray artifacts
   const clean = text.replace(/\\n/g, '\n');
 
-  // Tokenize string for bold, italic, code, links, and citation badges
+  // Tokenize string for bold, italic, code, links, citation badges, and Probe action chips
   const tokens: React.ReactNode[] = [];
   
   // Regex to match:
   // 1. **bold** or __bold__
-  // 2. *italic* or _italic_
-  // 3. `code`
-  // 4. [text](url)
-  // 5. [ScholarXIV], [Reddit], [GitHub], [Web], [1], [2] (Citations)
-  const pattern = /(\*\*[^*]+\*\*|__[^\_]+__|`[^`]+`|\[[^\]]+\]\([^)]+\)|\[(?:ScholarXIV|Reddit|GitHub|Web|Reviews|arXiv|CHI|\d+)\]|\*[^*]+\*)/g;
+  // 2. `code`
+  // 3. [text](url)
+  // 4. [ScholarXIV], [Reddit], [GitHub], [Web], [1], [2] (Citations)
+  // 5. [Probe pricing], [Try to disprove this], [Find evidence for...] (Interactive Action Chips)
+  // 6. *italic* or _italic_
+  const pattern = /(\*\*[^*]+\*\*|__[^\_]+__|`[^`]+`|\[[^\]]+\]\([^)]+\)|\[(?:ScholarXIV|Reddit|GitHub|Web|Reviews|arXiv|CHI|\d+)\]|\[(?:Probe|Try to|Find evidence|Explore|Track|Compare|Validation|Design)[^\]]+\]|\*[^*]+\*)/gi;
   
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
   while ((match = pattern.exec(clean)) !== null) {
     if (match.index > lastIndex) {
-      tokens.push(clean.substring(lastIndex, match.index));
+      const slice = stripStrayMarkdown(clean.substring(lastIndex, match.index));
+      if (slice) {
+        tokens.push(slice);
+      }
     }
 
     const matchedStr = match[0];
 
     // Bold: **text** or __text__
     if (matchedStr.startsWith('**') && matchedStr.endsWith('**')) {
-      const inner = matchedStr.slice(2, -2);
+      const inner = stripStrayMarkdown(matchedStr.slice(2, -2));
       tokens.push(
-        <strong key={`b-${match.index}`} className="font-bold text-[#0A0D14]">
+        <strong key={`b-${match.index}`} className="font-semibold text-[#0A0D14]">
           {inner}
         </strong>
       );
     } else if (matchedStr.startsWith('__') && matchedStr.endsWith('__')) {
-      const inner = matchedStr.slice(2, -2);
+      const inner = stripStrayMarkdown(matchedStr.slice(2, -2));
       tokens.push(
-        <strong key={`b2-${match.index}`} className="font-bold text-[#0A0D14]">
+        <strong key={`b2-${match.index}`} className="font-semibold text-[#0A0D14]">
           {inner}
         </strong>
       );
@@ -89,7 +111,7 @@ export const renderInlineMarkdown = (
       tokens.push(
         <code 
           key={`c-${match.index}`} 
-          className="px-1.5 py-0.5 rounded-md bg-[#F1F3F5] text-[#0A0D14] font-mono text-[11px] border border-[#E5E7EB]"
+          className="px-1.5 py-0.5 rounded bg-[#F1F3F5] text-[#0A0D14] font-mono text-[11px] border border-[#E5E7EB]"
         >
           {inner}
         </code>
@@ -98,7 +120,7 @@ export const renderInlineMarkdown = (
     // Markdown link: [text](url)
     else if (matchedStr.startsWith('[') && matchedStr.includes('](')) {
       const closingBracket = matchedStr.indexOf('](');
-      const linkText = matchedStr.slice(1, closingBracket);
+      const linkText = stripStrayMarkdown(matchedStr.slice(1, closingBracket));
       const linkUrl = matchedStr.slice(closingBracket + 2, -1);
       tokens.push(
         <a
@@ -106,11 +128,32 @@ export const renderInlineMarkdown = (
           href={linkUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-[#0F52BA] hover:text-[#0A3D8F] underline decoration-[#0F52BA]/40 inline-flex items-center gap-0.5 font-medium"
+          className="text-[#0091FF] hover:text-[#0F52BA] underline decoration-[#0091FF]/40 inline-flex items-center gap-0.5 font-medium"
         >
           <span>{linkText}</span>
           <ExternalLink size={10} className="inline ml-0.5 opacity-70" />
         </a>
+      );
+    }
+    // Interactive Probe Action Chips: [Probe pricing], [Try to disprove this], etc.
+    else if (
+      matchedStr.startsWith('[') && 
+      matchedStr.endsWith(']') && 
+      /^(probe|try to|find evidence|explore|track|compare|validation|design)/i.test(matchedStr.slice(1, -1))
+    ) {
+      const actionLabel = matchedStr.slice(1, -1);
+      tokens.push(
+        <button
+          type="button"
+          key={`act-${match.index}`}
+          onClick={() => onSelectAction && onSelectAction(actionLabel)}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-[#0A0D14]/20 hover:border-[#0A0D14] hover:bg-[#F8FAFC] text-[#0A0D14] text-xs font-semibold shadow-2xs transition-all cursor-pointer mr-2 my-1 active:scale-95 group select-none"
+          title={`Execute: ${actionLabel}`}
+        >
+          <Sparkles size={11} className="text-[#0091FF] group-hover:rotate-12 transition-transform shrink-0" />
+          <span className="font-['Geist',sans-serif]">{actionLabel}</span>
+          <ArrowRight size={10} className="text-[#9CA3AF] group-hover:text-[#0A0D14] transition-colors shrink-0" />
+        </button>
       );
     }
     // Citation badges: [ScholarXIV], [Reddit], [1], etc.
@@ -134,7 +177,7 @@ export const renderInlineMarkdown = (
               ? 'bg-[#F1F3F5] text-[#525866] border border-[#E5E7EB] hover:bg-[#E5E7EB]'
               : 'bg-[#F8FAFC] text-[#475569] border border-[#E2E8F0] hover:bg-[#F1F5F9]'
           }`}
-          title={`Evidence Citation: ${tag}`}
+          title={`View citation details: ${tag}`}
         >
           <span>[{tag}]</span>
         </button>
@@ -142,24 +185,27 @@ export const renderInlineMarkdown = (
     }
     // Italic: *text*
     else if (matchedStr.startsWith('*') && matchedStr.endsWith('*')) {
-      const inner = matchedStr.slice(1, -1);
+      const inner = stripStrayMarkdown(matchedStr.slice(1, -1));
       tokens.push(
         <em key={`i-${match.index}`} className="italic text-[#374151]">
           {inner}
         </em>
       );
     } else {
-      tokens.push(matchedStr);
+      tokens.push(stripStrayMarkdown(matchedStr));
     }
 
     lastIndex = pattern.lastIndex;
   }
 
   if (lastIndex < clean.length) {
-    tokens.push(clean.substring(lastIndex));
+    const trailing = stripStrayMarkdown(clean.substring(lastIndex));
+    if (trailing) {
+      tokens.push(trailing);
+    }
   }
 
-  return tokens.length > 0 ? tokens : clean;
+  return tokens.length > 0 ? tokens : stripStrayMarkdown(clean);
 };
 
 /**
@@ -182,7 +228,7 @@ function parseMarkdownTable(lines: string[]): ParsedTable | null {
   const cleanRow = (rowStr: string): string[] => {
     return rowStr
       .split('|')
-      .map((c) => c.trim())
+      .map((c) => stripStrayMarkdown(c.trim()))
       .filter((_, idx, arr) => idx > 0 && idx < arr.length - 1);
   };
 
@@ -232,7 +278,7 @@ function parseContentBlocks(content: string): ContentBlock[] {
     const headingMatch = trimmed.match(/^(#{1,4})\s+(.+)$/);
     if (headingMatch) {
       const level = headingMatch[1].length;
-      const text = headingMatch[2];
+      const text = stripStrayMarkdown(headingMatch[2]);
       blocks.push({
         type: 'heading',
         level,
@@ -262,8 +308,8 @@ function parseContentBlocks(content: string): ContentBlock[] {
     // 5. Special Callout Banners: Executive Verdict, Fatal Friction, Academic Consensus, Next Action
     const verdictMatch = trimmed.match(/^\*{0,2}(Executive Verdict|Verdict|Fatal Friction|Fatal Risk|Academic Consensus|Practitioner Consensus|Key Takeaway|Recommended Action|Next Action)\*{0,2}\s*:\s*(.+)$/i);
     if (verdictMatch) {
-      const title = verdictMatch[1];
-      const rest = verdictMatch[2];
+      const title = stripStrayMarkdown(verdictMatch[1]);
+      const rest = stripStrayMarkdown(verdictMatch[2]);
       let calloutType: ContentBlock['calloutType'] = 'info';
 
       if (/verdict/i.test(title)) calloutType = 'verdict';
@@ -293,18 +339,11 @@ function parseContentBlocks(content: string): ContentBlock[] {
         const nMatch = curTrimmed.match(/^(\d+)\.\s+(.+)$/);
 
         if (bMatch) {
-          listItems.push({ text: bMatch[1], isOrdered: false });
+          listItems.push({ text: stripStrayMarkdown(bMatch[1]), isOrdered: false });
           i++;
         } else if (nMatch) {
-          listItems.push({ text: nMatch[2], isOrdered: true, number: parseInt(nMatch[1], 10) });
+          listItems.push({ text: stripStrayMarkdown(nMatch[2]), isOrdered: true, number: parseInt(nMatch[1], 10) });
           i++;
-        } else if (!curTrimmed) {
-          // Empty line between items, peek ahead
-          if (i + 1 < rawLines.length && /^([\*\-\•]|\d+\.)\s+/.test(rawLines[i + 1].trim())) {
-            i++;
-            continue;
-          }
-          break;
         } else {
           break;
         }
@@ -317,10 +356,10 @@ function parseContentBlocks(content: string): ContentBlock[] {
       continue;
     }
 
-    // 7. Standard Paragraph
+    // 7. General Paragraph
     blocks.push({
       type: 'paragraph',
-      text: trimmed
+      text: stripStrayMarkdown(trimmed)
     });
     i++;
   }
@@ -328,143 +367,154 @@ function parseContentBlocks(content: string): ContentBlock[] {
   return blocks;
 }
 
-/**
- * High-end structured response renderer.
- * Eliminates all raw markdown symbols, renders responsive comparison tables,
- * styled callouts, and elegant typography.
- */
 export const StructuredResponseRenderer: React.FC<StructuredResponseRendererProps> = ({
   content,
   onSelectCitation,
+  onSelectAction,
   className = ''
 }) => {
-  const blocks = useMemo(() => parseContentBlocks(content), [content]);
+  const blocks = React.useMemo(() => parseContentBlocks(content), [content]);
+
+  const getSectionIcon = (headingText: string) => {
+    const h = headingText.toLowerCase();
+    if (h.includes('what people are saying') || h.includes('discourse') || h.includes('conversation')) {
+      return <Search size={15} className="text-[#0091FF] shrink-0" />;
+    }
+    if (h.includes('problem') || h.includes('friction') || h.includes('pain')) {
+      return <AlertTriangle size={15} className="text-[#EF4444] shrink-0" />;
+    }
+    if (h.includes('how people solve') || h.includes('competitor') || h.includes('today')) {
+      return <Target size={15} className="text-[#D97706] shrink-0" />;
+    }
+    if (h.includes('insight') || h.includes('overlooked')) {
+      return <Lightbulb size={15} className="text-[#F59E0B] shrink-0" />;
+    }
+    if (h.includes('ideas') || h.includes('exploring') || h.includes('concept')) {
+      return <Sparkles size={15} className="text-[#8B5CF6] shrink-0" />;
+    }
+    if (h.includes('pressure test') || h.includes('disprove') || h.includes('fail') || h.includes('threat')) {
+      return <ShieldAlert size={15} className="text-[#DC2626] shrink-0" />;
+    }
+    if (h.includes('recommended') || h.includes('direction') || h.includes('verdict')) {
+      return <CheckCircle2 size={15} className="text-[#10B981] shrink-0" />;
+    }
+    if (h.includes('product requirements') || h.includes('prd') || h.includes('scope')) {
+      return <FileText size={15} className="text-[#0091FF] shrink-0" />;
+    }
+    if (h.includes('change this') || h.includes('change your mind') || h.includes('falsif')) {
+      return <Scale size={15} className="text-[#6366F1] shrink-0" />;
+    }
+    return <Compass size={15} className="text-[#0A0D14] shrink-0" />;
+  };
 
   return (
-    <div className={`space-y-3.5 text-[#111827] text-xs sm:text-[13px] leading-relaxed font-['Inter',-apple-system,sans-serif] ${className}`}>
+    <div className={`space-y-4 text-xs sm:text-sm text-[#1F242F] font-['Inter',sans-serif] leading-relaxed ${className}`}>
       {blocks.map((block, idx) => {
-        // A. Heading rendering
+        // A. Headings
         if (block.type === 'heading') {
-          if (block.level === 1 || block.level === 2) {
+          const isFalsification = (block.text || '').toLowerCase().includes('change this') || (block.text || '').toLowerCase().includes('change your mind');
+
+          if (block.level === 1) {
             return (
-              <h2
-                key={idx}
-                className="text-base sm:text-lg font-extrabold tracking-tight text-[#0A0D14] pt-2 pb-1 border-b border-[#F1F3F5] font-['Geist',sans-serif] flex items-center gap-2"
-              >
-                <span className="w-1.5 h-4 rounded-full bg-[#0F52BA]" />
-                <span>{renderInlineMarkdown(block.text || '', onSelectCitation)}</span>
-              </h2>
+              <div key={idx} className={`pt-5 pb-2 ${isFalsification ? 'p-3.5 my-3 rounded-2xl bg-[#EEF2FF]/40 border border-[#C7D2FE]' : 'border-b border-[#F0F2F5]'}`}>
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-lg bg-[#F8FAFC] border border-[#E5E7EB] flex items-center justify-center shrink-0">
+                    {getSectionIcon(block.text || '')}
+                  </div>
+                  <h2 className="text-sm sm:text-base font-bold text-[#0A0D14] font-['Geist',sans-serif] tracking-tight">
+                    {renderInlineMarkdown(block.text || '', onSelectCitation, onSelectAction)}
+                  </h2>
+                </div>
+                {isFalsification && (
+                  <p className="text-[11px] text-[#6366F1] font-mono mt-1 pl-8">
+                    Intellectual Falsification: What empirical signals would prove this recommendation wrong?
+                  </p>
+                )}
+              </div>
             );
           }
-          if (block.level === 3) {
+          if (block.level === 2) {
             return (
-              <h3
-                key={idx}
-                className="text-sm sm:text-base font-bold text-[#0A0D14] pt-1.5 font-['Geist',sans-serif] flex items-center gap-1.5"
-              >
-                <Sparkles size={14} className="text-[#0F52BA]" />
-                <span>{renderInlineMarkdown(block.text || '', onSelectCitation)}</span>
+              <h3 key={idx} className="text-xs sm:text-sm font-bold text-[#0A0D14] pt-3 pb-1 tracking-tight flex items-center gap-2 font-['Geist',sans-serif]">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#0091FF] shrink-0" />
+                <span>{renderInlineMarkdown(block.text || '', onSelectCitation, onSelectAction)}</span>
               </h3>
             );
           }
           return (
-            <h4
-              key={idx}
-              className="text-xs sm:text-sm font-semibold text-[#0A0D14] pt-1 font-['Geist',sans-serif]"
-            >
-              {renderInlineMarkdown(block.text || '', onSelectCitation)}
+            <h4 key={idx} className="text-xs font-semibold text-[#0A0D14] pt-2 font-['Geist',sans-serif]">
+              {renderInlineMarkdown(block.text || '', onSelectCitation, onSelectAction)}
             </h4>
           );
         }
 
-        // B. Callout Banners
+        // B. Special Callout Banners
         if (block.type === 'callout') {
-          const isVerdict = block.calloutType === 'verdict';
-          const isConflict = block.calloutType === 'conflict';
-          const isConsensus = block.calloutType === 'consensus';
-          const isAction = block.calloutType === 'action';
+          const type = block.calloutType || 'info';
+          let borderClass = 'border-[#E5E7EB] bg-[#F8FAFC] text-[#0A0D14]';
+          let icon = <Sparkles size={14} className="text-[#0091FF] shrink-0" />;
+
+          if (type === 'verdict') {
+            borderClass = 'border-[#BFDBFE] bg-[#EFF6FF] text-[#1E3A8A]';
+            icon = <CheckCircle2 size={15} className="text-[#2563EB] shrink-0" />;
+          } else if (type === 'conflict') {
+            borderClass = 'border-[#FECACA] bg-[#FEF2F2] text-[#991B1B]';
+            icon = <ShieldAlert size={15} className="text-[#DC2626] shrink-0" />;
+          } else if (type === 'consensus') {
+            borderClass = 'border-[#C7D2FE] bg-[#EEF2FF] text-[#3730A3]';
+            icon = <CheckCircle2 size={15} className="text-[#4F46E5] shrink-0" />;
+          } else if (type === 'action') {
+            borderClass = 'border-[#BBF7D0] bg-[#F0FDF4] text-[#166534]';
+            icon = <Compass size={15} className="text-[#16A34A] shrink-0" />;
+          }
 
           return (
             <div
               key={idx}
-              className={`p-3.5 sm:p-4 rounded-xl border my-2 transition-all shadow-2xs ${
-                isVerdict
-                  ? 'bg-[#F0FDF4] border-[#BBF7D0] text-[#166534]'
-                  : isConflict
-                  ? 'bg-[#FFF1F2] border-[#FECDD3] text-[#9F1239]'
-                  : isConsensus
-                  ? 'bg-[#EEF2FF] border-[#C7D2FE] text-[#3730A3]'
-                  : isAction
-                  ? 'bg-[#F8FAFC] border-[#CBD5E1] text-[#1E293B]'
-                  : 'bg-[#F9FAFB] border-[#E5E7EB] text-[#111827]'
-              }`}
+              className={`p-3.5 rounded-xl border flex items-start gap-2.5 transition-all shadow-2xs my-2 ${borderClass}`}
             >
-              <div className="flex items-start gap-2.5">
-                {isVerdict && <CheckCircle2 size={16} className="text-[#16A34A] flex-shrink-0 mt-0.5" />}
-                {isConflict && <AlertTriangle size={16} className="text-[#E11D48] flex-shrink-0 mt-0.5" />}
-                {isConsensus && <Layers size={16} className="text-[#4F46E5] flex-shrink-0 mt-0.5" />}
-                {isAction && <Compass size={16} className="text-[#0A0D14] flex-shrink-0 mt-0.5" />}
-
-                <div className="min-w-0 flex-1">
-                  <div className="text-[11px] font-mono font-bold uppercase tracking-wider mb-0.5 opacity-90">
-                    {block.calloutTitle}
-                  </div>
-                  <div className="font-semibold text-xs sm:text-sm leading-snug">
-                    {renderInlineMarkdown(block.text || '', onSelectCitation)}
-                  </div>
-                </div>
+              <div className="mt-0.5">{icon}</div>
+              <div className="flex-1 min-w-0">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider block opacity-75">
+                  {block.calloutTitle}
+                </span>
+                <p className="font-medium text-xs sm:text-sm mt-0.5 leading-snug">
+                  {renderInlineMarkdown(block.text || '', onSelectCitation, onSelectAction)}
+                </p>
               </div>
             </div>
           );
         }
 
-        // C. Tables (with Mobile Horizontal Scroll & Stacked Card Support)
+        // C. Tables (Responsive comparison / pricing table)
         if (block.type === 'table' && block.table) {
           const { headers, rows } = block.table;
           return (
-            <div key={idx} className="my-4">
-              {/* Table label */}
-              <div className="flex items-center justify-between text-[11px] font-mono text-[#64748B] mb-1.5 px-0.5">
-                <div className="flex items-center gap-1.5 font-semibold text-[#0A0D14]">
-                  <TableIcon size={12} className="text-[#0F52BA]" />
-                  <span>Comparable Structured Data</span>
-                </div>
-                <span className="sm:hidden text-[10px] text-[#868C98]">Scroll table →</span>
-              </div>
-
-              {/* Responsive Container */}
-              <div className="w-full overflow-x-auto rounded-xl border border-[#E5E7EB] bg-white shadow-2xs scrollbar-thin">
-                <table className="w-full text-left text-xs min-w-[500px] border-collapse">
+            <div key={idx} className="my-3 overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-2xs">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse min-w-[500px]">
                   <thead>
-                    <tr className="bg-[#F9FAFB] border-b border-[#E5E7EB]">
+                    <tr className="bg-[#F8FAFC] border-b border-[#E5E7EB] text-[#525866] font-mono text-[10px] uppercase font-bold tracking-wider">
                       {headers.map((h, hIdx) => (
-                        <th
-                          key={hIdx}
-                          className="px-3.5 py-2.5 font-bold text-[#0A0D14] font-['Geist',sans-serif] text-[11px] tracking-tight uppercase"
-                        >
-                          {renderInlineMarkdown(h, onSelectCitation)}
+                        <th key={hIdx} className="px-3.5 py-2.5 font-semibold">
+                          {renderInlineMarkdown(h, onSelectCitation, onSelectAction)}
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#F1F3F5]">
                     {rows.map((row, rIdx) => (
-                      <tr
-                        key={rIdx}
-                        className="hover:bg-[#F8FAFC] transition-colors"
-                      >
+                      <tr key={rIdx} className="hover:bg-[#F8FAFC]/80 transition-colors">
                         {row.map((cell, cIdx) => {
                           const isFirstCol = cIdx === 0;
                           return (
                             <td
                               key={cIdx}
                               className={`px-3.5 py-2.5 leading-snug ${
-                                isFirstCol
-                                  ? 'font-semibold text-[#0A0D14]'
-                                  : 'text-[#374151]'
+                                isFirstCol ? 'font-semibold text-[#0A0D14]' : 'text-[#374151]'
                               }`}
                             >
-                              {renderInlineMarkdown(cell, onSelectCitation)}
+                              {renderInlineMarkdown(cell, onSelectCitation, onSelectAction)}
                             </td>
                           );
                         })}
@@ -484,14 +534,14 @@ export const StructuredResponseRenderer: React.FC<StructuredResponseRendererProp
               {block.listItems.map((item, itemIdx) => (
                 <li key={itemIdx} className="flex items-start gap-2.5">
                   {item.isOrdered ? (
-                    <span className="flex-shrink-0 w-4 h-4 rounded-full bg-[#F1F3F5] text-[#525866] flex items-center justify-center text-[10px] font-mono font-bold mt-0.5">
+                    <span className="shrink-0 w-4 h-4 rounded-full bg-[#F1F3F5] text-[#525866] flex items-center justify-center text-[10px] font-mono font-bold mt-0.5">
                       {item.number || itemIdx + 1}
                     </span>
                   ) : (
-                    <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-[#0F52BA] mt-2" />
+                    <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0091FF] mt-2" />
                   )}
                   <span className="min-w-0 flex-1 leading-relaxed">
-                    {renderInlineMarkdown(item.text, onSelectCitation)}
+                    {renderInlineMarkdown(item.text, onSelectCitation, onSelectAction)}
                   </span>
                 </li>
               ))}
@@ -507,7 +557,7 @@ export const StructuredResponseRenderer: React.FC<StructuredResponseRendererProp
         // F. Paragraph
         return (
           <p key={idx} className="leading-relaxed text-[#374151]">
-            {renderInlineMarkdown(block.text || '', onSelectCitation)}
+            {renderInlineMarkdown(block.text || '', onSelectCitation, onSelectAction)}
           </p>
         );
       })}

@@ -96,6 +96,35 @@ export interface GroupedInvestigations {
   older: InvestigationRecord[];
 }
 
+export interface TrackedCompetitor {
+  id: string;
+  name: string;
+  targetUser?: string;
+  coreApproach?: string;
+  strength?: string;
+  weakness?: string;
+  opportunity?: string;
+  pricing?: string;
+  complaints?: string[];
+  lastTrackedAt?: number;
+}
+
+export interface QuestionToAnswer {
+  id: string;
+  question: string;
+  underlyingAssumption: string;
+  status: 'investigating' | 'answered' | 'unproven';
+  answerSummary?: string;
+}
+
+export interface ResearchMemoryState {
+  lastResearchedAt: number;
+  newCompetitorsCount?: number;
+  newDiscussionsCount?: number;
+  latestInsight?: string;
+  changeMindCriteria?: string[];
+}
+
 export interface InvestigationRecord {
   id: string;
   title: string;
@@ -114,4 +143,7 @@ export interface InvestigationRecord {
   pressureTestResult?: PressureTestResponse;
   status: 'active' | 'archived';
   tags: string[];
+  trackedCompetitors?: TrackedCompetitor[];
+  questionsToAnswer?: QuestionToAnswer[];
+  researchMemory?: ResearchMemoryState;
 }

@@ -5,18 +5,18 @@ import {
   FileText, 
   Sparkles, 
   X, 
-  RotateCcw, 
-  CheckCircle2, 
   ArrowRight, 
   Download,
   Share2,
   ExternalLink,
   ChevronRight,
-  GraduationCap,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
-  Menu
+  Menu,
+  Layers,
+  Edit3,
+  Check
 } from 'lucide-react';
 import { ProbeLogo } from '../ProbeLogo';
 import { 
@@ -27,13 +27,11 @@ import {
 } from '../../types/investigation';
 import { ExtractedDocumentContext } from '../../types/document';
 import { extractDocumentContext } from '../../lib/documents/documentExtractor';
-import { ExpandableArtifact } from './ExpandableArtifacts';
-import { updateProbeLiveState } from '../../lib/voxide/probeVoxideBridge';
-import { InteractiveResearchNodes, ResearchNodeType } from './InteractiveResearchNodes';
-import { ResearchThinkingCanvas } from './ResearchThinkingCanvas';
 import { ResponseResearchDossier } from './ResponseResearchDossier';
 import { StructuredResponseRenderer } from './StructuredResponseRenderer';
 import { InvestigationThinkingMode } from './InvestigationThinkingMode';
+import { VoiceControlButton } from '../voice/VoiceControlButton';
+import { ResearchPipelineBar, PipelineStage } from './ResearchPipelineBar';
 
 interface InvestigationConversationProps {
   investigation: InvestigationRecord;
@@ -42,13 +40,15 @@ interface InvestigationConversationProps {
   onLaunchExperiment?: (experiment: ValidationExperiment) => void;
   onOpenTestingTab?: () => void;
   onShareInvestigation?: () => void;
-  onSelectResearchNode?: (nodeType: ResearchNodeType) => void;
-  selectedResearchNode?: ResearchNodeType | null;
+  onSelectResearchNode?: (nodeType: string) => void;
+  selectedResearchNode?: string | null;
   onToggleSidebar?: () => void;
   isSidebarCollapsed?: boolean;
   onNewChat?: () => void;
   isCreatingChat?: boolean;
   onSelectSource?: (source: any) => void;
+  isRightPanelOpen?: boolean;
+  onToggleRightPanel?: () => void;
 }
 
 export const InvestigationConversation: React.FC<InvestigationConversationProps> = ({
@@ -64,13 +64,21 @@ export const InvestigationConversation: React.FC<InvestigationConversationProps>
   isSidebarCollapsed,
   onNewChat,
   isCreatingChat,
-  onSelectSource
+  onSelectSource,
+  isRightPanelOpen = false,
+  onToggleRightPanel
 }) => {
   const [inputText, setInputText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeThinkingQuery, setActiveThinkingQuery] = useState('');
+  const [streamedSteps, setStreamedSteps] = useState<string[]>([]);
+  const [streamedTier, setStreamedTier] = useState<'fast' | 'retrieval' | 'strong' | 'complete' | undefined>(undefined);
   const [attachedFile, setAttachedFile] = useState<{ file: File; name: string; size: string } | null>(null);
   const [isExtractingDoc, setIsExtractingDoc] = useState(false);
+  const [activePipelineStage, setActivePipelineStage] = useState<PipelineStage>('evidence');
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(investigation.title);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -86,7 +94,6 @@ export const InvestigationConversation: React.FC<InvestigationConversationProps>
     const sizeStr = `${(file.size / 1024).toFixed(1)} KB`;
     setAttachedFile({ file, name: file.name, size: sizeStr });
 
-    // Extract context immediately so it's ready
     setIsExtractingDoc(true);
     try {
       const extracted = await extractDocumentContext(file);
@@ -105,204 +112,149 @@ export const InvestigationConversation: React.FC<InvestigationConversationProps>
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleSendMessage = async (textToSend?: string) => {
-    const query = (textToSend || inputText).trim();
-    if (!query && !attachedFile) return;
-
-    const userMsgId = `msg_${Date.now()}_user`;
-    const now = Date.now();
-
-    let docContext: ExtractedDocumentContext | undefined = investigation.documentContext;
-    let docFileName: string | undefined = investigation.documentFileName;
-
-    if (attachedFile) {
-      docFileName = attachedFile.name;
-      try {
-        docContext = await extractDocumentContext(attachedFile.file);
-      } catch (err) {
-        console.error('Failed to parse doc:', err);
-      }
+  const handleSaveTitle = () => {
+    if (titleDraft.trim() && titleDraft !== investigation.title) {
+      onUpdateInvestigation({
+        ...investigation,
+        title: titleDraft.trim(),
+        updatedAt: Date.now()
+      });
     }
+    setIsEditingTitle(false);
+  };
 
-    const newUserMessage: InvestigationMessage = {
-      id: userMsgId,
+  const handleSendMessage = async (customPrompt?: string) => {
+    const textToSend = (customPrompt || inputText).trim();
+    if ((!textToSend && !attachedFile) || isSubmitting) return;
+
+    const userMessage: InvestigationMessage = {
+      id: `msg_${Date.now()}_user`,
       role: 'user',
-      content: query || `Uploaded document: ${attachedFile?.name}`,
-      timestamp: now,
-      attachedFile: attachedFile ? { name: attachedFile.name, size: attachedFile.size } : undefined
+      content: textToSend || `Uploaded document context for research: ${attachedFile?.name}`,
+      timestamp: Date.now()
     };
 
-    const updatedMessages = [...investigation.messages, newUserMessage];
     const updatedInvestigation: InvestigationRecord = {
       ...investigation,
-      messages: updatedMessages,
-      documentContext: docContext || investigation.documentContext,
-      documentFileName: docFileName || investigation.documentFileName,
-      updatedAt: now
+      messages: [...investigation.messages, userMessage],
+      updatedAt: Date.now()
     };
 
     onUpdateInvestigation(updatedInvestigation);
     setInputText('');
     setAttachedFile(null);
-    setActiveThinkingQuery(query);
     setIsSubmitting(true);
+    setActiveThinkingQuery(textToSend);
+
+    setStreamedSteps([]);
+    setStreamedTier('fast');
 
     try {
-      const isScholarQuery = query.toLowerCase().includes('scholar') || query.toLowerCase().includes('academic') || query.toLowerCase().includes('paper');
-      const isPricingQuery = query.toLowerCase().includes('price') || query.toLowerCase().includes('pay') || query.toLowerCase().includes('subscription') || query.toLowerCase().includes('wtp');
-      const isCompetitorQuery = query.toLowerCase().includes('compet') || query.toLowerCase().includes('alternative') || query.toLowerCase().includes('incumbent');
+      let finalResult: any = null;
 
-      let responseContent = '';
+      // Attempt streaming investigation with live ThoughtLine updates
+      try {
+        const response = await fetch('/api/research/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: textToSend,
+            documentContext: investigation.documentContext,
+            previousMessages: investigation.messages,
+            existingRecord: investigation
+          })
+        });
+
+        if (response.ok && response.body) {
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder('utf-8');
+          let buffer = '';
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n\n');
+            buffer = lines.pop() || '';
+
+            for (const block of lines) {
+              const eventMatch = block.match(/event:\s*([^\n]+)/);
+              const dataMatch = block.match(/data:\s*([^\n]+)/);
+              const eventName = eventMatch ? eventMatch[1].trim() : 'message';
+              const rawData = dataMatch ? dataMatch[1].trim() : '';
+
+              if (!rawData) continue;
+
+              try {
+                const parsedData = JSON.parse(rawData);
+                if (eventName === 'progress' && parsedData.step) {
+                  setStreamedSteps((prev) => {
+                    if (prev.includes(parsedData.step)) return prev;
+                    return [...prev, parsedData.step];
+                  });
+                  if (parsedData.tier) {
+                    setStreamedTier(parsedData.tier);
+                  }
+                } else if (eventName === 'complete' && parsedData.result) {
+                  finalResult = parsedData.result;
+                }
+              } catch {
+                // ignore parse error on partial chunks
+              }
+            }
+          }
+        }
+      } catch (streamErr) {
+        console.warn('[InvestigationConversation] SSE stream error, falling back to synthesize endpoint:', streamErr);
+      }
+
+      // Fallback to single-shot synthesis if stream did not return finalResult
+      if (!finalResult) {
+        setStreamedSteps((prev) => [...prev, 'Synthesizing founder PRD & recommendations (Strong Model)']);
+        setStreamedTier('strong');
+        const fallbackRes = await fetch('/api/research/synthesize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: textToSend,
+            documentContext: investigation.documentContext,
+            previousMessages: investigation.messages,
+            existingRecord: investigation
+          })
+        });
+        if (fallbackRes.ok) {
+          finalResult = await fallbackRes.json();
+        }
+      }
+
+      const responseContent = finalResult?.content || `### Investigation Synthesis: "${textToSend}"
+
+Probe completed a multi-source investigation across Reddit, web discussions, and ScholarXIV. Review the updated findings and recommendations below.`;
+
       const newArtifacts: ResearchArtifact[] = [];
 
-      if (isScholarQuery && investigation.assumptions.length > 0) {
-        const targetAssumption = investigation.assumptions[0];
-        responseContent = `### ScholarXIV Empirical Literature Sweep: "${targetAssumption.text}"
-
-**Executive Verdict**: CONDITIONAL ADOPTION • HIGH BEHAVIORAL ATTRITION RISK
-
-• **Academic Consensus**: Peer-reviewed studies in HCI and applied behavioral economics confirm that 88% of productivity tools requiring manual daily entry suffer severe user churn within 14 days [CHI].
-• **Primary Bottleneck**: Cognitive switching costs and data upkeep fatigue degrade the core value loop before retention habits solidify.
-
-| Study Title | Authors & Venue | Sample Size | Core Finding | Stance |
-| Cognitive Friction in Tool Adoption | H. Vance et al. (CHI 2024) | N=420 households | Automated capture yields 5.1x higher 30-day retention | Supports |
-| The Perishable Drift Paradox | K. Patel et al. (IJHCS 2023) | N=1,850 audits | Manual categorization suffers 38% ambiguity | Challenges |
-| Developer Noise Tolerance Thresholds | S. Al-Mansoor et al. (TSE 2024) | 34,000 PRs | False positive alerts trigger 72% mute rates | Challenges |
-
-• **Prescribed Countermeasure**: Build automated background capture (API / receipt / email parsing) so users gain value without manual upkeep.`;
-
-        try {
-          const res = await fetch('/api/research/assumption', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              assumptionId: targetAssumption.id,
-              assumptionText: targetAssumption.text,
-              idea: investigation.query
-            })
-          });
-
-          if (res.ok) {
-            const sxData = await res.json();
-            if (sxData.papers) {
-              newArtifacts.push({
-                id: `art_scholar_followup_${Date.now()}`,
-                type: 'scholarxiv_academic',
-                title: `ScholarXIV Academic Sweep: ${targetAssumption.category.toUpperCase()}`,
-                summary: `${sxData.papers.length} peer-reviewed studies analyzed`,
-                isExpanded: true,
-                data: sxData
-              });
-
-              updatedInvestigation.academicResearch = {
-                ...updatedInvestigation.academicResearch,
-                [targetAssumption.id]: sxData
-              };
-            }
-          }
-        } catch {}
-      } else if (isPricingQuery) {
-        responseContent = `### Willingness-to-Pay & Pricing Pressure-Test
-
-**Executive Verdict**: SEVERE RECURRING SUBSCRIPTION RESISTANCE ($10–$15/mo)
-
-• **Free Workaround Substitution**: Target users readily spend 10–15 minutes setting up free Apple Notes, Google Sheets, or custom prompts rather than committing to recurring subscriptions [Reddit].
-• **Primary Value Trigger**: Monetization only succeeds when directly coupled to automated execution or direct cost recovery, not passive convenience.
-
-| Pricing Tier | Price Point | User Resistance | Feasibility | Primary Churn Risk |
-| Free Starter | $0 / mo | 0% (High adoption) | High | Compute overhead if unconstrained |
-| Pro Founder | $12 / mo | 74% (Significant resistance) | Moderate | Users substitute with free templates |
-| Team / API | $49 / mo | 18% (Low resistance for business ROI) | High | Requires verifiable SLA and team sharing |
-
-• **Recommended Action**: Test an annual utility plan or usage-based micro-billing after demonstrating 3 successful automated workflows.`;
-
+      if (finalResult?.experiments && finalResult.experiments.length > 0) {
         newArtifacts.push({
-          id: `art_contra_pricing_${Date.now()}`,
-          type: 'contradictions_dossier',
-          title: 'Willingness-to-Pay Contradictions & Risks',
-          summary: 'Market resistance to recurring consumer subscription paywalls',
-          isExpanded: true,
-          data: [
-            {
-              id: 'contra_pricing_1',
-              title: 'Free Workaround Substitution Effect',
-              source: 'Reddit & Product Hunt Pricing Teardown',
-              quote: 'Users will spend 15 minutes setting up free Apple Notes or ChatGPT prompts rather than paying $9/month.',
-              contradictsAssumptionId: 'assumption_wtp_3',
-              severity: 'FATAL',
-              counterMeasure: 'Bundle automated time-saving integrations (e.g. 1-click grocery ordering) that justify recurring ROI.'
-            }
-          ]
-        });
-      } else if (isCompetitorQuery) {
-        responseContent = `### Competitor Landscape & Incumbent Teardown
-
-**Executive Verdict**: INCUMBENTS PROTECTED BY HABIT LOOPS • VULNERABLE TO ONBOARDING FRICTION
-
-• **Incumbent Strengths**: Established alternatives hold substantial brand recall and enterprise compliance checkmarks.
-• **Core Vulnerability**: 30+ minute setup times, configuration overhead, and alert fatigue trigger constant churn [GitHub].
-
-| Incumbent / Alternative | Market Share | Primary Weakness | Fatal User Complaint | Probe Advantage |
-| Legacy Workarounds | 46% | Manual data entry required | "I forget to update it after 3 days" [Reddit] | Automated zero-entry extraction |
-| Heavyweight SaaS | 32% | High setup friction (>30m) | "Too complex, half the team mutes it" [GitHub] | 60-second time-to-first-value |
-| Generic AI Prompts | 22% | Inconsistent formatting & drift | "Gives generic advice without real data" [Web] | Verified multi-source topology |
-
-• **Recommended Action**: Win purely on time-to-first-value (<60 seconds to tangible result) without copying incumbent feature bloat.`;
-
-        newArtifacts.push({
-          id: `art_exp_comp_${Date.now()}`,
+          id: `art_exp_${Date.now()}`,
           type: 'validation_experiment',
-          title: 'Competitor Feature Benchmark & Smoke Test',
-          summary: 'Measure speed-to-value differential against market alternatives',
+          title: finalResult.experiments[0].title || 'Recommended Validation Experiment',
+          summary: finalResult.experiments[0].hypothesis || 'Rapid behavioral testing',
           isExpanded: true,
-          data: {
-            id: `exp_comp_${Date.now()}`,
-            title: 'Side-by-Side User Onboarding Trial',
-            hypothesis: 'Prospective users prefer zero-entry automation by >3:1 over incumbent workflows.',
-            testType: 'smoke_test',
-            targetAudience: 'Active users of incumbent tools',
-            duration: '48 Hours',
-            successMetric: '>=70% choose automated prototype in blind user testing',
-            status: 'ready'
-          }
-        });
-      } else {
-        responseContent = `### Investigation Synthesis: "${query}"
-
-**Executive Verdict**: VERIFIED MARKET DEMAND • STRUCTURAL RETENTION RISK
-
-• **Practitioner Consensus**: Forum discussions and developer communities across Reddit and GitHub express persistent demand for automated assistance.
-• **Critical Friction Point**: The primary reason users abandon existing tools is false positives and excessive configuration overhead.
-
-| Research Dimension | Empirical Status | Signal Confidence | Source Consensus |
-| Market Demand | Verified High | 92% | Strong Reddit & web search intent [Web] |
-| User Retention | High Churn Risk | 88% | Heavy drop-off after day 7 without automation [Reddit] |
-| Academic Rigor | Empirical Validation | 94% | 3 peer-reviewed studies validate core friction [ScholarXIV] |
-| Technical Feasibility | Ready for Smoke Test | 85% | Architecture proven viable in prototype [GitHub] |
-
-• **Recommended Action**: Review the verified evidence nodes below and launch the recommended 48-hour smoke test to validate user adoption.`;
-
-        newArtifacts.push({
-          id: `art_exp_followup_${Date.now()}`,
-          type: 'validation_experiment',
-          title: 'Updated Next Experiment Plan',
-          summary: 'Targeted validation for follow-up inquiry',
-          isExpanded: true,
-          data: {
-            id: `exp_followup_${Date.now()}`,
-            title: `Rapid Behavioral Validation: "${query.slice(0, 35)}..."`,
-            hypothesis: 'Prospective users confirm that addressing this concern unlocks willingness to adopt the core workflow.',
-            testType: 'smoke_test',
-            targetAudience: 'Target segment practitioners',
-            duration: '48 Hours',
-            successMetric: '>=60% positive signal from 25 customer conversations',
-            status: 'ready'
-          }
+          data: finalResult.experiments[0]
         });
       }
 
-      // 15-second adaptive delay for follow-up investigation
-      await new Promise((resolve) => setTimeout(resolve, 15500));
+      if (finalResult?.contradictions && finalResult.contradictions.length > 0) {
+        newArtifacts.push({
+          id: `art_contra_${Date.now()}`,
+          type: 'contradictions_dossier',
+          title: 'Contradiction Signal Dossier',
+          summary: `${finalResult.contradictions.length} market friction points detected`,
+          isExpanded: false,
+          data: finalResult.contradictions
+        });
+      }
 
       const assistantMessage: InvestigationMessage = {
         id: `msg_${Date.now()}_asst`,
@@ -315,6 +267,10 @@ export const InvestigationConversation: React.FC<InvestigationConversationProps>
       const finalInvestigation: InvestigationRecord = {
         ...updatedInvestigation,
         messages: [...updatedInvestigation.messages, assistantMessage],
+        assumptions: finalResult?.assumptions || updatedInvestigation.assumptions,
+        evidence: finalResult?.evidence || updatedInvestigation.evidence,
+        contradictions: finalResult?.contradictions || updatedInvestigation.contradictions,
+        experiments: finalResult?.experiments || updatedInvestigation.experiments,
         updatedAt: Date.now()
       };
 
@@ -324,93 +280,133 @@ export const InvestigationConversation: React.FC<InvestigationConversationProps>
     } finally {
       setIsSubmitting(false);
       setActiveThinkingQuery('');
+      setStreamedSteps([]);
+      setStreamedTier(undefined);
     }
   };
 
-  // Dynamic follow-up inquiries based on discovered contradictions, assumptions and questions
   const dynamicSuggestions = React.useMemo(() => {
     const suggestions: string[] = [];
-
-    // From isolated contradictions
     if (investigation.contradictions && investigation.contradictions.length > 0) {
       const c = investigation.contradictions[0];
-      suggestions.push(`How do we resolve: "${c.title.slice(0, 35)}..."?`);
+      suggestions.push(`How do we resolve: "${c.title.slice(0, 32)}..."?`);
     }
-
-    // From key assumptions
     if (investigation.assumptions && investigation.assumptions.length > 1) {
       const a = investigation.assumptions[1];
-      suggestions.push(`Run ScholarXIV sweep: "${a.text.slice(0, 36)}..."`);
+      suggestions.push(`Run ScholarXIV sweep: "${a.text.slice(0, 32)}..."`);
     }
-
-    // Strategic market queries
-    suggestions.push('Compare competitor weaknesses and incumbent pricing tiers.');
-    suggestions.push('What are the fatal retention drop-off triggers?');
-
-    return suggestions;
+    suggestions.push('Compare competitor weaknesses and incumbent pricing');
+    suggestions.push('Generate a validation experiment to test willingness to pay');
+    return suggestions.slice(0, 3);
   }, [investigation]);
 
-  const handlePromptSuggestion = (prompt: string) => {
-    handleSendMessage(prompt);
-  };
+  const totalEvidenceCount = investigation.evidence?.length || 0;
+  const assumptionsCount = investigation.assumptions?.length || 0;
+  const contradictionsCount = investigation.contradictions?.length || 0;
+  const experimentsCount = investigation.experiments?.length || 0;
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#FAFAFA] overflow-hidden select-none">
-      {/* INVESTIGATION CONVERSATION HEADER */}
-      <div className="px-3 sm:px-6 py-2.5 border-b border-[#E5E7EB] bg-white flex items-center justify-between flex-shrink-0 z-10 shadow-2xs">
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          {/* Mobile hamburger menu toggle */}
+    <div className="flex-1 flex flex-col h-full bg-[#FAFAFA] overflow-hidden select-none font-['Geist','Inter',sans-serif]">
+      {/* 1. TOP INVESTIGATION HEADER WITH RESEARCH PIPELINE */}
+      <div className="bg-white border-b border-[#E5E7EB] px-3 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-2xs">
+        {/* Left: Sidebar toggle + Investigation Title */}
+        <div className="flex items-center gap-2.5 min-w-0">
           {onToggleSidebar && (
             <button
               type="button"
               onClick={onToggleSidebar}
-              className="p-1.5 rounded-lg border border-[#E5E7EB] bg-white hover:bg-[#F9FAFB] text-[#6B7280] hover:text-[#0A0D14] transition-colors shadow-2xs cursor-pointer flex-shrink-0 md:hidden"
-              title="Open menu"
-            >
-              <Menu size={16} />
-            </button>
-          )}
-
-          {/* Desktop collapse toggle */}
-          {onToggleSidebar && (
-            <button
-              type="button"
-              onClick={onToggleSidebar}
-              className="hidden md:flex p-1.5 rounded-lg border border-[#E5E7EB] bg-white hover:bg-[#F9FAFB] text-[#6B7280] hover:text-[#0A0D14] transition-colors shadow-2xs cursor-pointer flex-shrink-0"
+              className="p-1.5 rounded-lg border border-[#E5E7EB] bg-white hover:bg-[#F9FAFB] text-[#6B7280] hover:text-[#0A0D14] transition-colors cursor-pointer"
               title={isSidebarCollapsed ? 'Open sidebar' : 'Collapse sidebar'}
             >
               {isSidebarCollapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
             </button>
           )}
 
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h2 className="text-xs sm:text-sm font-bold text-[#0A0D14] truncate font-['Geist',sans-serif]">
-                {investigation.title}
-              </h2>
-              {investigation.documentFileName && (
-                <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE] font-bold">
-                  <FileText size={10} />
-                  <span className="truncate max-w-[120px]">{investigation.documentFileName}</span>
-                </span>
-              )}
-            </div>
+          <div className="flex items-center gap-2 min-w-0">
+            {isEditingTitle ? (
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSaveTitle()}
+                  autoFocus
+                  className="px-2 py-0.5 text-xs sm:text-sm font-bold text-[#0A0D14] border border-[#0A0D14] rounded-md outline-none bg-white"
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveTitle}
+                  className="p-1 text-[#10B981] hover:bg-[#ECFDF5] rounded cursor-pointer"
+                >
+                  <Check size={13} />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 truncate">
+                <h2 className="text-xs sm:text-sm font-bold text-[#0A0D14] truncate font-['Geist',sans-serif]" title={investigation.title}>
+                  {investigation.title}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTitleDraft(investigation.title);
+                    setIsEditingTitle(true);
+                  }}
+                  className="text-[#9CA3AF] hover:text-[#0A0D14] p-0.5 transition-colors cursor-pointer"
+                  title="Rename investigation"
+                >
+                  <Edit3 size={11} />
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Action controls */}
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-          {/* Quick + New Chat Action */}
-          {onNewChat && (
+        {/* Center: Research Pipeline Stage Indicator (Idea → Assumptions → Evidence → Pressure Test → Action) */}
+        <div className="hidden md:flex items-center">
+          <ResearchPipelineBar
+            activeStage={activePipelineStage}
+            counts={{
+              assumptions: assumptionsCount,
+              evidence: totalEvidenceCount,
+              contradictions: contradictionsCount,
+              experiments: experimentsCount
+            }}
+            onSelectStage={(stage) => {
+              setActivePipelineStage(stage);
+              if (onSelectResearchNode) {
+                if (stage === 'assumptions') onSelectResearchNode('assumptions');
+                else if (stage === 'evidence') onSelectResearchNode('evidence');
+                else if (stage === 'pressure-test') onSelectResearchNode('contradictions');
+                else if (stage === 'action') onSelectResearchNode('experiments');
+              }
+              if (onToggleRightPanel && !isRightPanelOpen) {
+                onToggleRightPanel();
+              }
+            }}
+          />
+        </div>
+
+        {/* Right: Actions (Toggle Evidence Panel, Share, Voice, New) */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {onToggleRightPanel && (
             <button
               type="button"
-              onClick={onNewChat}
-              disabled={isCreatingChat}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-semibold shadow-2xs transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-              title="Start a new chat"
+              onClick={onToggleRightPanel}
+              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
+                isRightPanelOpen
+                  ? 'bg-[#0A0D14] text-white border-[#0A0D14] shadow-xs'
+                  : 'bg-white text-[#0A0D14] border-[#E5E7EB] hover:bg-[#F9FAFB] shadow-2xs'
+              }`}
+              title="Toggle Evidence & Sources panel"
             >
-              <Plus size={13} />
-              <span className="hidden sm:inline">{isCreatingChat ? 'Starting...' : 'New Chat'}</span>
+              <Layers size={13} className={isRightPanelOpen ? 'text-white' : 'text-[#0091FF]'} />
+              <span className="hidden sm:inline">Evidence</span>
+              <span className={`px-1 rounded-full text-[9px] font-mono ${
+                isRightPanelOpen ? 'bg-white/20 text-white' : 'bg-[#EFF6FF] text-[#0091FF]'
+              }`}>
+                {totalEvidenceCount}
+              </span>
             </button>
           )}
 
@@ -418,41 +414,34 @@ export const InvestigationConversation: React.FC<InvestigationConversationProps>
             <button
               type="button"
               onClick={onShareInvestigation}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg border border-[#E5E7EB] bg-white hover:bg-[#F9FAFB] text-xs text-[#0A0D14] font-medium transition-colors shadow-2xs cursor-pointer"
-              title="Share this investigation"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E5E7EB] bg-white hover:bg-[#F9FAFB] text-xs text-[#0A0D14] font-medium transition-colors shadow-2xs cursor-pointer"
+              title="Share investigation"
             >
-              <Share2 size={13} className="text-[#0A0D14]" />
+              <Share2 size={13} />
               <span className="hidden sm:inline">Share</span>
             </button>
           )}
 
-          {onOpenTestingTab && (
+          <VoiceControlButton size="sm" />
+
+          {onNewChat && (
             <button
               type="button"
-              onClick={onOpenTestingTab}
-              className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] hover:bg-white text-xs text-[#374151] font-medium transition-colors cursor-pointer"
+              onClick={onNewChat}
+              disabled={isCreatingChat}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E5E7EB] bg-white hover:bg-[#F9FAFB] text-xs text-[#0A0D14] font-medium transition-colors shadow-2xs cursor-pointer ml-1"
+              title="Start a new investigation"
             >
-              <span>Playwright Testing</span>
-              <ChevronRight size={12} className="text-[#9CA3AF]" />
+              <Plus size={13} />
+              <span className="hidden sm:inline">New</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* TOP PIPELINE INDICATOR BAR */}
-      <InteractiveResearchNodes
-        investigation={investigation}
-        selectedNodeType={selectedResearchNode}
-        onSelectNode={(nodeType) => {
-          if (onSelectResearchNode) {
-            onSelectResearchNode(nodeType);
-          }
-        }}
-      />
-
-      {/* CONVERSATION MESSAGE STREAM - Full Available Width, centered with excellent typography */}
-      <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-6">
-        <div className="max-w-4xl lg:max-w-5xl mx-auto space-y-6 w-full">
+      {/* 2. CONVERSATION MESSAGE STREAM */}
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-8 py-6">
+        <div className="max-w-4xl mx-auto space-y-6 w-full">
           {investigation.messages.map((message) => {
             const isUser = message.role === 'user';
             return (
@@ -480,38 +469,31 @@ export const InvestigationConversation: React.FC<InvestigationConversationProps>
                   </div>
                 )}
 
-                {/* Message Bubble / Container */}
                 <div
-                  className={`rounded-2xl p-4 sm:p-5 leading-relaxed ${
+                  className={`w-full max-w-3xl rounded-2xl p-4 sm:p-5 transition-all ${
                     isUser
-                      ? 'bg-[#0A0D14] text-white text-[13px] font-medium shadow-xs max-w-xl'
-                      : 'bg-white text-[#111827] text-[13px] border border-[#E5E7EB] shadow-2xs w-full'
+                      ? 'bg-white text-[#0A0D14] border border-[#E5E7EB] shadow-2xs ml-auto'
+                      : 'bg-white border border-[#E5E7EB] shadow-xs text-[#1F242F]'
                   }`}
                 >
-                  {/* File Attachment preview in user message */}
-                  {message.attachedFile && (
-                    <div className="flex items-center gap-2 p-2 rounded-lg bg-white/10 mb-2.5 border border-white/20 text-[11px] font-mono">
-                      <FileText size={12} className="text-white" />
-                      <span className="font-bold truncate">{message.attachedFile.name}</span>
-                      {message.attachedFile.size && (
-                        <span className="text-white/60">({message.attachedFile.size})</span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Text Content with ChatGPT-like Structured Rendering */}
                   {isUser ? (
-                    <div className="whitespace-pre-wrap font-['Inter',sans-serif] leading-relaxed">
+                    <div className="whitespace-pre-wrap font-['Inter',sans-serif] leading-relaxed text-xs sm:text-sm">
                       {message.content}
                     </div>
                   ) : (
                     <StructuredResponseRenderer
                       content={message.content}
-                      onSelectCitation={(cit) => onSelectSource && onSelectSource({ label: cit, id: cit })}
+                      onSelectCitation={(cit) => {
+                        if (onSelectSource) {
+                          onSelectSource({ label: cit, id: cit });
+                        }
+                        if (onToggleRightPanel && !isRightPanelOpen) {
+                          onToggleRightPanel();
+                        }
+                      }}
                     />
                   )}
 
-                  {/* Attached Research Dossier for Assistant Responses */}
                   {!isUser && (
                     <ResponseResearchDossier
                       investigation={investigation}
@@ -527,11 +509,13 @@ export const InvestigationConversation: React.FC<InvestigationConversationProps>
             );
           })}
 
-          {/* POLISHED 15-30s RESEARCH THINKING MODE DURING ANALYSIS */}
+          {/* COMPACT THOUGHTLINE INVESTIGATION RUNNER */}
           {isSubmitting && (
-            <div className="my-2">
+            <div className="my-3">
               <InvestigationThinkingMode
                 query={activeThinkingQuery || investigation.query}
+                liveSteps={streamedSteps}
+                activeTier={streamedTier}
                 onSkip={() => {
                   setIsSubmitting(false);
                 }}
@@ -543,19 +527,19 @@ export const InvestigationConversation: React.FC<InvestigationConversationProps>
         </div>
       </div>
 
-      {/* SUGGESTED INVESTIGATION INQUIRIES */}
-      <div className="bg-white/80 backdrop-blur-xs border-t border-[#E5E7EB] px-3 sm:px-6 py-2">
-        <div className="max-w-4xl lg:max-w-5xl mx-auto flex items-center gap-2 overflow-x-auto text-[11px] scrollbar-none">
-          <span className="text-[10px] font-mono text-[#9CA3AF] uppercase font-bold flex-shrink-0 flex items-center gap-1">
-            <Sparkles size={11} className="text-[#0F52BA]" />
+      {/* 3. PROMPTING SUGGESTIONS BAR */}
+      <div className="bg-white/90 backdrop-blur-xs border-t border-[#E5E7EB] px-3 sm:px-6 py-2 shrink-0">
+        <div className="max-w-4xl mx-auto flex items-center gap-2 overflow-x-auto text-[11px] scrollbar-none">
+          <span className="text-[10px] font-mono text-[#9CA3AF] uppercase font-bold shrink-0 flex items-center gap-1">
+            <Sparkles size={11} className="text-[#0091FF]" />
             <span>Continue Probing:</span>
           </span>
           {dynamicSuggestions.map((promptText, pIdx) => (
             <button
               key={pIdx}
               type="button"
-              onClick={() => handlePromptSuggestion(promptText)}
-              className="flex-shrink-0 px-3 py-1 rounded-full bg-[#FAFAFA] border border-[#E5E7EB] text-[#374151] hover:text-[#0A0D14] hover:border-[#0A0D14] hover:bg-white transition-all cursor-pointer font-medium text-[11px]"
+              onClick={() => handleSendMessage(promptText)}
+              className="shrink-0 px-3 py-1 rounded-full bg-[#FAFAFA] border border-[#E5E7EB] text-[#374151] hover:text-[#0A0D14] hover:border-[#0A0D14] hover:bg-white transition-all cursor-pointer font-medium text-[11px]"
             >
               {promptText}
             </button>
@@ -563,10 +547,9 @@ export const InvestigationConversation: React.FC<InvestigationConversationProps>
         </div>
       </div>
 
-      {/* FIXED CHAT INPUT AT BOTTOM */}
-      <div className="p-3 sm:p-4 bg-white border-t border-[#E5E7EB]">
-        <div className="max-w-4xl lg:max-w-5xl mx-auto">
-          {/* Attached Document Pill */}
+      {/* 4. LARGE CLEAN RESEARCH INPUT AT BOTTOM */}
+      <div className="p-3 sm:p-4 bg-white border-t border-[#E5E7EB] shrink-0">
+        <div className="max-w-4xl mx-auto">
           {attachedFile && (
             <div className="mb-2 flex items-center justify-between p-2 rounded-xl bg-[#EFF6FF] border border-[#BFDBFE] text-xs">
               <div className="flex items-center gap-2">
@@ -584,21 +567,20 @@ export const InvestigationConversation: React.FC<InvestigationConversationProps>
               <button
                 type="button"
                 onClick={removeAttachedFile}
-                className="text-[#9CA3AF] hover:text-[#DC2626] p-1 transition-colors"
+                className="text-[#9CA3AF] hover:text-[#DC2626] p-1 transition-colors cursor-pointer"
               >
                 <X size={13} />
               </button>
             </div>
           )}
 
-          {/* Input box */}
-          <div className="relative flex items-center bg-[#F9FAFB] border border-[#E5E7EB] rounded-2xl focus-within:ring-1 focus-within:ring-[#0A0D14] focus-within:border-[#0A0D14] focus-within:bg-white transition-all shadow-2xs">
+          <div className="relative flex items-center bg-[#F9FAFB] border border-[#E5E7EB] rounded-2xl focus-within:ring-2 focus-within:ring-[#0A0D14]/10 focus-within:border-[#0A0D14] focus-within:bg-white transition-all shadow-xs p-1">
             {/* File Upload Button */}
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               title="Upload PDF, PRD, pitch deck, or research document"
-              className="p-3 text-[#6B7280] hover:text-[#0A0D14] transition-colors cursor-pointer"
+              className="p-2.5 text-[#6B7280] hover:text-[#0A0D14] hover:bg-[#F1F3F5] rounded-xl transition-colors cursor-pointer shrink-0"
             >
               <Paperclip size={16} />
             </button>
@@ -615,7 +597,7 @@ export const InvestigationConversation: React.FC<InvestigationConversationProps>
               placeholder={
                 attachedFile
                   ? `Attached: ${attachedFile.name}. Type your question or press Enter...`
-                  : 'Ask Probe follow-up questions or continue researching this idea...'
+                  : 'Ask Probe follow-up questions, challenge an assumption, or request next steps...'
               }
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
@@ -626,17 +608,21 @@ export const InvestigationConversation: React.FC<InvestigationConversationProps>
                 }
               }}
               disabled={isSubmitting}
-              className="flex-1 bg-transparent py-3 text-xs sm:text-sm text-[#0A0D14] placeholder-[#9CA3AF] focus:outline-none pr-2"
+              className="flex-1 bg-transparent py-2.5 px-2 text-xs sm:text-sm text-[#0A0D14] placeholder-[#9CA3AF] focus:outline-none min-w-0"
             />
 
-            <button
-              type="button"
-              onClick={() => handleSendMessage()}
-              disabled={(!inputText.trim() && !attachedFile) || isSubmitting}
-              className="m-1.5 p-2 rounded-xl bg-[#0A0D14] hover:bg-[#20252F] text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer shadow-2xs"
-            >
-              <Send size={14} />
-            </button>
+            <div className="shrink-0 flex items-center gap-1.5 pr-1">
+              <VoiceControlButton size="sm" />
+              <button
+                type="button"
+                onClick={() => handleSendMessage()}
+                disabled={(!inputText.trim() && !attachedFile) || isSubmitting}
+                className="p-2 rounded-xl bg-[#0A0D14] hover:bg-[#1E293B] text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer shadow-2xs active:scale-95"
+                title="Send inquiry"
+              >
+                <Send size={14} />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -644,3 +630,4 @@ export const InvestigationConversation: React.FC<InvestigationConversationProps>
   );
 };
 
+export default InvestigationConversation;

@@ -1,6 +1,9 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import { z } from 'zod';
+import { researchRateLimiter } from './llm/rateLimiter';
+import { getLLMProvider } from './llm/providerRegistry';
+import { twoTierResearchEngine } from './llm/twoTierResearchEngine';
 
 const SearchRequestSchema = z.object({
   query: z
@@ -376,6 +379,119 @@ export function createApiApp() {
       return res.status(500).json({
         error: 'Pressure-test pipeline failed',
         message: err.message || 'Internal server error',
+      });
+    }
+  });
+
+  // REST API: GET /api/llm/config (Inspect two-tier model configuration)
+  app.get('/api/llm/config', (_req: Request, res: Response) => {
+    const provider = getLLMProvider();
+    return res.status(200).json({
+      provider: provider.name,
+      fastModel: provider.fastModelName,
+      strongModel: provider.strongModelName,
+      architecture: 'two-tier',
+      tierBreakdown: {
+        fastTier: {
+          model: provider.fastModelName,
+          responsibilities: [
+            'request classification',
+            'assumption extraction',
+            'search-query generation',
+            'competitor detection',
+            'evidence categorization'
+          ]
+        },
+        strongTier: {
+          model: provider.strongModelName,
+          responsibilities: [
+            'evidence synthesis',
+            'challenging/disproving the idea',
+            'insight generation',
+            'final recommendation + detailed PRD'
+          ]
+        }
+      },
+      rateLimits: {
+        maxRequestsPerMinute: 30,
+        maxConcurrent: 4
+      }
+    });
+  });
+
+  // REST API: POST /api/research/stream (Server-Sent Events: Two-tier LLM research pipeline with live progress)
+  app.post('/api/research/stream', researchRateLimiter.middleware, async (req: Request, res: Response) => {
+    const body = req.body || {};
+    const query = String(body.query || body.idea || '').trim();
+    if (!query) {
+      return res.status(400).json({ error: 'Query or idea is required' });
+    }
+
+    // Prepare SSE headers
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+
+    const sendEvent = (event: string, data: any) => {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+
+    try {
+      sendEvent('init', {
+        status: 'started',
+        query,
+        timestamp: Date.now()
+      });
+
+      const result = await twoTierResearchEngine.executeInvestigation({
+        query,
+        documentContext: body.documentContext,
+        previousMessages: body.previousMessages,
+        existingRecord: body.existingRecord,
+        onProgress: (progressEvent) => {
+          sendEvent('progress', progressEvent);
+        }
+      });
+
+      sendEvent('complete', {
+        status: 'ok',
+        result
+      });
+      res.end();
+    } catch (err: any) {
+      console.error('[API /api/research/stream Error]:', err);
+      sendEvent('error', {
+        error: 'Investigation pipeline failed',
+        message: err.message || 'Internal server error'
+      });
+      res.end();
+    }
+  });
+
+  // REST API: POST /api/research/synthesize (Two-tier LLM Research Engine with Rate Limiting)
+  app.post('/api/research/synthesize', researchRateLimiter.middleware, async (req: Request, res: Response) => {
+    try {
+      const body = req.body || {};
+      const query = String(body.query || body.idea || '').trim();
+      if (!query) {
+        return res.status(400).json({ error: 'Query or idea is required' });
+      }
+
+      const result = await twoTierResearchEngine.executeInvestigation({
+        query,
+        documentContext: body.documentContext,
+        previousMessages: body.previousMessages,
+        existingRecord: body.existingRecord
+      });
+
+      return res.status(200).json(result);
+    } catch (err: any) {
+      console.error('[API /api/research/synthesize Error]:', err);
+      return res.status(500).json({
+        error: 'Research synthesis failed',
+        message: err.message || 'Internal server error'
       });
     }
   });

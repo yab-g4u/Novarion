@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { 
   Search, 
-  Compass, 
   Layers, 
+  Compass,
   LogOut, 
   Sparkles, 
   Edit3, 
@@ -14,25 +14,28 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Menu,
-  AlertCircle
+  AlertCircle,
+  Share2,
+  Bookmark
 } from 'lucide-react';
 import { TestingWorkspace } from '../features/testing/components/TestingWorkspace';
 import { EvidenceGraph } from '../components/EvidenceGraph';
 import { EvidenceModal } from '../components/EvidenceModal';
 import { TryModal } from '../components/TryModal';
-import { EvidenceSource } from '../types';
+import { SettingsModal } from '../components/investigation/SettingsModal';
 import { DynamicGraphData, DynamicEvidenceSource } from '../types/evidenceGraph';
 import { ProbeLogo } from '../components/ProbeLogo';
 import { roomCodeFromIdea } from '../lib/collaboration/useInvestigationRoom';
 import { useVoice } from '../contexts/VoiceContext';
 import { VoiceControlButton } from '../components/voice/VoiceControlButton';
 
-// Investigation Chat Components
-import { InvestigationSidebar } from '../components/investigation/InvestigationSidebar';
+// Investigation Workspace Components
+import { InvestigationSidebar, SidebarSection } from '../components/investigation/InvestigationSidebar';
 import { InvestigationConversation } from '../components/investigation/InvestigationConversation';
 import { EmptyWorkspaceView } from '../components/investigation/EmptyWorkspaceView';
 import { InvestigationThinkingMode } from '../components/investigation/InvestigationThinkingMode';
 import { InvestigationContextPanel } from '../components/investigation/InvestigationContextPanel';
+import { ResearchPipelineBar, PipelineStage } from '../components/investigation/ResearchPipelineBar';
 import { ExtractedDocumentContext } from '../types/document';
 import { 
   InvestigationRecord, 
@@ -65,8 +68,8 @@ function investigationToGraphData(inv: InvestigationRecord): DynamicGraphData {
     return {
       id: ev.id || `dyn-ev-${idx}`,
       sourceType: sType,
-      sourceName: ev.sourceType === 'scholarxiv' ? 'ScholarXIV' : ev.sourceType.toUpperCase(),
-      sourceIdentifier: ev.author ? `${ev.author} · ${ev.sourceType}` : `${ev.sourceType.toUpperCase()}`,
+      sourceName: ev.sourceType === 'scholarxiv' ? 'ScholarXIV' : (ev.sourceType || 'WEB').toUpperCase(),
+      sourceIdentifier: ev.author ? `${ev.author} · ${ev.sourceType}` : `${(ev.sourceType || 'WEB').toUpperCase()}`,
       date: ev.publishedAt || 'Recent',
       excerpt: ev.excerpt,
       relationship: rel,
@@ -94,12 +97,30 @@ export const WorkspacePage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
-  // Active section based on URL path
+  // Active section based on URL path or navigation
   const path = location.pathname.toLowerCase();
-  let activeTab: 'research' | 'testing' | 'evidence' = 'research';
-  if (path.includes('/app/testing')) activeTab = 'testing';
-  else if (path.includes('/app/evidence')) activeTab = 'evidence';
-  else activeTab = 'research';
+  let initialTab: 'research' | 'testing' | 'evidence' = 'research';
+  if (path.includes('/app/testing')) initialTab = 'testing';
+  else if (path.includes('/app/evidence')) initialTab = 'evidence';
+  else initialTab = 'research';
+
+  const [activeTab, setActiveTab] = useState<'research' | 'testing' | 'evidence'>(initialTab);
+  const [activeSidebarSection, setActiveSidebarSection] = useState<SidebarSection>(
+    initialTab === 'evidence' ? 'evidence' : initialTab === 'testing' ? 'experiments' : 'investigations'
+  );
+
+  useEffect(() => {
+    if (path.includes('/app/testing')) {
+      setActiveTab('testing');
+      setActiveSidebarSection('experiments');
+    } else if (path.includes('/app/evidence')) {
+      setActiveTab('evidence');
+      setActiveSidebarSection('evidence');
+    } else {
+      setActiveTab('research');
+      setActiveSidebarSection((prev) => (prev === 'saved' ? 'saved' : 'investigations'));
+    }
+  }, [path]);
 
   // User info
   const [user, setUser] = useState<AuthUser | null>(() => {
@@ -117,49 +138,49 @@ export const WorkspacePage: React.FC = () => {
   const [activeInvestigation, setActiveInvestigation] = useState<InvestigationRecord | null>(null);
   const [isInvestigating, setIsInvestigating] = useState(false);
   const [thinkingQuery, setThinkingQuery] = useState('');
+  const [streamedSteps, setStreamedSteps] = useState<string[]>([]);
+  const [streamedTier, setStreamedTier] = useState<'fast' | 'retrieval' | 'strong' | 'complete' | undefined>(undefined);
   const [creationError, setCreationError] = useState<string | null>(null);
 
-  // Sidebar UI state
+  // UI state for Panels
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  const [isCreatingChat, setIsCreatingChat] = useState(false);
-  const isCreatingChatRef = useRef(false);
-
-  // Context drawer & modal state
-  const [selectedSource, setSelectedSource] = useState<EvidenceSource | null>(null);
-  const [isTryModalOpen, setIsTryModalOpen] = useState<boolean>(false);
-  const [activeGraphData, setActiveGraphData] = useState<DynamicGraphData | null>(null);
-  const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
+  // Right Evidence Panel is kept minimal/closed by default
+  const [showEvidencePanel, setShowEvidencePanel] = useState<boolean>(false);
   const [selectedResearchNode, setSelectedResearchNode] = useState<string | null>(null);
-  const [showContextPanel, setShowContextPanel] = useState(false);
+  const [activePipelineStage, setActivePipelineStage] = useState<PipelineStage>('evidence');
 
-  // Active Idea string (synced with active investigation or fresh idea)
-  const [investigationIdea, setInvestigationIdea] = useState<string>(() => {
-    return localStorage.getItem('probe_active_idea') || '';
-  });
-  const [isEditingIdea, setIsEditingIdea] = useState(false);
-  const [tempIdea, setTempIdea] = useState(investigationIdea);
+  // Modals
+  const [selectedSource, setSelectedSource] = useState<any | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [isTryModalOpen, setIsTryModalOpen] = useState<boolean>(false);
+  const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
 
-  const { updateVoiceContext, registerExecutor } = useVoice();
+  // Active Graph Data
+  const [activeGraphData, setActiveGraphData] = useState<DynamicGraphData | null>(null);
+  const [investigationIdea, setInvestigationIdea] = useState<string>('');
 
-  // 1. Synchronize URL query params with active investigation state
+  const { updateVoiceContext } = useVoice();
+  const isCreatingChatRef = useRef(false);
+  const [isCreatingChat, setIsCreatingChat] = useState(false);
+  const pendingRecordRef = useRef<InvestigationRecord | null>(null);
+
+  // Synchronize active investigation with query parameter
   useEffect(() => {
-    const urlChatId = searchParams.get('chat') || searchParams.get('id');
-    const isExplicitNew = searchParams.get('new') === 'true';
+    const chatIdParam = searchParams.get('chat');
+    const isNew = searchParams.get('new') === 'true';
 
-    // If explicit new chat requested via URL
-    if (isExplicitNew) {
+    if (isNew) {
       setActiveInvestigationIdState('');
       setActiveInvestigation(null);
       setActiveGraphData(null);
+      setInvestigationIdea('');
+      setShowEvidencePanel(false);
       return;
     }
 
-    const currentList = getSavedInvestigations(user?.id);
-    setSavedInvestigations(currentList);
-
-    if (urlChatId) {
-      const match = currentList.find((i) => i.id === urlChatId);
+    if (chatIdParam) {
+      const match = getInvestigationById(chatIdParam, user?.id);
       if (match) {
         setActiveInvestigationIdState(match.id);
         setActiveInvestigation(match);
@@ -170,18 +191,10 @@ export const WorkspacePage: React.FC = () => {
       }
     }
 
-    // Check if user came from Landing Page with an active idea in localStorage
-    const pendingIdea = localStorage.getItem('probe_active_idea');
-    if (pendingIdea && pendingIdea.trim() && !activeInvestigation) {
-      void handleCreateInvestigation({ query: pendingIdea.trim() });
-      localStorage.removeItem('probe_active_idea');
-      return;
-    }
-
-    // Default: Check stored active ID or pick most recent
-    const storedActiveId = getActiveInvestigationId(user?.id);
-    if (storedActiveId) {
-      const match = currentList.find((i) => i.id === storedActiveId);
+    // Default to last active investigation or first available
+    const lastActiveId = getActiveInvestigationId(user?.id);
+    if (lastActiveId) {
+      const match = getInvestigationById(lastActiveId, user?.id);
       if (match) {
         setActiveInvestigationIdState(match.id);
         setActiveInvestigation(match);
@@ -191,11 +204,19 @@ export const WorkspacePage: React.FC = () => {
       }
     }
 
-    // If no investigations exist, stay in empty state
-    if (currentList.length === 0) {
+    const currentList = getSavedInvestigations(user?.id);
+    if (currentList.length > 0) {
+      const first = currentList[0];
+      setActiveInvestigationIdState(first.id);
+      setActiveInvestigation(first);
+      setActiveInvestigationId(first.id, user?.id);
+      setActiveGraphData(investigationToGraphData(first));
+      setInvestigationIdea(first.query);
+    } else {
       setActiveInvestigationIdState('');
       setActiveInvestigation(null);
       setActiveGraphData(null);
+      setInvestigationIdea('');
     }
   }, [searchParams, user?.id]);
 
@@ -215,33 +236,27 @@ export const WorkspacePage: React.FC = () => {
   }, [investigationIdea, activeTab, activeGraphData, updateVoiceContext]);
 
   // =========================================================================
-  // CORE ACTION: New Chat Functionality
+  // CORE ACTION: New Investigation
   // =========================================================================
-  const handleNewChat = useCallback(() => {
-    // Prevent duplicate triggers from double clicks
+  const handleNewInvestigation = useCallback(() => {
     if (isCreatingChatRef.current) return;
     isCreatingChatRef.current = true;
     setIsCreatingChat(true);
     setCreationError(null);
 
     try {
-      // 1. Generate a new session/chat ID
       const newSessionId = generateInvestigationId();
 
-      // 2. Clear previous active conversation state, input, and evidence graph
       setActiveInvestigationIdState('');
       setActiveInvestigation(null);
       setActiveGraphData(null);
       setInvestigationIdea('');
-      setShowContextPanel(false);
+      setShowEvidencePanel(false);
       setSelectedResearchNode(null);
       localStorage.removeItem('probe_active_idea');
       setActiveInvestigationId('', user?.id);
 
-      // 3. Update URL with fresh session ID and new=true flag
       navigate(`/app/research?chat=${newSessionId}&new=true`, { replace: true });
-
-      // 4. Close mobile sidebar
       setIsMobileSidebarOpen(false);
     } catch (err: any) {
       console.error('[Workspace] Failed to create new chat:', err);
@@ -250,23 +265,23 @@ export const WorkspacePage: React.FC = () => {
       setTimeout(() => {
         isCreatingChatRef.current = false;
         setIsCreatingChat(false);
-      }, 250);
+      }, 200);
     }
   }, [navigate, user?.id]);
 
-  // Keyboard Shortcut: Cmd+K / Ctrl+K for New Chat
+  // Global Keyboard Shortcut: Cmd+K / Ctrl+K for New Investigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        handleNewChat();
+        handleNewInvestigation();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleNewChat]);
+  }, [handleNewInvestigation]);
 
-  // Handle selecting an existing conversation from sidebar
+  // Select an investigation from sidebar
   const handleSelectInvestigation = useCallback(
     (id: string) => {
       const match = getInvestigationById(id, user?.id);
@@ -284,7 +299,7 @@ export const WorkspacePage: React.FC = () => {
     [navigate, user?.id]
   );
 
-  // Handle deleting a conversation
+  // Delete an investigation
   const handleDeleteInvestigation = useCallback(
     (id: string, e: React.MouseEvent) => {
       e.stopPropagation();
@@ -292,18 +307,14 @@ export const WorkspacePage: React.FC = () => {
       const updatedList = getSavedInvestigations(user?.id);
       setSavedInvestigations(updatedList);
 
-      // If the currently active chat was deleted, open empty new chat state
       if (activeInvestigationId === id) {
-        handleNewChat();
+        handleNewInvestigation();
       }
     },
-    [activeInvestigationId, handleNewChat, user?.id]
+    [activeInvestigationId, handleNewInvestigation, user?.id]
   );
 
-  // Stored pending record produced by createNewInvestigation in background
-  const pendingRecordRef = useRef<InvestigationRecord | null>(null);
-
-  // Handle creating a new investigation upon user submission
+  // Create and submit a new investigation query
   const handleCreateInvestigation = async (params: {
     query: string;
     documentContext?: ExtractedDocumentContext;
@@ -316,11 +327,65 @@ export const WorkspacePage: React.FC = () => {
 
     setIsInvestigating(true);
     setThinkingQuery(cleanQuery);
+    setStreamedSteps([]);
+    setStreamedTier('fast');
     setCreationError(null);
     pendingRecordRef.current = null;
 
+    // Start background stream for live ThoughtLine updates
+    (async () => {
+      try {
+        const streamRes = await fetch('/api/research/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: cleanQuery,
+            documentContext: params.documentContext
+          })
+        });
+
+        if (streamRes.ok && streamRes.body) {
+          const reader = streamRes.body.getReader();
+          const decoder = new TextDecoder('utf-8');
+          let buffer = '';
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n\n');
+            buffer = lines.pop() || '';
+
+            for (const block of lines) {
+              const eventMatch = block.match(/event:\s*([^\n]+)/);
+              const dataMatch = block.match(/data:\s*([^\n]+)/);
+              const eventName = eventMatch ? eventMatch[1].trim() : 'message';
+              const rawData = dataMatch ? dataMatch[1].trim() : '';
+
+              if (!rawData) continue;
+
+              try {
+                const parsed = JSON.parse(rawData);
+                if (eventName === 'progress' && parsed.step) {
+                  setStreamedSteps((prev) => {
+                    if (prev.includes(parsed.step)) return prev;
+                    return [...prev, parsed.step];
+                  });
+                  if (parsed.tier) {
+                    setStreamedTier(parsed.tier);
+                  }
+                }
+              } catch {}
+            }
+          }
+        }
+      } catch (e) {
+        // stream visual progress error is non-fatal
+      }
+    })();
+
     try {
-      // Start the real backend investigation in parallel
       createNewInvestigation({
         query: cleanQuery,
         documentContext: params.documentContext,
@@ -335,455 +400,327 @@ export const WorkspacePage: React.FC = () => {
           setCreationError(err?.message || 'Failed to complete investigation. Please try again.');
           setIsInvestigating(false);
           setThinkingQuery('');
+          setStreamedSteps([]);
+          setStreamedTier(undefined);
         });
     } catch (err: any) {
       console.error('[Workspace] Investigation creation error:', err);
       setCreationError(err?.message || 'Failed to complete investigation. Please try again.');
       setIsInvestigating(false);
       setThinkingQuery('');
+      setStreamedSteps([]);
+      setStreamedTier(undefined);
     }
   };
 
-  // Called when the 15-30s animation finishes or user clicks Skip/View Findings
+  // Called when ThoughtLine finishes or user clicks Skip
   const handleThinkingComplete = useCallback(async () => {
-    // If backend is not yet ready, wait briefly for it
     if (!pendingRecordRef.current) {
-      let attempts = 0;
-      while (!pendingRecordRef.current && attempts < 30) {
-        await new Promise((r) => setTimeout(r, 350));
-        attempts++;
+      for (let i = 0; i < 30; i++) {
+        await new Promise((r) => setTimeout(r, 200));
+        if (pendingRecordRef.current) break;
       }
     }
 
-    const newRecord = pendingRecordRef.current;
-    if (newRecord) {
-      const refreshedList = getSavedInvestigations(user?.id);
-      setSavedInvestigations(refreshedList);
-      setActiveInvestigationIdState(newRecord.id);
-      setActiveInvestigation(newRecord);
-      setActiveGraphData(investigationToGraphData(newRecord));
-      setInvestigationIdea(newRecord.query);
-      navigate(`/app/research?chat=${newRecord.id}`, { replace: true });
-    }
-
+    const record = pendingRecordRef.current;
     setIsInvestigating(false);
     setThinkingQuery('');
-  }, [user?.id, navigate]);
 
-  // Handle updating an existing investigation record
+    if (record) {
+      setActiveInvestigationIdState(record.id);
+      setActiveInvestigation(record);
+      setActiveInvestigationId(record.id, user?.id);
+      setActiveGraphData(investigationToGraphData(record));
+      setInvestigationIdea(record.query);
+
+      const updatedList = getSavedInvestigations(user?.id);
+      setSavedInvestigations(updatedList);
+
+      navigate(`/app/research?chat=${record.id}`, { replace: true });
+    }
+  }, [navigate, user?.id]);
+
   const handleUpdateInvestigation = useCallback(
     (updated: InvestigationRecord) => {
       setActiveInvestigation(updated);
-      setSavedInvestigations((prev) =>
-        prev.map((item) => (item.id === updated.id ? updated : item))
-      );
       setActiveGraphData(investigationToGraphData(updated));
+      persistInvestigations(
+        savedInvestigations.map((inv) => (inv.id === updated.id ? updated : inv)),
+        user?.id
+      );
+      setSavedInvestigations(getSavedInvestigations(user?.id));
     },
-    []
+    [savedInvestigations, user?.id]
   );
-
-  // Register workspace voice executor
-  useEffect(() => {
-    return registerExecutor(async (name, args) => {
-      if (name === 'start_investigation') {
-        const cleanIdea = (args.idea || '').trim();
-        if (cleanIdea) {
-          await handleCreateInvestigation({ query: cleanIdea });
-          if (activeTab !== 'research') {
-            navigate('/app/research');
-          }
-          return { status: 'investigation_started', idea: cleanIdea };
-        }
-      }
-
-      if (name === 'create_experiment') {
-        const topContradiction = activeGraphData?.sources?.find(
-          (s: any) => s.relationship === 'Challenges'
-        );
-        const testTitle =
-          args.title ||
-          `Validate: ${topContradiction?.excerpt?.slice(0, 50) || activeGraphData?.coreAssumption || 'critical unknown'}`;
-        const newTest = {
-          id: `test_${Date.now()}`,
-          title: testTitle,
-          hypothesis: args.hypothesis || 'Empirical validation test',
-          method: args.method || 'Smoke test / Founder interview',
-          status: 'planned' as const,
-          createdAt: Date.now()
-        };
-
-        const roomId = roomCodeFromIdea(investigationIdea || 'probe_workspace');
-        try {
-          const raw = localStorage.getItem(`probe_room_state_${roomId}`);
-          const state = raw ? JSON.parse(raw) : { tests: [] };
-          state.tests = [newTest, ...(state.tests || [])];
-          localStorage.setItem(`probe_room_state_${roomId}`, JSON.stringify(state));
-        } catch (e) {
-          // ignore
-        }
-
-        navigate('/app/evidence');
-        return {
-          status: 'experiment_created',
-          test: newTest,
-          message: `Created validation experiment "${testTitle}" in Living Evidence Graph.`
-        };
-      }
-
-      return undefined;
-    });
-  }, [investigationIdea, activeTab, activeGraphData, navigate, registerExecutor]);
 
   const handleSignOut = () => {
     localStorage.removeItem('probe_auth_user');
+    setUser(null);
     navigate('/');
   };
 
-  const handleSaveIdea = () => {
-    const clean = tempIdea.trim();
-    if (clean) {
-      setInvestigationIdea(clean);
-      localStorage.setItem('probe_active_idea', clean);
-      if (activeInvestigation) {
-        const updated = { ...activeInvestigation, query: clean, title: clean };
-        handleUpdateInvestigation(updated);
-      }
-    }
-    setIsEditingIdea(false);
-  };
-
   const handleOpenSourceDetail = (source: any) => {
-    if (!source) return;
-    const formatted: EvidenceSource = {
-      id: source.id,
-      sourceType: (source.sourceType || 'reddit') as any,
-      sourceLabel: source.title || source.sourceName || 'Evidence Source',
-      author: typeof source.author === 'string' ? source.author : source.author?.name || 'Practitioner',
-      timeAgo: source.publishedAt || source.date || 'Recent',
-      quote: source.text || source.excerpt || source.title || '',
-      url: source.url || 'https://reddit.com',
-      sentiment: source.relationship === 'Challenges' ? 'contradict' : 'support',
-      confidenceScore: source.confidence || Math.round((source.relevanceScore || 0.85) * 100),
-      metrics: {
-        upvotes: source.metadata?.score || 42,
-        replies: source.metadata?.commentCount || 12,
-      }
-    };
-    setSelectedSource(formatted);
+    setSelectedSource(source);
   };
 
-  const handleProductTestSync = (evidence: any) => {
-    if (!evidence) return;
-    const dynamicSource: any = {
-      id: evidence.id,
-      sourceType: 'reddit',
-      sourceName: evidence.sourceName || 'PROBE PRODUCT TEST',
-      sourceIdentifier: evidence.sourceIdentifier,
-      date: 'Live Playwright Run',
-      excerpt: evidence.excerpt,
-      relationship: evidence.relationship === 'Supports' ? 'Supports' : 'Challenges',
-      url: evidence.productUrl,
-      topic: 'empirical_usability_verification',
-      confidence: evidence.confidence
-    };
-
-    setActiveGraphData((prev) => {
-      const existing = prev ? prev.sources : [];
-      const updated = [dynamicSource, ...existing.filter((s: any) => s.id !== dynamicSource.id)];
-      return {
-        query: prev?.query || evidence.productUrl,
-        coreAssumption: prev?.coreAssumption || evidence.task,
-        productName: evidence.sourceName,
-        sources: updated,
-        summary: {
-          supportingCount: updated.filter((s: any) => s.relationship === 'Supports').length,
-          challengingCount: updated.filter((s: any) => s.relationship === 'Challenges').length,
-          total: updated.length
-        }
-      };
-    });
+  const handleNavigateSection = (section: SidebarSection) => {
+    setActiveSidebarSection(section);
+    if (section === 'investigations') {
+      navigate('/app/research');
+    } else if (section === 'evidence') {
+      navigate('/app/evidence');
+    } else if (section === 'experiments') {
+      navigate('/app/testing');
+    } else if (section === 'saved') {
+      navigate('/app/research');
+    } else if (section === 'settings') {
+      setIsSettingsOpen(true);
+    }
+    setIsMobileSidebarOpen(false);
   };
 
-  const navItems = [
-    { id: 'research', label: 'Research', path: '/app/research', icon: Search },
-    { id: 'testing', label: 'Product Testing', path: '/app/testing', icon: Compass },
-    { id: 'evidence', label: 'Evidence Graph', path: '/app/evidence', icon: Layers },
-  ];
-
-  const grouped = groupInvestigationsByDate(savedInvestigations);
+  const grouped: GroupedInvestigations = groupInvestigationsByDate(savedInvestigations);
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] text-[#0A0D14] flex flex-col font-['Geist','Inter',-apple-system,sans-serif]">
+    <div className="flex h-screen w-screen overflow-hidden bg-[#FAFAFA] text-[#0A0D14] font-['Geist','Inter',sans-serif]">
       {/* ========================================================================= */}
-      {/* PERSISTENT WORKSPACE TOP BAR */}
+      {/* 1. LEFT SIDEBAR: LOGO + SWITCHER + NAV + INVESTIGATIONS + PROFILE */}
       {/* ========================================================================= */}
-      <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-[#E5E7EB] px-3 sm:px-6 h-16 flex items-center justify-between shadow-2xs">
-        {/* Brand & Workspace indicator */}
-        <div className="flex items-center gap-2.5 sm:gap-3">
-          {/* Mobile Sidebar Toggle Button */}
-          {activeTab === 'research' && (
+      <div
+        className={`hidden md:block transition-all duration-200 border-r border-[#E5E7EB] bg-[#FBFBFA] shrink-0 ${
+          isSidebarCollapsed ? 'w-0 overflow-hidden border-r-0' : 'w-64 lg:w-72'
+        }`}
+      >
+        <InvestigationSidebar
+          grouped={grouped}
+          activeId={activeInvestigationId}
+          user={user}
+          isCreatingChat={isCreatingChat}
+          activeSection={activeSidebarSection}
+          onSelectInvestigation={handleSelectInvestigation}
+          onNewInvestigation={handleNewInvestigation}
+          onDeleteInvestigation={handleDeleteInvestigation}
+          onSignOut={handleSignOut}
+          onNavigateSection={handleNavigateSection}
+        />
+      </div>
+
+      {/* Mobile Slide-Over Sidebar Drawer */}
+      {isMobileSidebarOpen && (
+        <div className="fixed inset-0 z-50 md:hidden flex">
+          <div 
+            className="fixed inset-0 bg-black/40 backdrop-blur-xs" 
+            onClick={() => setIsMobileSidebarOpen(false)} 
+          />
+          <div className="relative w-72 max-w-[85vw] bg-[#FBFBFA] h-full shadow-2xl z-10">
+            <InvestigationSidebar
+              grouped={grouped}
+              activeId={activeInvestigationId}
+              user={user}
+              isCreatingChat={isCreatingChat}
+              activeSection={activeSidebarSection}
+              onSelectInvestigation={handleSelectInvestigation}
+              onNewInvestigation={handleNewInvestigation}
+              onDeleteInvestigation={handleDeleteInvestigation}
+              onSignOut={handleSignOut}
+              onNavigateSection={handleNavigateSection}
+              onCloseMobile={() => setIsMobileSidebarOpen(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 2. CENTER WORKSPACE: RESEARCH / EVIDENCE / TESTING */}
+      {/* ========================================================================= */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#FAFAFA] min-w-0">
+        {/* Error notification banner if any */}
+        {creationError && (
+          <div className="mx-4 sm:mx-6 mt-3 p-3 rounded-xl bg-[#FEF2F2] border border-[#FECACA] text-xs text-[#B91C1C] flex items-center justify-between shrink-0 shadow-xs">
+            <div className="flex items-center gap-2">
+              <AlertCircle size={15} className="text-[#DC2626]" />
+              <span>{creationError}</span>
+            </div>
             <button
               type="button"
-              onClick={() => setIsMobileSidebarOpen((prev) => !prev)}
-              className="md:hidden p-1.5 rounded-lg border border-[#E5E7EB] bg-white hover:bg-[#F9FAFB] text-[#6B7280] hover:text-[#0A0D14] transition-colors"
-              title="Toggle chat history"
+              onClick={() => setCreationError(null)}
+              className="text-[#991B1B] font-bold text-xs hover:underline ml-2 cursor-pointer"
             >
-              <Menu size={16} />
+              Dismiss
             </button>
-          )}
-
-          <Link to="/app/research" className="flex items-center gap-2 group">
-            <div className="w-8 h-8 rounded-lg bg-[#0A0D14] flex items-center justify-center text-white shadow-xs group-hover:scale-105 transition-transform p-1">
-              <ProbeLogo className="w-5 h-5" inverted />
-            </div>
-            <span className="font-extrabold tracking-tight text-base text-[#0A0D14] font-['Geist',sans-serif]">
-              PROBE
-            </span>
-          </Link>
-          <span className="hidden sm:inline-block px-2 py-0.5 rounded-md bg-[#F1F3F5] text-[10px] font-mono font-bold uppercase tracking-wider text-[#525866]">
-            Workspace
-          </span>
-        </div>
-
-        {/* SECTION NAVIGATION TABS */}
-        <nav className="flex items-center gap-1 bg-[#F1F3F5] p-1 rounded-full border border-[#E5E7EB] text-xs">
-          {navItems.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => navigate(tab.path)}
-                className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-full font-medium transition-all cursor-pointer ${
-                  isActive
-                    ? 'bg-white text-[#0A0D14] font-bold shadow-xs'
-                    : 'text-[#525866] hover:text-[#0A0D14] hover:bg-white/60'
-                }`}
-              >
-                <Icon size={13} className={isActive ? 'text-[#0F52BA]' : 'text-[#868C98]'} />
-                <span className="hidden md:inline">{tab.label}</span>
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* CONTROLS: VOICE, ACTIVE IDEA, USER & LOGOUT */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          <VoiceControlButton size="md" />
-
-          {/* Active Idea Pill */}
-          {investigationIdea && (
-            <div className="hidden lg:flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-[#E5E7EB] text-xs shadow-2xs max-w-xs">
-              <Sparkles size={12} className="text-[#0F52BA] flex-shrink-0" />
-              {isEditingIdea ? (
-                <div className="flex items-center gap-1">
-                  <input
-                    type="text"
-                    value={tempIdea}
-                    onChange={(e) => setTempIdea(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSaveIdea()}
-                    autoFocus
-                    className="w-36 text-xs text-[#0A0D14] focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSaveIdea}
-                    className="text-[#10B981] hover:text-[#059669] p-0.5"
-                  >
-                    <Check size={12} />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1 truncate">
-                  <span className="text-[#868C98] font-mono text-[10px] uppercase">Idea:</span>
-                  <span className="truncate max-w-[140px] text-[#0A0D14] font-medium" title={investigationIdea}>
-                    "{investigationIdea}"
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTempIdea(investigationIdea);
-                      setIsEditingIdea(true);
-                    }}
-                    className="text-[#868C98] hover:text-[#0A0D14] p-0.5 transition-colors"
-                    title="Edit idea"
-                  >
-                    <Edit3 size={11} />
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* User Badge */}
-          <div className="hidden sm:flex items-center gap-1.5 text-xs text-[#525866] font-medium">
-            <div className="w-6 h-6 rounded-full bg-[#E5E7EB] flex items-center justify-center text-[#525866]">
-              <User size={12} />
-            </div>
-            <span className="max-w-[100px] truncate">{user?.name || 'Founder'}</span>
           </div>
+        )}
 
-          {/* Sign Out */}
-          <button
-            type="button"
-            onClick={handleSignOut}
-            title="Sign out to landing page"
-            className="p-2 rounded-xl text-[#868C98] hover:text-[#EF4444] hover:bg-[#FEE2E2]/40 transition-colors cursor-pointer"
-            aria-label="Sign out"
-          >
-            <LogOut size={16} />
-          </button>
-        </div>
-      </header>
-
-      {/* ========================================================================= */}
-      {/* WORKSPACE VIEW ROUTER */}
-      {/* ========================================================================= */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* 1. RESEARCH CHAT PLATFORM WITH CONVERSATION SIDEBAR */}
+        {/* SECTION A: RESEARCH WORKSPACE (DEFAULT & PRIMARY) */}
         {activeTab === 'research' && (
-          <div className="flex-1 flex h-[calc(100vh-4rem)] overflow-hidden relative">
-            {/* Desktop Left Sidebar */}
-            <div
-              className={`hidden md:block transition-all duration-200 border-r border-[#E5E7EB] bg-[#FAFAFA] flex-shrink-0 ${
-                isSidebarCollapsed ? 'w-0 overflow-hidden border-r-0' : 'w-64 lg:w-72'
-              }`}
-            >
-              <InvestigationSidebar
-                grouped={grouped}
-                activeId={activeInvestigationId}
-                user={user}
-                isCreatingChat={isCreatingChat}
-                onSelectInvestigation={handleSelectInvestigation}
-                onNewInvestigation={handleNewChat}
-                onDeleteInvestigation={handleDeleteInvestigation}
-                onSignOut={handleSignOut}
-                onNavigateSection={(tab) => navigate(`/app/${tab}`)}
-              />
-            </div>
-
-            {/* Mobile Slide-over Sidebar Drawer */}
-            {isMobileSidebarOpen && (
-              <div className="fixed inset-0 z-50 md:hidden flex">
-                <div 
-                  className="fixed inset-0 bg-black/40 backdrop-blur-xs" 
-                  onClick={() => setIsMobileSidebarOpen(false)} 
-                />
-                <div className="relative w-72 max-w-[80vw] bg-[#FAFAFA] h-full shadow-2xl z-10">
-                  <InvestigationSidebar
-                    grouped={grouped}
-                    activeId={activeInvestigationId}
-                    user={user}
-                    isCreatingChat={isCreatingChat}
-                    onSelectInvestigation={handleSelectInvestigation}
-                    onNewInvestigation={handleNewChat}
-                    onDeleteInvestigation={handleDeleteInvestigation}
-                    onSignOut={handleSignOut}
-                    onNavigateSection={(tab) => navigate(`/app/${tab}`)}
-                    onCloseMobile={() => setIsMobileSidebarOpen(false)}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Main Investigation Area */}
+          <div className="flex-1 flex h-full overflow-hidden relative">
+            {/* Main Center Area */}
             <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#FAFAFA]">
-              {/* Optional Error Banner */}
-              {creationError && (
-                <div className="mx-4 sm:mx-6 mt-3 p-3 rounded-xl bg-[#FEF2F2] border border-[#FECACA] text-xs text-[#B91C1C] flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <AlertCircle size={14} className="text-[#DC2626]" />
-                    <span>{creationError}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setCreationError(null)}
-                    className="text-[#991B1B] font-bold text-xs hover:underline ml-2"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              )}
-
-              {/* State A: Thinking / Investigation Running */}
               {isInvestigating ? (
-                <div className="flex-1 flex flex-col items-center justify-center p-3 sm:p-6 overflow-y-auto">
+                /* 1. THINKING STATE: Clean compact ThoughtLine indicator */
+                <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 overflow-y-auto">
                   <InvestigationThinkingMode
                     query={thinkingQuery}
+                    liveSteps={streamedSteps}
+                    activeTier={streamedTier}
                     onComplete={handleThinkingComplete}
                     onSkip={handleThinkingComplete}
                   />
                 </div>
               ) : activeInvestigation && activeInvestigation.messages.length > 0 ? (
-                /* State B: Active Conversation with Dossiers & Follow-ups */
+                /* 2. ACTIVE CONVERSATION STATE: Structured results + research pipeline */
                 <InvestigationConversation
                   investigation={activeInvestigation}
                   onUpdateInvestigation={handleUpdateInvestigation}
                   onSelectResearchNode={(nodeType) => {
                     setSelectedResearchNode(nodeType);
-                    setShowContextPanel(true);
+                    setShowEvidencePanel(true);
                   }}
-                  selectedResearchNode={selectedResearchNode as any}
+                  selectedResearchNode={selectedResearchNode}
                   onOpenTestingTab={() => navigate('/app/testing')}
-                  onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
+                  onToggleSidebar={() => {
+                    if (window.innerWidth < 768) {
+                      setIsMobileSidebarOpen(true);
+                    } else {
+                      setIsSidebarCollapsed((prev) => !prev);
+                    }
+                  }}
                   isSidebarCollapsed={isSidebarCollapsed}
-                  onNewChat={handleNewChat}
+                  onNewChat={handleNewInvestigation}
                   isCreatingChat={isCreatingChat}
                   onSelectSource={handleOpenSourceDetail}
+                  isRightPanelOpen={showEvidencePanel}
+                  onToggleRightPanel={() => setShowEvidencePanel((prev) => !prev)}
                 />
               ) : (
-                /* State C: Empty Research State ready for a new query (New Chat) */
+                /* 3. PROBE EMPTY STATE: What are you trying to prove? + 4 starting actions */
                 <EmptyWorkspaceView
                   userName={user?.name}
                   onCreateInvestigation={handleCreateInvestigation}
-                  onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
+                  onToggleSidebar={() => {
+                    if (window.innerWidth < 768) {
+                      setIsMobileSidebarOpen(true);
+                    } else {
+                      setIsSidebarCollapsed((prev) => !prev);
+                    }
+                  }}
                   isSidebarCollapsed={isSidebarCollapsed}
                 />
               )}
             </div>
 
-            {/* Optional Right Drawer: Context Panel */}
-            {showContextPanel && activeInvestigation && (
-              <div className="hidden xl:block w-96 border-l border-[#E5E7EB] bg-white h-full overflow-y-auto">
+            {/* ========================================================================= */}
+            {/* 3. RIGHT PANEL: COLLAPSIBLE EVIDENCE & SOURCES PANEL (CLOSED BY DEFAULT) */}
+            {/* ========================================================================= */}
+            {showEvidencePanel && activeInvestigation && (
+              <div className="hidden lg:block w-80 xl:w-96 border-l border-[#E5E7EB] bg-[#FBFBFA] h-full overflow-y-auto shrink-0 animate-in slide-in-from-right-4 duration-200">
                 <InvestigationContextPanel
                   investigation={activeInvestigation}
                   onUpdateInvestigation={handleUpdateInvestigation}
                   activeTabOverride={selectedResearchNode}
                   onOpenSourceModal={handleOpenSourceDetail}
-                  onClose={() => setShowContextPanel(false)}
+                  onClose={() => setShowEvidencePanel(false)}
                 />
+              </div>
+            )}
+
+            {/* Mobile Slide-Over Evidence Panel */}
+            {showEvidencePanel && activeInvestigation && (
+              <div className="fixed inset-0 z-50 lg:hidden flex justify-end">
+                <div 
+                  className="fixed inset-0 bg-black/40 backdrop-blur-xs" 
+                  onClick={() => setShowEvidencePanel(false)} 
+                />
+                <div className="relative w-80 max-w-[85vw] bg-[#FBFBFA] h-full shadow-2xl z-10">
+                  <InvestigationContextPanel
+                    investigation={activeInvestigation}
+                    onUpdateInvestigation={handleUpdateInvestigation}
+                    activeTabOverride={selectedResearchNode}
+                    onOpenSourceModal={handleOpenSourceDetail}
+                    onClose={() => setShowEvidencePanel(false)}
+                  />
+                </div>
               </div>
             )}
           </div>
         )}
 
-        {/* 2. PRODUCT TESTING WORKSPACE */}
+        {/* SECTION B: PLAYWRIGHT EXPERIMENTS / TESTING */}
         {activeTab === 'testing' && (
-          <div className="flex-1 flex flex-col h-[calc(100vh-4rem)] overflow-y-auto">
-            <div className="pt-6 px-4 max-w-6xl mx-auto w-full flex items-center justify-between text-xs text-[#64748B] font-mono border-b border-[#F1F3F5] pb-3 mb-6">
+          <div className="flex-1 flex flex-col h-full overflow-y-auto bg-[#FAFAFA]">
+            {/* Header */}
+            <div className="p-3 sm:p-4 border-b border-[#E5E7EB] bg-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-[#3B82F6] animate-pulse" />
-                <span>LIVE PRODUCT TESTING SUBSYSTEM</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.innerWidth < 768) setIsMobileSidebarOpen(true);
+                    else setIsSidebarCollapsed((prev) => !prev);
+                  }}
+                  className="p-1.5 rounded-lg border border-[#E5E7EB] bg-white hover:bg-[#F9FAFB] text-[#6B7280] transition-colors cursor-pointer mr-1"
+                >
+                  <Menu size={15} />
+                </button>
+                <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse" />
+                <h2 className="text-xs sm:text-sm font-bold text-[#0A0D14]">
+                  Playwright Validation Experiments
+                </h2>
               </div>
-              <span className="text-[#868C98]">Autonomous Browser Agent Environment</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate('/app/research')}
+                  className="px-3 py-1.5 rounded-lg border border-[#E5E7EB] bg-white text-xs font-semibold hover:bg-[#F9FAFB] transition-colors cursor-pointer"
+                >
+                  Back to Research
+                </button>
+              </div>
             </div>
-            <div className="px-4 max-w-6xl mx-auto w-full pb-16">
-              <TestingWorkspace onSyncToGraph={handleProductTestSync} />
+
+            <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full pb-16">
+              <TestingWorkspace 
+                onSyncToGraph={() => {
+                  if (activeInvestigation) {
+                    setActiveGraphData(investigationToGraphData(activeInvestigation));
+                  }
+                }} 
+              />
             </div>
           </div>
         )}
 
-        {/* 3. LIVING EVIDENCE GRAPH */}
+        {/* SECTION C: LIVING EVIDENCE GRAPH */}
         {activeTab === 'evidence' && (
-          <div className="flex-1 flex flex-col h-[calc(100vh-4rem)] overflow-y-auto">
-            <div className="pt-6 px-4 max-w-6xl mx-auto w-full flex items-center justify-between text-xs text-[#64748B] font-mono border-b border-[#F1F3F5] pb-3 mb-6">
+          <div className="flex-1 flex flex-col h-full overflow-y-auto bg-[#FAFAFA]">
+            {/* Header */}
+            <div className="p-3 sm:p-4 border-b border-[#E5E7EB] bg-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.innerWidth < 768) setIsMobileSidebarOpen(true);
+                    else setIsSidebarCollapsed((prev) => !prev);
+                  }}
+                  className="p-1.5 rounded-lg border border-[#E5E7EB] bg-white hover:bg-[#F9FAFB] text-[#6B7280] transition-colors cursor-pointer mr-1"
+                >
+                  <Menu size={15} />
+                </button>
                 <span className="w-2 h-2 rounded-full bg-[#8B5CF6] animate-pulse" />
-                <span>LIVING EVIDENCE GRAPH</span>
+                <h2 className="text-xs sm:text-sm font-bold text-[#0A0D14]">
+                  Living Evidence Topology
+                </h2>
               </div>
-              <span className="text-[#868C98]">Topology & Stance Clustering</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate('/app/research')}
+                  className="px-3 py-1.5 rounded-lg border border-[#E5E7EB] bg-white text-xs font-semibold hover:bg-[#F9FAFB] transition-colors cursor-pointer"
+                >
+                  Back to Research
+                </button>
+              </div>
             </div>
+
             <div className="flex-1 w-full pb-16">
               <EvidenceGraph
                 onSelectSource={(source) => handleOpenSourceDetail(source)}
@@ -802,6 +739,12 @@ export const WorkspacePage: React.FC = () => {
       <EvidenceModal
         source={selectedSource}
         onClose={() => setSelectedSource(null)}
+      />
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        userEmail={user?.email}
       />
 
       <TryModal

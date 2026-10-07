@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { 
   Mic, 
   MicOff, 
@@ -15,6 +16,8 @@ import { BotAvatar } from 'bot-avatars';
 import { useVoice } from '../../contexts/VoiceContext';
 
 export const FloatingVoicePill: React.FC = () => {
+  const location = useLocation();
+  const isWorkspace = location.pathname.startsWith('/app') || location.pathname.startsWith('/r/');
   const {
     voiceState,
     isConnected,
@@ -76,11 +79,24 @@ export const FloatingVoicePill: React.FC = () => {
       .join(' ');
   };
 
+  // When in workspace and voice is idle (not connected) with no error,
+  // do not render the floating pill over the workspace chat interface.
+  // The workspace already provides integrated voice buttons in the input and header.
+  if (isWorkspace && !isConnected && !errorMessage) {
+    return null;
+  }
+
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center select-none font-['Geist','Inter',-apple-system,sans-serif]">
+    <div
+      className={`fixed ${
+        isWorkspace
+          ? 'top-14 right-4 sm:top-14 sm:right-6 items-end'
+          : 'bottom-6 left-1/2 -translate-x-1/2 items-center'
+      } z-40 flex flex-col select-none font-['Geist','Inter',-apple-system,sans-serif] transition-all duration-300`}
+    >
       {/* 1. ERROR BANNER */}
       {errorMessage && (
-        <div className="mb-2 max-w-sm w-[90vw] p-3 bg-[#FEF2F2] border border-[#FECACA] rounded-2xl shadow-xl flex items-start justify-between gap-2 text-xs text-[#991B1B] animate-in fade-in slide-in-from-bottom-2">
+        <div className="mb-2 max-w-sm w-[90vw] p-3 bg-[#FEF2F2] border border-[#FECACA] rounded-2xl shadow-xl flex items-start justify-between gap-2 text-xs text-[#991B1B] animate-in fade-in slide-in-from-top-2">
           <div className="flex items-start gap-2">
             <AlertCircle size={15} className="text-[#DC2626] shrink-0 mt-0.5" />
             <div>
@@ -98,9 +114,11 @@ export const FloatingVoicePill: React.FC = () => {
         </div>
       )}
 
-      {/* 2. EXPANDED STATUS & TRANSCRIPT CARD (FLOATS ABOVE PILL WHEN ACTIVE) */}
+      {/* 2. EXPANDED STATUS & TRANSCRIPT CARD */}
       {isConnected && isExpanded && (
-        <div className="mb-3 max-w-md w-[92vw] sm:w-[420px] bg-white/95 backdrop-blur-xl border border-[#0A0D14]/12 rounded-3xl shadow-[0_12px_40px_rgba(0,0,0,0.14)] p-4 animate-in fade-in slide-in-from-bottom-3 transition-all">
+        <div className={`max-w-md w-[92vw] sm:w-[420px] bg-white/95 backdrop-blur-xl border border-[#0A0D14]/12 rounded-3xl shadow-[0_12px_40px_rgba(0,0,0,0.14)] p-4 animate-in fade-in ${
+          isWorkspace ? 'mb-2.5 order-2 slide-in-from-top-3' : 'mb-3 slide-in-from-bottom-3'
+        } transition-all`}>
           {/* Card Header */}
           <div className="flex items-center justify-between pb-2.5 border-b border-[#F1F3F5]">
             <div className="flex items-center gap-2">

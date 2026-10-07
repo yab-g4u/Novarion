@@ -863,14 +863,49 @@ export async function createNewInvestigation(params: {
     data: experiments[0]
   });
 
-  const assistantMessage: InvestigationMessage = {
-    id: `msg_${id}_asst`,
-    role: 'assistant',
-    content: `### Initial Investigation Dossier: "${title}"
+  // Execute two-tier LLM research synthesis
+  let synthesisContent = '';
+  let finalAssumptions = assumptions;
+  let finalEvidence = evidence;
+  let finalContradictions = contradictions;
+  let finalExperiments = experiments;
+
+  try {
+    const synRes = await fetch('/api/research/synthesize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: cleanQuery,
+        documentContext,
+      })
+    });
+    if (synRes.ok) {
+      const synData = await synRes.json();
+      if (synData?.content) {
+        synthesisContent = synData.content;
+      }
+      if (Array.isArray(synData?.assumptions) && synData.assumptions.length > 0) {
+        finalAssumptions = synData.assumptions;
+      }
+      if (Array.isArray(synData?.evidence) && synData.evidence.length > 0) {
+        finalEvidence = synData.evidence;
+      }
+      if (Array.isArray(synData?.contradictions) && synData.contradictions.length > 0) {
+        finalContradictions = synData.contradictions;
+      }
+      if (Array.isArray(synData?.experiments) && synData.experiments.length > 0) {
+        finalExperiments = synData.experiments;
+      }
+    }
+  } catch (err) {
+    console.warn('[createNewInvestigation] /api/research/synthesize failed, using local dossier:', err);
+  }
+
+  const defaultDossierContent = `### Initial Investigation Dossier: "${title}"
 
 **Executive Verdict**: VERIFIED MARKET DEMAND • STRUCTURAL RETENTION RISK
 
-Probe has executed a multi-source empirical investigation cross-checking practitioner discourse on Reddit, live competitor landscapes across the web, open-source code on GitHub, and peer-reviewed studies via ScholarXIV.
+Probe has executed a multi-source empirical investigation cross-checking practitioner discourse on Reddit, live competitor landscapes across the web, and peer-reviewed studies via ScholarXIV.
 
 | Research Dimension | Empirical Signals | Severity / Risk | Primary Finding |
 | Community Demand | 8+ Verified Threads | Moderate | Strong intent discovered; users actively complain about manual upkeep [Reddit] |
@@ -880,7 +915,12 @@ Probe has executed a multi-source empirical investigation cross-checking practit
 
 • **Practitioner Consensus**: Prospective users express immediate interest in solving this bottleneck, but reject complex configuration overhead.
 • **Primary Bottleneck**: Manual data upkeep fatigue degrades user habit loops before retention solidifies.
-• **Recommended Action**: Review the interactive evidence topology below and execute the recommended 48-hour rapid smoke test before writing custom backend infrastructure.`,
+• **Recommended Action**: Review the interactive evidence topology below and execute the recommended 48-hour rapid smoke test before writing custom backend infrastructure.`;
+
+  const assistantMessage: InvestigationMessage = {
+    id: `msg_${id}_asst`,
+    role: 'assistant',
+    content: synthesisContent || defaultDossierContent,
     timestamp: now + 500,
     pipelineStage: 'next_experiment',
     artifacts
@@ -896,11 +936,11 @@ Probe has executed a multi-source empirical investigation cross-checking practit
     documentFileName,
     currentStage: 'next_experiment',
     messages: [userMessage, assistantMessage],
-    assumptions,
-    evidence,
+    assumptions: finalAssumptions,
+    evidence: finalEvidence,
     academicResearch,
-    contradictions,
-    experiments,
+    contradictions: finalContradictions,
+    experiments: finalExperiments,
     pressureTestResult,
     status: 'active',
     tags: documentContext ? ['Document', 'PRD', 'Deep Research'] : ['Idea', 'Research']
