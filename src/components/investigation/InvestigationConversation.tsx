@@ -49,6 +49,10 @@ interface InvestigationConversationProps {
   onSelectSource?: (source: any) => void;
   isRightPanelOpen?: boolean;
   onToggleRightPanel?: () => void;
+  isLiveInvestigating?: boolean;
+  liveSteps?: string[];
+  activeTier?: 'fast' | 'retrieval' | 'strong' | 'complete';
+  onSkipInvestigation?: () => void;
 }
 
 export const InvestigationConversation: React.FC<InvestigationConversationProps> = ({
@@ -66,7 +70,11 @@ export const InvestigationConversation: React.FC<InvestigationConversationProps>
   isCreatingChat,
   onSelectSource,
   isRightPanelOpen = false,
-  onToggleRightPanel
+  onToggleRightPanel,
+  isLiveInvestigating = false,
+  liveSteps = [],
+  activeTier,
+  onSkipInvestigation,
 }) => {
   const [inputText, setInputText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -469,18 +477,14 @@ Probe completed a multi-source investigation across Reddit, web discussions, and
                   </div>
                 )}
 
-                <div
-                  className={`w-full max-w-3xl rounded-2xl p-4 sm:p-5 transition-all ${
-                    isUser
-                      ? 'bg-white text-[#0A0D14] border border-[#E5E7EB] shadow-2xs ml-auto'
-                      : 'bg-white border border-[#E5E7EB] shadow-xs text-[#1F242F]'
-                  }`}
-                >
-                  {isUser ? (
-                    <div className="whitespace-pre-wrap font-['Inter',sans-serif] leading-relaxed text-xs sm:text-sm">
+                {isUser ? (
+                  <div className="flex flex-col items-end max-w-2xl ml-auto">
+                    <div className="inline-block bg-[#F4F4F5] hover:bg-[#EAEAEA] text-[#0A0D14] border border-[#E4E4E7] rounded-3xl px-5 py-3 shadow-2xs text-sm sm:text-[15px] font-medium leading-relaxed max-w-xl break-words transition-colors">
                       {message.content}
                     </div>
-                  ) : (
+                  </div>
+                ) : (
+                  <div className="w-full max-w-3xl rounded-2xl p-4 sm:p-5 transition-all bg-white border border-[#E5E7EB] shadow-xs text-[#1F242F]">
                     <StructuredResponseRenderer
                       content={message.content}
                       onSelectCitation={(cit) => {
@@ -492,9 +496,7 @@ Probe completed a multi-source investigation across Reddit, web discussions, and
                         }
                       }}
                     />
-                  )}
 
-                  {!isUser && (
                     <ResponseResearchDossier
                       investigation={investigation}
                       artifacts={message.artifacts}
@@ -503,21 +505,22 @@ Probe completed a multi-source investigation across Reddit, web discussions, and
                       onOpenTestingTab={onOpenTestingTab}
                       onSelectSource={onSelectSource}
                     />
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             );
           })}
 
-          {/* COMPACT THOUGHTLINE INVESTIGATION RUNNER */}
-          {isSubmitting && (
-            <div className="my-3">
+          {/* COMPACT THOUGHTLINE INVESTIGATION RUNNER DIRECTLY BENEATH USER QUERY PILL */}
+          {(isSubmitting || isLiveInvestigating) && (
+            <div className="my-3 w-full">
               <InvestigationThinkingMode
                 query={activeThinkingQuery || investigation.query}
-                liveSteps={streamedSteps}
-                activeTier={streamedTier}
+                liveSteps={streamedSteps && streamedSteps.length > 0 ? streamedSteps : liveSteps}
+                activeTier={streamedTier || activeTier}
                 onSkip={() => {
                   setIsSubmitting(false);
+                  onSkipInvestigation?.();
                 }}
               />
             </div>

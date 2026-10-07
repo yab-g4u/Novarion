@@ -9,6 +9,7 @@ import { SearchProvider } from './providers/base';
 import { RedditProvider } from './providers/reddit';
 import { WebSocialProvider } from './providers/web-social';
 import { ScholarXIVProvider } from './providers/scholarxiv';
+import { SearxngProvider } from './providers/searxng';
 import { expandQuery } from './query-expansion';
 import { deduplicateResults } from './deduplicator';
 import { rankResults, GeminiEmbeddingProvider } from './semantic-ranker';
@@ -23,6 +24,7 @@ export class SearchService {
     this.providers.set('x', new WebSocialProvider('x'));
     this.providers.set('linkedin', new WebSocialProvider('linkedin'));
     this.providers.set('scholarxiv', new ScholarXIVProvider());
+    this.providers.set('searxng', new SearxngProvider());
 
     this.embeddingProvider = new GeminiEmbeddingProvider();
   }

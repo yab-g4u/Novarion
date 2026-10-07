@@ -1,4 +1,4 @@
-export type SourceType = 'reddit' | 'x' | 'linkedin' | 'scholarxiv';
+export type SourceType = 'reddit' | 'x' | 'linkedin' | 'scholarxiv' | 'searxng';
 
 export interface SearchResult {
   id: string;

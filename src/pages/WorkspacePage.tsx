@@ -49,6 +49,8 @@ import {
   setActiveInvestigationId, 
   getInvestigationById, 
   createNewInvestigation, 
+  createPendingInvestigationRecord,
+  assembleFinalInvestigationRecord,
   deleteInvestigation, 
   groupInvestigationsByDate,
   generateInvestigationId 
@@ -325,120 +327,130 @@ export const WorkspacePage: React.FC = () => {
     const cleanQuery = params.query.trim();
     if (!cleanQuery) return;
 
+    // 1. Immediately create pending investigation with user query chat pill
+    const initialRecord = createPendingInvestigationRecord({
+      query: cleanQuery,
+      documentContext: params.documentContext,
+      documentFileName: params.documentFileName,
+      userId: user?.id
+    });
+
+    setActiveInvestigation(initialRecord);
+    setActiveInvestigationIdState(initialRecord.id);
+    setActiveInvestigationId(initialRecord.id, user?.id);
+    setInvestigationIdea(cleanQuery);
     setIsInvestigating(true);
     setThinkingQuery(cleanQuery);
     setStreamedSteps([]);
     setStreamedTier('fast');
     setCreationError(null);
-    pendingRecordRef.current = null;
+    pendingRecordRef.current = initialRecord;
 
-    // Start background stream for live ThoughtLine updates
-    (async () => {
-      try {
-        const streamRes = await fetch('/api/research/stream', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            query: cleanQuery,
-            documentContext: params.documentContext
-          })
-        });
+    const saved = getSavedInvestigations(user?.id);
+    setSavedInvestigations(saved);
 
-        if (streamRes.ok && streamRes.body) {
-          const reader = streamRes.body.getReader();
-          const decoder = new TextDecoder('utf-8');
-          let buffer = '';
+    // 2. Start single background stream for live progress and direct result
+    let streamSucceeded = false;
+    try {
+      const streamRes = await fetch('/api/research/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: cleanQuery,
+          documentContext: params.documentContext
+        })
+      });
 
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+      if (streamRes.ok && streamRes.body) {
+        streamSucceeded = true;
+        const reader = streamRes.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
 
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n\n');
-            buffer = lines.pop() || '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-            for (const block of lines) {
-              const eventMatch = block.match(/event:\s*([^\n]+)/);
-              const dataMatch = block.match(/data:\s*([^\n]+)/);
-              const eventName = eventMatch ? eventMatch[1].trim() : 'message';
-              const rawData = dataMatch ? dataMatch[1].trim() : '';
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n\n');
+          buffer = lines.pop() || '';
 
-              if (!rawData) continue;
+          for (const block of lines) {
+            const eventMatch = block.match(/event:\s*([^\n]+)/);
+            const dataMatch = block.match(/data:\s*([^\n]+)/);
+            const eventName = eventMatch ? eventMatch[1].trim() : 'message';
+            const rawData = dataMatch ? dataMatch[1].trim() : '';
 
-              try {
-                const parsed = JSON.parse(rawData);
-                if (eventName === 'progress' && parsed.step) {
-                  setStreamedSteps((prev) => {
-                    if (prev.includes(parsed.step)) return prev;
-                    return [...prev, parsed.step];
-                  });
-                  if (parsed.tier) {
-                    setStreamedTier(parsed.tier);
-                  }
+            if (!rawData) continue;
+
+            try {
+              const parsed = JSON.parse(rawData);
+              if (eventName === 'progress' && parsed.step) {
+                setStreamedSteps((prev) => {
+                  if (prev.includes(parsed.step)) return prev;
+                  return [...prev, parsed.step];
+                });
+                if (parsed.tier) {
+                  setStreamedTier(parsed.tier);
                 }
-              } catch {}
-            }
+              } else if (eventName === 'complete' && parsed.result) {
+                // Assemble final investigation and complete thinking mode
+                const finalRecord = assembleFinalInvestigationRecord(initialRecord, parsed.result, user?.id);
+                pendingRecordRef.current = finalRecord;
+                setActiveInvestigation(finalRecord);
+                setActiveGraphData(investigationToGraphData(finalRecord));
+                setIsInvestigating(false);
+                setThinkingQuery('');
+                setSavedInvestigations(getSavedInvestigations(user?.id));
+                navigate(`/app/research?chat=${finalRecord.id}`, { replace: true });
+                return;
+              }
+            } catch {}
           }
         }
-      } catch (e) {
-        // stream visual progress error is non-fatal
       }
-    })();
+    } catch (e) {
+      console.warn('[Workspace] Stream request error:', e);
+    }
 
-    try {
-      createNewInvestigation({
-        query: cleanQuery,
-        documentContext: params.documentContext,
-        documentFileName: params.documentFileName,
-        userId: user?.id,
-      })
-        .then((newRecord) => {
-          pendingRecordRef.current = newRecord;
-        })
-        .catch((err: any) => {
-          console.error('[Workspace] Investigation creation error:', err);
-          setCreationError(err?.message || 'Failed to complete investigation. Please try again.');
-          setIsInvestigating(false);
-          setThinkingQuery('');
-          setStreamedSteps([]);
-          setStreamedTier(undefined);
-        });
-    } catch (err: any) {
-      console.error('[Workspace] Investigation creation error:', err);
-      setCreationError(err?.message || 'Failed to complete investigation. Please try again.');
-      setIsInvestigating(false);
-      setThinkingQuery('');
-      setStreamedSteps([]);
-      setStreamedTier(undefined);
+    // 3. If stream didn't resolve with complete event, assemble fallback immediately
+    if (!streamSucceeded || isInvestigating) {
+      try {
+        const finalRecord = assembleFinalInvestigationRecord(initialRecord, undefined, user?.id);
+        pendingRecordRef.current = finalRecord;
+        setActiveInvestigation(finalRecord);
+        setActiveGraphData(investigationToGraphData(finalRecord));
+        setIsInvestigating(false);
+        setThinkingQuery('');
+        setSavedInvestigations(getSavedInvestigations(user?.id));
+        navigate(`/app/research?chat=${finalRecord.id}`, { replace: true });
+      } catch (err: any) {
+        setIsInvestigating(false);
+      }
     }
   };
 
   // Called when ThoughtLine finishes or user clicks Skip
-  const handleThinkingComplete = useCallback(async () => {
-    if (!pendingRecordRef.current) {
-      for (let i = 0; i < 30; i++) {
-        await new Promise((r) => setTimeout(r, 200));
-        if (pendingRecordRef.current) break;
-      }
+  const handleThinkingComplete = useCallback(() => {
+    const current = activeInvestigation || pendingRecordRef.current;
+    if (current) {
+      const finalRecord = current.messages.length > 1
+        ? current
+        : assembleFinalInvestigationRecord(current, undefined, user?.id);
+
+      setActiveInvestigation(finalRecord);
+      setActiveGraphData(investigationToGraphData(finalRecord));
+      setInvestigationIdea(finalRecord.query);
+      setIsInvestigating(false);
+      setThinkingQuery('');
+      setSavedInvestigations(getSavedInvestigations(user?.id));
+      navigate(`/app/research?chat=${finalRecord.id}`, { replace: true });
+    } else {
+      setIsInvestigating(false);
+      setThinkingQuery('');
     }
+  }, [activeInvestigation, navigate, user?.id]);
 
-    const record = pendingRecordRef.current;
-    setIsInvestigating(false);
-    setThinkingQuery('');
-
-    if (record) {
-      setActiveInvestigationIdState(record.id);
-      setActiveInvestigation(record);
-      setActiveInvestigationId(record.id, user?.id);
-      setActiveGraphData(investigationToGraphData(record));
-      setInvestigationIdea(record.query);
-
-      const updatedList = getSavedInvestigations(user?.id);
-      setSavedInvestigations(updatedList);
-
-      navigate(`/app/research?chat=${record.id}`, { replace: true });
-    }
-  }, [navigate, user?.id]);
 
   const handleUpdateInvestigation = useCallback(
     (updated: InvestigationRecord) => {
@@ -556,19 +568,8 @@ export const WorkspacePage: React.FC = () => {
           <div className="flex-1 flex h-full overflow-hidden relative">
             {/* Main Center Area */}
             <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#FAFAFA]">
-              {isInvestigating ? (
-                /* 1. THINKING STATE: Clean compact ThoughtLine indicator */
-                <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 overflow-y-auto">
-                  <InvestigationThinkingMode
-                    query={thinkingQuery}
-                    liveSteps={streamedSteps}
-                    activeTier={streamedTier}
-                    onComplete={handleThinkingComplete}
-                    onSkip={handleThinkingComplete}
-                  />
-                </div>
-              ) : activeInvestigation && activeInvestigation.messages.length > 0 ? (
-                /* 2. ACTIVE CONVERSATION STATE: Structured results + research pipeline */
+              {activeInvestigation && activeInvestigation.messages.length > 0 ? (
+                /* CONVERSATION STREAM: User query pill, inline thinking mode, and editorial results */
                 <InvestigationConversation
                   investigation={activeInvestigation}
                   onUpdateInvestigation={handleUpdateInvestigation}
@@ -591,9 +592,13 @@ export const WorkspacePage: React.FC = () => {
                   onSelectSource={handleOpenSourceDetail}
                   isRightPanelOpen={showEvidencePanel}
                   onToggleRightPanel={() => setShowEvidencePanel((prev) => !prev)}
+                  isLiveInvestigating={isInvestigating}
+                  liveSteps={streamedSteps}
+                  activeTier={streamedTier}
+                  onSkipInvestigation={handleThinkingComplete}
                 />
               ) : (
-                /* 3. PROBE EMPTY STATE: What are you trying to prove? + 4 starting actions */
+                /* PROBE EMPTY STATE: What are you trying to prove? + starting prompts */
                 <EmptyWorkspaceView
                   userName={user?.name}
                   onCreateInvestigation={handleCreateInvestigation}

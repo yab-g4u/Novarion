@@ -15,7 +15,7 @@ export type AssumptionStatus = 'SUPPORTED' | 'CHALLENGED' | 'MIXED' | 'UNKNOWN';
 
 export type EvidenceStance = 'SUPPORTS' | 'CHALLENGES' | 'NEUTRAL' | 'INSUFFICIENT';
 
-export type ResearchSourceType = 'reddit' | 'x' | 'linkedin' | 'scholarxiv' | 'web';
+export type ResearchSourceType = 'reddit' | 'x' | 'linkedin' | 'scholarxiv' | 'web' | 'searxng';
 
 export type RelevanceDecision = 'ACCEPT' | 'REJECT' | 'UNCERTAIN';
 

@@ -46,12 +46,12 @@ export const InvestigationThinkingMode: React.FC<InvestigationThinkingModeProps>
 
   // Specific research steps tailored to the user's inquiry (fallback if liveSteps is empty)
   const defaultSteps = useMemo(() => [
-    `Classifying inquiry & extracting assumptions (Fast Model)`,
-    `Generated search queries & detected competitors`,
-    `Gathering empirical signals across Reddit, ScholarXIV & web (Retrieval)`,
-    `Categorizing evidence & testing contradictions (Fast Model)`,
-    `Synthesizing founder PRD & pressure-testing recommendations (Strong Model)`,
-    `Finalizing research dossier & actionable next steps`
+    'Classifying inquiry & extracting assumptions',
+    'Generated search queries & detected competitors',
+    'Gathering empirical signals across SearXNG, Reddit, ScholarXIV & web',
+    'Categorizing evidence & testing contradictions',
+    'Synthesizing founder PRD & pressure-testing recommendations',
+    'Finalizing research dossier & actionable next steps'
   ], []);
 
   // Step progression animation when not driven by live stream
@@ -60,11 +60,11 @@ export const InvestigationThinkingMode: React.FC<InvestigationThinkingModeProps>
 
     const timers: NodeJS.Timeout[] = [];
 
-    timers.push(setTimeout(() => setCurrentStepIndex(1), 1400));
-    timers.push(setTimeout(() => setCurrentStepIndex(2), 2800));
-    timers.push(setTimeout(() => setCurrentStepIndex(3), 4200));
-    timers.push(setTimeout(() => setCurrentStepIndex(4), 5600));
-    timers.push(setTimeout(() => setCurrentStepIndex(5), 7000));
+    timers.push(setTimeout(() => setCurrentStepIndex(1), 1200));
+    timers.push(setTimeout(() => setCurrentStepIndex(2), 2400));
+    timers.push(setTimeout(() => setCurrentStepIndex(3), 3600));
+    timers.push(setTimeout(() => setCurrentStepIndex(4), 4800));
+    timers.push(setTimeout(() => setCurrentStepIndex(5), 6000));
 
     timers.push(
       setTimeout(() => {
@@ -75,7 +75,7 @@ export const InvestigationThinkingMode: React.FC<InvestigationThinkingModeProps>
             onComplete();
           }
         }
-      }, 8200)
+      }, 7200)
     );
 
     return () => {
@@ -83,26 +83,11 @@ export const InvestigationThinkingMode: React.FC<InvestigationThinkingModeProps>
     };
   }, [autoPlay, liveSteps, onComplete]);
 
+  // Clean active steps by stripping any backend model identifiers
   const activeSteps = useMemo(() => {
-    if (liveSteps && liveSteps.length > 0) {
-      return liveSteps;
-    }
-    return defaultSteps.slice(0, currentStepIndex + 1);
+    const raw = (liveSteps && liveSteps.length > 0) ? liveSteps : defaultSteps.slice(0, currentStepIndex + 1);
+    return raw.map((s) => s.replace(/\s*\([^)]*(?:gemini|flash|model|tier)[^)]*\)/gi, '').trim());
   }, [liveSteps, defaultSteps, currentStepIndex]);
-
-  const tierBadge = useMemo(() => {
-    if (!activeTier) return null;
-    switch (activeTier) {
-      case 'fast':
-        return { label: 'Fast Tier LLM', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
-      case 'retrieval':
-        return { label: 'Multi-Source Retrieval', color: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
-      case 'strong':
-        return { label: 'Strong Tier LLM', color: 'bg-blue-50 text-blue-700 border-blue-200' };
-      default:
-        return { label: 'Finalizing', color: 'bg-gray-50 text-gray-700 border-gray-200' };
-    }
-  }, [activeTier]);
 
   const handleSkip = () => {
     if (completedRef.current) return;
@@ -174,14 +159,9 @@ export const InvestigationThinkingMode: React.FC<InvestigationThinkingModeProps>
         <div className="mt-3.5 pt-2.5 border-t border-[#F0F2F5] flex items-center justify-between text-[11px] font-mono text-[#868C98]">
           <span className="flex items-center gap-1.5 truncate mr-2">
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#10B981] shrink-0" />
-            <span className="truncate">Sources: Web · Reddit · GitHub · ScholarXIV</span>
+            <span className="truncate">Sources: SearXNG · Reddit · ScholarXIV · Web</span>
           </span>
           <span className="shrink-0 text-[10px] flex items-center gap-2">
-            {tierBadge && (
-              <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wider border ${tierBadge.color}`}>
-                {tierBadge.label}
-              </span>
-            )}
             <span>{isWorking ? `${activeSteps.length} of ${liveSteps?.length || defaultSteps.length} stages` : 'Evidence compiled'}</span>
           </span>
         </div>

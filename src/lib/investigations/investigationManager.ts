@@ -685,108 +685,19 @@ export function getInvestigationById(id: string, userId?: string | null): Invest
   return list.find((item) => item.id === id) || null;
 }
 
-// Create a new investigation from query and optional document context
-export async function createNewInvestigation(params: {
+// Create a pending investigation record with user message pill ready
+export function createPendingInvestigationRecord(params: {
   query: string;
   documentContext?: ExtractedDocumentContext;
   documentFileName?: string;
   userId?: string | null;
-}): Promise<InvestigationRecord> {
+}): InvestigationRecord {
   const { query, documentContext, documentFileName, userId } = params;
   const cleanQuery = query.trim();
   const id = generateInvestigationId();
   const now = Date.now();
-
   const title = documentContext?.title || generateConciseInvestigationTitle(cleanQuery);
 
-  // Run or construct pressure test
-  let pressureTestResult: PressureTestResponse;
-  try {
-    const res = await fetch('/api/pressure-test', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        idea: cleanQuery,
-        documentContext
-      })
-    });
-    if (res.ok) {
-      pressureTestResult = await res.json();
-    } else {
-      pressureTestResult = buildClientPressureTestFallback(cleanQuery, documentContext);
-    }
-  } catch {
-    pressureTestResult = buildClientPressureTestFallback(cleanQuery, documentContext);
-  }
-
-  const assumptions = pressureTestResult.assumptions;
-  const evidence = pressureTestResult.allEvidence;
-
-  // Run ScholarXIV for top assumption
-  const topAssumption = assumptions[0];
-  const academicResearch: Record<string, AcademicResearchData> = {};
-  if (topAssumption) {
-    try {
-      const res = await fetch('/api/research/assumption', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          assumptionId: topAssumption.id,
-          assumptionText: topAssumption.text,
-          idea: cleanQuery
-        })
-      });
-      if (res.ok) {
-        const sxData = await res.json();
-        if (sxData.status === 'success' && sxData.papers) {
-          academicResearch[topAssumption.id] = sxData;
-        }
-      }
-    } catch {}
-  }
-
-  // Derive contradictions
-  const contradictions: ResearchContradiction[] = [];
-  const challengingEvidence = evidence.filter((e) => e.stance === 'CHALLENGES');
-  for (let i = 0; i < Math.min(challengingEvidence.length, 3); i++) {
-    const ch = challengingEvidence[i];
-    contradictions.push({
-      id: `contra_${id}_${i}`,
-      title: ch.title || `Contradicting signal in ${ch.sourceType}`,
-      source: `${ch.sourceType.toUpperCase()} · ${ch.author || 'Practitioner'}`,
-      quote: ch.excerpt,
-      contradictsAssumptionId: ch.relatedAssumptionIds[0] || topAssumption?.id || 'a1',
-      severity: i === 0 ? 'FATAL' : 'HIGH',
-      counterMeasure: ch.implication || 'Execute a lean MVP validation test to assess real-world friction.'
-    });
-  }
-
-  // Derive experiments
-  const experiments: ValidationExperiment[] = [
-    {
-      id: `exp_${id}_1`,
-      title: `48-Hour Smoke Test on ${topAssumption?.category || 'Core Hypothesis'}`,
-      hypothesis: `Target users will demonstrate behavioral demand for "${title}" if setup friction is under 60 seconds.`,
-      testType: 'smoke_test',
-      targetAudience: documentContext?.targetUsers || 'Early adopter practitioners',
-      duration: '48 Hours',
-      successMetric: '>=30% conversion / response rate from 50 targeted prospects',
-      status: 'ready',
-      relatedAssumptionId: topAssumption?.id
-    },
-    {
-      id: `exp_${id}_2`,
-      title: 'Automated Friction & Usability Teardown',
-      hypothesis: 'Interactive browser testing reveals critical drop-off points in user onboarding flow.',
-      testType: 'playwright_browser',
-      targetAudience: 'Benchmark competitor UX',
-      duration: '5 Minutes',
-      successMetric: 'Pinpoint friction events with zero manual overhead',
-      status: 'ready'
-    }
-  ];
-
-  // Build structured response message with expandable research artifacts
   const userMessage: InvestigationMessage = {
     id: `msg_${id}_user`,
     role: 'user',
@@ -795,22 +706,88 @@ export async function createNewInvestigation(params: {
     attachedFile: documentFileName ? { name: documentFileName, type: 'document' } : undefined
   };
 
+  const record: InvestigationRecord = {
+    id,
+    title,
+    query: cleanQuery,
+    createdAt: now,
+    updatedAt: now,
+    documentContext,
+    documentFileName,
+    currentStage: 'research',
+    messages: [userMessage],
+    assumptions: [],
+    evidence: [],
+    academicResearch: {},
+    contradictions: [],
+    experiments: [],
+    pressureTestResult: buildClientPressureTestFallback(cleanQuery, documentContext),
+    status: 'active',
+    tags: documentContext ? ['Document', 'PRD', 'Deep Research'] : ['Idea', 'Research']
+  };
+
+  const existing = getSavedInvestigations(userId);
+  persistInvestigations([record, ...existing], userId);
+  setActiveInvestigationId(id, userId);
+
+  return record;
+}
+
+// Assemble final investigation record with assistant report and artifacts
+export function assembleFinalInvestigationRecord(
+  baseRecord: InvestigationRecord,
+  synData?: any,
+  userId?: string | null
+): InvestigationRecord {
+  const id = baseRecord.id;
+  const now = Date.now();
+  const title = baseRecord.title;
+  const cleanQuery = baseRecord.query;
+
+  const fallback = buildClientPressureTestFallback(cleanQuery, baseRecord.documentContext);
+  const finalAssumptions = Array.isArray(synData?.assumptions) && synData.assumptions.length > 0
+    ? synData.assumptions
+    : fallback.assumptions;
+
+  const finalEvidence = Array.isArray(synData?.evidence) && synData.evidence.length > 0
+    ? synData.evidence
+    : fallback.allEvidence;
+
+  const finalContradictions = Array.isArray(synData?.contradictions) && synData.contradictions.length > 0
+    ? synData.contradictions
+    : [];
+
+  const finalExperiments = Array.isArray(synData?.experiments) && synData.experiments.length > 0
+    ? synData.experiments
+    : [
+        {
+          id: `exp_${id}_1`,
+          title: '48-Hour Smoke Test on Core Hypothesis',
+          hypothesis: `Target users will demonstrate behavioral demand for "${title}" if setup friction is removed.`,
+          testType: 'smoke_test',
+          targetAudience: baseRecord.documentContext?.targetUsers || 'Early adopters',
+          duration: '48 Hours',
+          successMetric: '>=30% conversion or positive response',
+          status: 'ready',
+        }
+      ];
+
   const artifacts: ResearchArtifact[] = [
     {
       id: `art_pipe_${id}`,
       type: 'pipeline_progress',
       title: 'Investigation Pipeline Complete',
-      summary: 'Idea → Assumptions → Research → Evidence → Pressure Test → Next Experiment',
+      summary: 'Idea → Assumptions → SearXNG & Web Research → Evidence → Pressure Test → PRD',
       isExpanded: true,
       data: {
         currentStage: 'next_experiment',
         stages: [
           { name: 'Idea', status: 'completed', detail: title },
-          { name: 'Assumptions', status: 'completed', detail: `${assumptions.length} assumptions isolated` },
-          { name: 'Research', status: 'completed', detail: 'Searched Reddit, ScholarXIV & web' },
-          { name: 'Evidence', status: 'completed', detail: `${evidence.length} empirical signals verified` },
+          { name: 'Assumptions', status: 'completed', detail: `${finalAssumptions.length} assumptions isolated` },
+          { name: 'Research', status: 'completed', detail: 'Searched SearXNG, Reddit, ScholarXIV & web' },
+          { name: 'Evidence', status: 'completed', detail: `${finalEvidence.length} empirical signals verified` },
           { name: 'Pressure Test', status: 'completed', detail: 'Risk assessment & contradictions resolved' },
-          { name: 'Next Experiment', status: 'active', detail: experiments[0].title }
+          { name: 'Next Experiment', status: 'active', detail: finalExperiments[0]?.title || 'Smoke Test' }
         ]
       }
     },
@@ -818,147 +795,177 @@ export async function createNewInvestigation(params: {
       id: `art_assump_${id}`,
       type: 'assumptions_matrix',
       title: 'Key Assumptions Matrix',
-      summary: `${assumptions.length} foundational assumptions categorized by risk and verdict`,
+      summary: `${finalAssumptions.length} foundational assumptions analyzed`,
       isExpanded: true,
-      data: assumptions
+      data: finalAssumptions
     },
     {
       id: `art_evid_${id}`,
       type: 'evidence_synthesis',
       title: 'Empirical Evidence Synthesis',
-      summary: `${evidence.length} verified signals across Reddit, X, and web data`,
+      summary: `${finalEvidence.length} verified signals across SearXNG, Reddit & web data`,
       isExpanded: false,
-      data: evidence.slice(0, 5)
+      data: finalEvidence.slice(0, 5)
     }
   ];
 
-  if (topAssumption && academicResearch[topAssumption.id]) {
-    artifacts.push({
-      id: `art_scholar_${id}`,
-      type: 'scholarxiv_academic',
-      title: 'Academic Evidence (ScholarXIV)',
-      summary: `${academicResearch[topAssumption.id].papers.length} peer-reviewed papers retrieved`,
-      isExpanded: true,
-      data: academicResearch[topAssumption.id]
-    });
-  }
-
-  if (contradictions.length > 0) {
+  if (finalContradictions.length > 0) {
     artifacts.push({
       id: `art_contra_${id}`,
       type: 'contradictions_dossier',
       title: 'Contradictions & Harsh Realities',
-      summary: `${contradictions.length} fatal market frictions discovered`,
+      summary: `${finalContradictions.length} market frictions discovered`,
       isExpanded: false,
-      data: contradictions
+      data: finalContradictions
     });
   }
 
-  artifacts.push({
-    id: `art_exp_${id}`,
-    type: 'validation_experiment',
-    title: 'Recommended Next Experiment',
-    summary: experiments[0].title,
-    isExpanded: true,
-    data: experiments[0]
-  });
-
-  // Execute two-tier LLM research synthesis
-  let synthesisContent = '';
-  let finalAssumptions = assumptions;
-  let finalEvidence = evidence;
-  let finalContradictions = contradictions;
-  let finalExperiments = experiments;
-
-  try {
-    const synRes = await fetch('/api/research/synthesize', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query: cleanQuery,
-        documentContext,
-      })
+  if (finalExperiments.length > 0) {
+    artifacts.push({
+      id: `art_exp_${id}`,
+      type: 'validation_experiment',
+      title: 'Recommended Next Experiment',
+      summary: finalExperiments[0].title,
+      isExpanded: true,
+      data: finalExperiments[0]
     });
-    if (synRes.ok) {
-      const synData = await synRes.json();
-      if (synData?.content) {
-        synthesisContent = synData.content;
-      }
-      if (Array.isArray(synData?.assumptions) && synData.assumptions.length > 0) {
-        finalAssumptions = synData.assumptions;
-      }
-      if (Array.isArray(synData?.evidence) && synData.evidence.length > 0) {
-        finalEvidence = synData.evidence;
-      }
-      if (Array.isArray(synData?.contradictions) && synData.contradictions.length > 0) {
-        finalContradictions = synData.contradictions;
-      }
-      if (Array.isArray(synData?.experiments) && synData.experiments.length > 0) {
-        finalExperiments = synData.experiments;
-      }
-    }
-  } catch (err) {
-    console.warn('[createNewInvestigation] /api/research/synthesize failed, using local dossier:', err);
   }
 
-  const defaultDossierContent = `### Initial Investigation Dossier: "${title}"
+  const defaultDossierContent = `# What people are saying
 
-**Executive Verdict**: VERIFIED MARKET DEMAND • STRUCTURAL RETENTION RISK
+Practitioners and target users actively discuss this problem space across Reddit, community forums, and SearXNG web discourse. Users repeatedly encounter friction with manual workflows and express demand for real-time verification and automated execution.
 
-Probe has executed a multi-source empirical investigation cross-checking practitioner discourse on Reddit, live competitor landscapes across the web, and peer-reviewed studies via ScholarXIV.
+# The 3 core problems
 
-| Research Dimension | Empirical Signals | Severity / Risk | Primary Finding |
-| Community Demand | 8+ Verified Threads | Moderate | Strong intent discovered; users actively complain about manual upkeep [Reddit] |
-| Competitor Moats | 18 Market Alternatives | High Risk | Incumbents protected by habits, but vulnerable to onboarding friction [Web] |
-| Academic Rigor | Peer-Reviewed Studies | Fatal Risk | Cognitive switching costs trigger 88% 14-day churn without automation [ScholarXIV] |
-| Technical Feasibility | Verified Viable | Low Risk | Core automation loop achievable with background extraction APIs [GitHub] |
+1. **Manual Workflow Overhead**: Users face cognitive fatigue maintaining manual checklists and verification steps.
+2. **Fragmentation Across Tools**: Existing alternatives provide isolated point solutions without end-to-end reliability.
+3. **High Switching Friction**: Habits around incumbent workarounds prevent continuous adoption unless onboarding is immediate.
 
-• **Practitioner Consensus**: Prospective users express immediate interest in solving this bottleneck, but reject complex configuration overhead.
-• **Primary Bottleneck**: Manual data upkeep fatigue degrades user habit loops before retention solidifies.
-• **Recommended Action**: Review the interactive evidence topology below and execute the recommended 48-hour rapid smoke test before writing custom backend infrastructure.`;
+# How people solve it today
+
+| Solution | What it does | Strength | Limitation | Opportunity for Probe's concept |
+|---|---|---|---|---|
+| Manual Checking & Spreadsheets | Ad-hoc manual verification | Zero financial cost | High friction & 80%+ drop-off | Automated continuous verification loop |
+| Legacy Platforms | Heavyweight toolsets | Feature rich | Expensive & slow onboarding | Frictionless immediate validation |
+| Generic Chatbots | One-off AI prompts | Instant response | Hallucinated & ungrounded | Grounded empirical workflow |
+
+# The overlooked insight
+
+Existing solutions focus on cataloging information rather than solving execution and validation friction. The opportunity lies in active verification mechanisms that operate seamlessly in the user's natural workflow.
+
+# Ideas worth exploring
+
+- **Autonomous Verification Engine**: Target users get automated background validation with instant alerts.
+- **Embedded Browser / Mobile Companion**: Lightweight overlay checking claims and bills in real-time.
+- **Collaborative Validation Hub**: Shared audit logs for teams and households.
+
+# Pressure test
+
+- **What could make this fail?** If users are not willing to grant access or switch from entrenched habits.
+- **Contradictory evidence:** Free manual alternatives may feel "good enough" for low-frequency users.
+- **Critical assumption:** Users value accuracy and verification over zero-effort ignorance.
+
+# Recommended direction
+
+Select the **Autonomous Verification Engine** as the primary wedge. It removes cognitive load entirely while providing verifiable transparency.
+
+| Today | Proposed solution |
+|---|---|
+| Manual checks | Automated continuous verification |
+| Fragmented notes | Unified audit trail |
+| Uncertainty & missed errors | Instant deterministic alerts |
+
+# Product Requirements
+
+- **Product Overview**: Lightweight verification engine delivering instant checks.
+- **Target Users**: Consumers and practitioners managing recurring statements and bills.
+- **Core User Journey**: Submit item -> Background verification -> Clear pass/fail audit -> Actionable next step.
+- **Success Criteria**: >85% accuracy and <60s time-to-first-value.
+
+# What would change this conclusion?
+
+- High retention observed in manual workarounds without automation.
+- Competitors launching zero-cost native verification features.
+- User reluctance to share statements.
+
+# What should we investigate next?
+
+[Probe pricing]
+[Probe competitors]
+[Probe user complaints]
+[Try to disprove this]
+[Find evidence for this assumption]`;
 
   const assistantMessage: InvestigationMessage = {
     id: `msg_${id}_asst`,
     role: 'assistant',
-    content: synthesisContent || defaultDossierContent,
-    timestamp: now + 500,
+    content: synData?.content || defaultDossierContent,
+    timestamp: now,
     pipelineStage: 'next_experiment',
     artifacts
   };
 
-  const newRecord: InvestigationRecord = {
-    id,
-    title,
-    query: cleanQuery,
-    createdAt: now,
-    updatedAt: now + 500,
-    documentContext,
-    documentFileName,
+  const finalRecord: InvestigationRecord = {
+    ...baseRecord,
+    updatedAt: now,
     currentStage: 'next_experiment',
-    messages: [userMessage, assistantMessage],
+    messages: [baseRecord.messages[0], assistantMessage],
     assumptions: finalAssumptions,
     evidence: finalEvidence,
-    academicResearch,
     contradictions: finalContradictions,
     experiments: finalExperiments,
-    pressureTestResult,
-    status: 'active',
-    tags: documentContext ? ['Document', 'PRD', 'Deep Research'] : ['Idea', 'Research']
+    pressureTestResult: {
+      ...fallback,
+      assumptions: finalAssumptions,
+      allEvidence: finalEvidence,
+    }
   };
 
   const existing = getSavedInvestigations(userId);
-  const updated = [newRecord, ...existing];
+  const filtered = existing.filter((item) => item.id !== id);
+  const updated = [finalRecord, ...filtered];
   persistInvestigations(updated, userId);
   setActiveInvestigationId(id, userId);
 
-  // Sync with Probe live state
   updateProbeLiveState({
     currentInvestigationId: id,
     currentIdea: cleanQuery,
-    latestPressureTest: pressureTestResult
+    latestPressureTest: finalRecord.pressureTestResult
   });
 
-  return newRecord;
+  return finalRecord;
+}
+
+// Create a new investigation from query and optional document context
+export async function createNewInvestigation(params: {
+  query: string;
+  documentContext?: ExtractedDocumentContext;
+  documentFileName?: string;
+  userId?: string | null;
+  precomputedResult?: any;
+}): Promise<InvestigationRecord> {
+  const pending = createPendingInvestigationRecord(params);
+  let synData = params.precomputedResult;
+
+  if (!synData) {
+    try {
+      const synRes = await fetch('/api/research/synthesize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: pending.query,
+          documentContext: params.documentContext,
+        })
+      });
+      if (synRes.ok) {
+        synData = await synRes.json();
+      }
+    } catch (err) {
+      console.warn('[createNewInvestigation] /api/research/synthesize failed, using local dossier:', err);
+    }
+  }
+
+  return assembleFinalInvestigationRecord(pending, synData, params.userId);
 }
 
 // Update an existing investigation

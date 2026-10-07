@@ -11,6 +11,7 @@ import { Assumption, EvidenceItem, RawSearchResult } from '../../research/types'
 import { RedditProvider } from '../../research/providers/reddit';
 import { ScholarXIVProvider } from '../../research/providers/scholarxiv';
 import { WebSocialProvider } from '../../research/providers/web-social';
+import { SearxngProvider } from '../../search/providers/searxng';
 import { extractAssumptionsDeterministic } from '../../research/assumption-extractor';
 import { classifyEvidenceStance, evaluateHardRelevance, detectDomain } from '../../research/scoring-classifier';
 import { buildClientPressureTestFallback } from '../../research/dynamicInvestigationResolver';
@@ -25,6 +26,7 @@ export class TwoTierResearchEngine {
   private readonly reddit = new RedditProvider();
   private readonly scholarxiv = new ScholarXIVProvider();
   private readonly x = new WebSocialProvider('x');
+  private readonly searxng = new SearxngProvider();
 
   /**
    * Main entrypoint: Orchestrates the two-tier investigation workflow.
@@ -58,10 +60,10 @@ export class TwoTierResearchEngine {
     };
 
     // =========================================================================
-    // STAGE 1: FAST MODEL: Classify + Assumptions + Search Queries + Competitors
+    // STAGE 1: Classify + Assumptions + Search Queries + Competitors
     // =========================================================================
     reportProgress(
-      `Classifying inquiry & extracting assumptions (${provider.fastModelName})`,
+      'Classifying inquiry & extracting assumptions',
       'fast',
       'classification',
       0.15,
@@ -85,10 +87,10 @@ export class TwoTierResearchEngine {
     );
 
     // =========================================================================
-    // STAGE 2: Research / Web Evidence Collection (ZERO LLM CALLS)
+    // STAGE 2: Research / SearXNG & Web Evidence Collection (ZERO LLM CALLS)
     // =========================================================================
     reportProgress(
-      'Gathering empirical signals across Reddit, ScholarXIV & web (Retrieval)',
+      'Gathering empirical signals across SearXNG, Reddit, ScholarXIV & web',
       'retrieval',
       'retrieval',
       0.45,
@@ -102,17 +104,17 @@ export class TwoTierResearchEngine {
     );
 
     reportProgress(
-      `Retrieved ${rawSignals.length} raw empirical signals from 3 sources`,
+      `Retrieved ${rawSignals.length} raw empirical signals from SearXNG, Reddit & ScholarXIV`,
       'retrieval',
       'retrieval',
       0.60
     );
 
     // =========================================================================
-    // STAGE 3: FAST MODEL: Categorize Evidence (Stance, Relevance, Quotes)
+    // STAGE 3: Categorize Evidence (Stance, Relevance, Quotes)
     // =========================================================================
     reportProgress(
-      `Categorizing evidence & testing contradictions (${provider.fastModelName})`,
+      'Categorizing evidence & testing contradictions',
       'fast',
       'categorization',
       0.72,
@@ -149,7 +151,7 @@ export class TwoTierResearchEngine {
     const experiments = this.deriveExperiments(cleanQuery, classification.assumptions, documentContext);
 
     reportProgress(
-      `Synthesizing founder PRD & pressure-testing recommendations (${provider.strongModelName})`,
+      'Synthesizing founder PRD & pressure-testing recommendations',
       'strong',
       'synthesis',
       0.88,
@@ -157,11 +159,11 @@ export class TwoTierResearchEngine {
     );
 
     // =========================================================================
-    // STAGE 4: STRONG MODEL: Synthesize + Challenge + Insights + PRD
+    // STAGE 4: Synthesize + Challenge + Insights + PRD (Max 18s Safety Window)
     // =========================================================================
     let synthesizedReport = '';
     try {
-      synthesizedReport = await this.runStrongSynthesis({
+      const synthesisPromise = this.runStrongSynthesis({
         query: cleanQuery,
         intent: classification.intent,
         assumptions: classification.assumptions,
@@ -170,9 +172,15 @@ export class TwoTierResearchEngine {
         contradictions,
         documentContext
       });
+
+      const timeoutPromise = new Promise<string>((_, reject) => {
+        setTimeout(() => reject(new Error('Strong synthesis timed out (18s limit)')), 18000);
+      });
+
+      synthesizedReport = await Promise.race([synthesisPromise, timeoutPromise]);
       strongCallsCount += 1;
     } catch (err: any) {
-      console.warn('[TwoTierResearchEngine] Strong synthesis error, using editorial fallback:', err.message || err);
+      console.warn('[TwoTierResearchEngine] Strong synthesis error or timeout, using editorial fallback:', err.message || err);
       synthesizedReport = this.buildEditorialFallbackReport({
         query: cleanQuery,
         assumptions: classification.assumptions,
@@ -354,7 +362,7 @@ Output JSON with this exact structure:
   }
 
   /**
-   * Stage 2: Pure Retrieval (Reddit, ScholarXIV, Web) - ZERO LLM CALLS
+   * Stage 2: Pure Retrieval (SearXNG, Reddit, ScholarXIV, Web) - ZERO LLM CALLS
    */
   private async collectRawEvidence(
     idea: string,
@@ -383,6 +391,33 @@ Output JSON with this exact structure:
         return [];
       }
     });
+
+    // Directly query SearXNG meta-search engine for empirical web signals and discussions
+    fetchTasks.push((async () => {
+      try {
+        const searxResults = await this.searxng.search({
+          originalQuery: `${idea} user complaints problems alternatives`,
+          expandedQueries: [],
+          sources: ['searxng'],
+          limitPerSource: 4
+        });
+        return searxResults.map(r => ({
+          id: r.id,
+          sourceType: 'searxng' as any,
+          provider: 'searxng',
+          title: r.title,
+          url: r.url,
+          author: r.author,
+          publishedAt: r.publishedAt || new Date().toISOString(),
+          excerpt: r.text,
+          relevanceScore: r.relevanceScore,
+          domain: r.domain,
+          searchQuery: idea
+        }));
+      } catch {
+        return [];
+      }
+    })());
 
     const results = await Promise.all(fetchTasks);
     results.forEach(batch => rawItems.push(...batch));
