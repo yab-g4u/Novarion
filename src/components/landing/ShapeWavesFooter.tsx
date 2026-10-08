@@ -1,325 +1,208 @@
-import React, { useRef } from 'react';
-import { MicroSlats } from '../ui/MicroSlats';
-import { ProbeLogo } from '../ProbeLogo';
-import { ExternalLink, ArrowUpRight, Sparkles, Activity, ShieldCheck, Terminal, Compass } from 'lucide-react';
-import { useProbeMotion } from '@/motion/useProbeMotion';
-import { EASE, gsap } from '@/motion/gsapConfig';
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
 
-export const ShapeWavesFooter: React.FC = () => {
-  const footerRef = useRef<HTMLElement>(null);
-  const brandCenterRef = useRef<HTMLDivElement>(null);
-  const bottomGridRef = useRef<HTMLDivElement>(null);
+export interface ShapeWavesFooterProps {
+  onStartInvestigating?: (idea?: string) => void;
+  onExploreProduct?: () => void;
+}
 
-  useProbeMotion(
-    ({ isReduced, mm }) => {
-      if (isReduced) return;
+/**
+ * FlowerSprout
+ * Delicate botanical blossom with a slender stem and leaf,
+ * perching atop the central letter of PROBE, matching the reference image.
+ */
+const FlowerSprout: React.FC<{ className?: string }> = ({ className = 'w-14 h-20' }) => (
+  <svg
+    viewBox="0 0 100 130"
+    className={className}
+    fill="currentColor"
+    xmlns="http://www.w3.org/2000/svg"
+    aria-hidden="true"
+  >
+    {/* Slender curved stem */}
+    <path
+      d="M 50 126 C 50 96 44 66 54 36"
+      stroke="currentColor"
+      strokeWidth="4.5"
+      strokeLinecap="round"
+      fill="none"
+    />
 
-      mm.add('(min-width: 768px)', () => {
-        if (!footerRef.current) return;
+    {/* Delicate leaf branching to the left */}
+    <path
+      d="M 48 82 C 34 80 28 68 36 60 C 43 66 48 73 48 82 Z"
+      fill="currentColor"
+    />
 
-        if (brandCenterRef.current) {
-          gsap.fromTo(
-            brandCenterRef.current,
-            { y: 30, opacity: 0 },
-            {
-              y: 0,
-              opacity: 1,
-              duration: 0.9,
-              ease: EASE.smooth,
-              scrollTrigger: {
-                trigger: footerRef.current,
-                start: 'top 80%',
-                toggleActions: 'play none none none',
-              },
-            }
-          );
-        }
+    {/* 5-petal flower blossom tilted ~16 degrees clockwise */}
+    <g transform="translate(54, 34) rotate(16)">
+      {/* Center disk */}
+      <circle cx="0" cy="0" r="6.5" fill="currentColor" />
 
-        if (bottomGridRef.current) {
-          gsap.fromTo(
-            bottomGridRef.current,
-            { y: 25, opacity: 0 },
-            {
-              y: 0,
-              opacity: 1,
-              duration: 0.7,
-              delay: 0.15,
-              ease: EASE.smooth,
-              scrollTrigger: {
-                trigger: footerRef.current,
-                start: 'top 65%',
-                toggleActions: 'play none none none',
-              },
-            }
-          );
-        }
-      });
-    },
-    { scope: footerRef }
-  );
+      {/* 5 rounded petals */}
+      <ellipse cx="0" cy="-15" rx="7.5" ry="11" fill="currentColor" />
+      <ellipse cx="14" cy="-5" rx="7.5" ry="11" transform="rotate(72 14 -5)" fill="currentColor" />
+      <ellipse cx="9" cy="13" rx="7.5" ry="11" transform="rotate(144 9 13)" fill="currentColor" />
+      <ellipse cx="-9" cy="13" rx="7.5" ry="11" transform="rotate(216 -9 13)" fill="currentColor" />
+      <ellipse cx="-14" cy="-5" rx="7.5" ry="11" transform="rotate(288 -14 -5)" fill="currentColor" />
+    </g>
+  </svg>
+);
+
+/**
+ * ShapeWavesFooter
+ * Minimalist, high-editorial closing section matching the reference screenshot:
+ * - Serene off-white canvas matching the hero background (#FAF9F5)
+ * - Soft daylight drapery ambient light in the background
+ * - Centered crisp headline: "Reconnect to what matters"
+ * - Centered dark pill button: "Get started with Probe"
+ * - Clean row of underlined links: YouTube · GitHub · X (Twitter) · Email
+ * - Giant watermark typography across the bottom: PROBE
+ * - Delicate botanical sprout perched atop the central letter "O"
+ * - Bottom gradient fade dissolving softly into the edge
+ */
+export const ShapeWavesFooter: React.FC<ShapeWavesFooterProps> = ({
+  onStartInvestigating,
+  onExploreProduct,
+}) => {
+  const navigate = useNavigate();
+
+  const handleAction = () => {
+    if (onStartInvestigating) {
+      onStartInvestigating();
+      return;
+    }
+    const raw = typeof window !== 'undefined' ? localStorage.getItem('probe_auth_user') : null;
+    if (raw) {
+      navigate('/app');
+    } else {
+      navigate('/signin');
+    }
+  };
 
   return (
-    <footer
-      ref={footerRef}
-      className="relative w-full bg-[#000000] text-white overflow-hidden select-none"
+    <footer 
+      className="relative w-full bg-[#FAF9F5] text-[#111111] overflow-hidden select-none border-t border-[#E5E7EB] font-['Geist','Inter',-apple-system,sans-serif]"
+      style={{
+        backgroundImage: 'radial-gradient(#CBD5E1 0.75px, transparent 0.75px)',
+        backgroundSize: '24px 24px',
+      }}
     >
-      {/* 1. REACT BITS <MicroSlats /> INTERACTIVE FLUID CANVAS BACKGROUND */}
-      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-auto">
-        <MicroSlats
-          preset="swell"
-          color="#d6cfdb"
-          glintColor="#ffffff"
-          backgroundColor="#000000"
-          slatWidth={10}
-          slatHeight={25}
-          gap={3}
-          roundness={0.75}
-          interactive={true}
-          cursorStrength={1}
-          cursorSize={40}
-          swirl={0}
-          trail={1.4}
-          lean={0}
-          intro={true}
-          className="w-full h-full"
+      {/* ── Soft Ethereal Ambient Daylight Drapery (Recreating image.png ambient light) ── */}
+      <div 
+        className="pointer-events-none absolute inset-0 overflow-hidden opacity-50" 
+        aria-hidden="true"
+      >
+        <div 
+          className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] sm:w-[1300px] h-[550px]"
+          style={{
+            background: 'radial-gradient(ellipse 60% 50% at 50% 0%, rgba(255, 255, 255, 0.95) 0%, rgba(250, 249, 245, 0.3) 65%, transparent 100%)',
+          }}
         />
-
-        {/* Soft Vignette Overlay to ensure text readability while allowing fluid light through */}
-        <div className="absolute inset-0 bg-gradient-to-b from-black/85 via-black/40 to-black/90 pointer-events-none" />
+        {/* Soft diagonal light streaks */}
+        <div 
+          className="absolute -top-10 left-[36%] w-[260px] sm:w-[380px] h-[500px] -rotate-12 opacity-30 blur-2xl pointer-events-none"
+          style={{
+            background: 'linear-gradient(180deg, rgba(226, 232, 240, 0.7) 0%, rgba(241, 245, 249, 0.2) 75%, transparent 100%)',
+          }}
+        />
+        <div 
+          className="absolute -top-10 right-[32%] w-[280px] sm:w-[400px] h-[540px] rotate-8 opacity-25 blur-2xl pointer-events-none"
+          style={{
+            background: 'linear-gradient(180deg, rgba(226, 232, 240, 0.6) 0%, rgba(241, 245, 249, 0.15) 75%, transparent 100%)',
+          }}
+        />
       </div>
 
-      {/* 2. FOREGROUND CONTENT */}
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 sm:pt-28 pb-12 flex flex-col justify-between min-h-[640px] md:min-h-[720px] pointer-events-none">
+      {/* ── Main Content Container ── */}
+      <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 pt-24 sm:pt-32 md:pt-40 pb-0 flex flex-col items-center text-center">
         
-        {/* TOP BRAND HEADER & STATUS PILL */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 pointer-events-auto">
-          {/* Brand Mark + Tagline */}
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center p-2.5 shadow-2xl">
-              <ProbeLogo className="w-7 h-7" inverted={true} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-extrabold text-base tracking-tight text-white font-['Geist',sans-serif]">
-                  PROBE
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-white/10 border border-white/15 text-[10px] font-mono text-[#A1A1AA] uppercase">
-                  v2.4
-                </span>
-              </div>
-              <p className="text-xs text-[#94A3B8] font-mono mt-0.5">
-                Investigation platform for founders
-              </p>
-            </div>
-          </div>
+        {/* 1. Large Crisp Headline */}
+        <h2 className="text-4xl sm:text-5xl md:text-6xl lg:text-[4.25rem] font-medium tracking-tight text-[#111111] leading-[1.12] max-w-3xl mx-auto">
+          Reconnect to what matters
+        </h2>
 
-          {/* Operational Status Pill */}
-          <div className="flex items-center gap-3">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-md text-xs font-mono text-[#D4D4D8]">
-              <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse" />
-              <span>ALL SYSTEMS OPERATIONAL · 6 DATA SOURCES LIVE</span>
-            </div>
-          </div>
+        {/* 2. Centered Dark Pill Button */}
+        <div className="mt-7 sm:mt-9 mb-9 sm:mb-12">
+          <button
+            type="button"
+            onClick={handleAction}
+            className="px-6 py-3 sm:px-7 sm:py-3.5 rounded-full bg-[#232428] hover:bg-[#111215] text-white text-sm sm:text-[15px] font-medium tracking-normal shadow-md shadow-black/10 hover:shadow-lg transition-all duration-200 cursor-pointer active:scale-95"
+          >
+            Get started with Probe
+          </button>
         </div>
 
-        {/* CENTERPIECE: HUGE PROFESSIONAL "PROBE" TYPOGRAPHY & "PUT YOUR IDEA UNDER PRESSURE" */}
-        <div
-          ref={brandCenterRef}
-          className="my-16 sm:my-20 text-center flex flex-col items-center justify-center pointer-events-auto will-change-transform"
+        {/* 3. Horizontal Row of Underlined Links */}
+        <nav 
+          className="flex flex-wrap items-center justify-center gap-6 sm:gap-10 md:gap-14 text-sm sm:text-[15px] font-medium text-[#111111] mb-16 sm:mb-24"
+          aria-label="Footer Links"
         >
-          {/* Logo badge floating above */}
-          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-white/10 backdrop-blur-xl border border-white/25 shadow-2xl flex items-center justify-center p-3.5 sm:p-4 mb-6 transition-transform hover:scale-105">
-            <ProbeLogo className="w-full h-full" inverted={true} />
-          </div>
+          <a
+            href="https://youtube.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-4 decoration-[#111111]/35 hover:decoration-[#111111] hover:text-black transition-colors"
+          >
+            YouTube
+          </a>
+          <a
+            href="https://github.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-4 decoration-[#111111]/35 hover:decoration-[#111111] hover:text-black transition-colors"
+          >
+            GitHub
+          </a>
+          <a
+            href="https://x.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-4 decoration-[#111111]/35 hover:decoration-[#111111] hover:text-black transition-colors"
+          >
+            X (Twitter)
+          </a>
+          <a
+            href="mailto:hello@probe.dev"
+            className="underline underline-offset-4 decoration-[#111111]/35 hover:decoration-[#111111] hover:text-black transition-colors"
+          >
+            Email
+          </a>
+        </nav>
 
-          {/* Slogan: Put your idea under pressure */}
-          <div className="inline-flex items-center gap-2 text-xs sm:text-sm md:text-base font-mono font-bold tracking-[0.25em] sm:tracking-[0.35em] uppercase text-[#E2E8F0] mb-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#38BDF8]" />
-            <span>Put your idea under pressure.</span>
-            <span className="w-1.5 h-1.5 rounded-full bg-[#38BDF8]" />
-          </div>
+      </div>
 
-          {/* Massive Professional Title PROBE */}
-          <h1 className="text-7xl sm:text-9xl md:text-[11rem] lg:text-[13rem] font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white via-white/90 to-white/35 leading-none select-none drop-shadow-2xl">
-            PROBE
-          </h1>
-
-          <p className="mt-4 text-xs sm:text-sm text-[#A1A1AA] max-w-xl font-normal leading-relaxed">
-            Don’t vibe code on unexamined assumptions. Retrieve real-world adversarial evidence, uncover contradictions, and generate verified build briefs before writing a single line of code.
-          </p>
-
-          {/* Fast CTA */}
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-            <a
-              href="/signin"
-              className="px-7 py-3 rounded-full bg-white hover:bg-[#F1F3F5] text-[#0A0D14] text-xs sm:text-sm font-semibold flex items-center gap-2 shadow-xl transition-all hover:scale-105 active:scale-95 cursor-pointer"
-            >
-              <span>Start Investigating Free</span>
-              <ArrowUpRight size={15} />
-            </a>
-            <a
-              href="#section-evidence-graph"
-              className="px-5 py-3 rounded-full bg-white/10 hover:bg-white/15 text-white border border-white/20 text-xs sm:text-sm font-medium backdrop-blur-md transition-all cursor-pointer"
-            >
-              Explore Living Evidence Graph
-            </a>
-          </div>
-        </div>
-
-        {/* 3. MULTI-COLUMN NAVIGATION, LINKS & REQUISITES */}
-        <div
-          ref={bottomGridRef}
-          className="pt-12 border-t border-white/10 grid grid-cols-2 md:grid-cols-4 gap-8 text-xs font-mono text-[#A1A1AA] pointer-events-auto will-change-transform"
+      {/* ── 4. Massive Typography Watermark across bottom with Flower Sprout ── */}
+      <div 
+        className="relative w-full overflow-hidden flex flex-col items-center justify-end select-none pointer-events-none"
+        aria-hidden="true"
+      >
+        {/* PROBE Display Letters with Flower Anchored to Center "O" */}
+        <div 
+          className="w-full flex items-end justify-center font-black uppercase text-[#E0E2E7] leading-[0.76] select-none text-[18vw] sm:text-[20vw] md:text-[22vw]"
+          style={{
+            fontFamily: "'Geist', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+            letterSpacing: '0.24em',
+            paddingLeft: '0.24em', // Balance the trailing letter-spacing
+          }}
         >
-          {/* Column 1: Investigation Platform */}
-          <div className="space-y-3">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
-              <Compass size={13} className="text-[#38BDF8]" />
-              <span>Platform</span>
+          <span>P</span>
+          <span>R</span>
+          <span className="relative inline-flex items-center justify-center">
+            {/* Flower sprout perched delicately on top of the central letter "O" */}
+            <span className="absolute bottom-[80%] left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+              <FlowerSprout className="w-[6vw] h-[9vw] min-w-9 min-h-12 max-w-20 max-h-28 text-[#CBD0DA]" />
             </span>
-            <ul className="space-y-2">
-              <li>
-                <a href="/app/research" className="hover:text-white transition-colors">
-                  Research Workspace
-                </a>
-              </li>
-              <li>
-                <a href="/app/evidence" className="hover:text-white transition-colors">
-                  Living Evidence Graph
-                </a>
-              </li>
-              <li>
-                <a href="/app/testing" className="hover:text-white transition-colors">
-                  Autonomous Browser Testing
-                </a>
-              </li>
-              <li>
-                <a href="#section-testing" className="hover:text-white transition-colors">
-                  Real User Playwright Surfing
-                </a>
-              </li>
-              <li>
-                <a href="/app/research" className="hover:text-white transition-colors flex items-center gap-1">
-                  <span>Build Brief Generator</span>
-                  <span className="text-[9px] px-1 py-0.2 bg-[#10B981]/20 text-[#34D399] rounded">NEW</span>
-                </a>
-              </li>
-            </ul>
-          </div>
-
-          {/* Column 2: Empirical Methodology */}
-          <div className="space-y-3">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
-              <ShieldCheck size={13} className="text-[#10B981]" />
-              <span>Methodology</span>
-            </span>
-            <ul className="space-y-2">
-              <li>
-                <span className="text-[#71717A]">Multi-Source Grounding</span>
-              </li>
-              <li>
-                <span className="text-[#71717A]">Hard Relevance Gate</span>
-              </li>
-              <li>
-                <span className="text-[#71717A]">Adversarial Stance Clustering</span>
-              </li>
-              <li>
-                <span className="text-[#71717A]">Playwright Real-World Tests</span>
-              </li>
-              <li>
-                <span className="text-[#71717A]">BUILD.md Context Export</span>
-              </li>
-            </ul>
-          </div>
-
-          {/* Column 3: Grounded Sources */}
-          <div className="space-y-3">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
-              <Activity size={13} className="text-[#F59E0B]" />
-              <span>Live Sources</span>
-            </span>
-            <ul className="space-y-2">
-              <li className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#FF4500]" />
-                <span>Reddit Discussions</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#4285F4]" />
-                <span>ScholarXIV Academic Papers</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-white" />
-                <span>X / Twitter Practitioner Signals</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#0A66C2]" />
-                <span>LinkedIn Market Audits</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
-                <span>Public Web & Browser DOM</span>
-              </li>
-            </ul>
-          </div>
-
-          {/* Column 4: Links & Requisites */}
-          <div className="space-y-3">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
-              <Terminal size={13} className="text-[#A78BFA]" />
-              <span>Resources & Code</span>
-            </span>
-            <ul className="space-y-2">
-              <li>
-                <a
-                  href="https://github.com/yab-g4u/Novarion.git"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="hover:text-white flex items-center gap-1 transition-colors"
-                >
-                  <span>GitHub Repository</span>
-                  <ExternalLink size={11} className="opacity-70" />
-                </a>
-              </li>
-              <li>
-                <a href="/signin" className="hover:text-white transition-colors">
-                  Sign In / Create Account
-                </a>
-              </li>
-              <li>
-                <a href="#section-timeline" className="hover:text-white transition-colors">
-                  About the Platform
-                </a>
-              </li>
-              <li>
-                <span className="text-[#71717A]">Terms & Privacy Shield</span>
-              </li>
-            </ul>
-          </div>
+            O
+          </span>
+          <span>B</span>
+          <span>E</span>
         </div>
 
-        {/* 4. SUB-FOOTER COPYRIGHT BAR */}
-        <div className="mt-12 pt-6 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-mono text-[#71717A] pointer-events-auto">
-          <div className="flex items-center gap-3">
-            <ProbeLogo className="w-4 h-4" inverted={true} />
-            <span>© 2026 PROBE. Built for founders before they build.</span>
-          </div>
-
-          <div className="flex items-center gap-6">
-            <span>STARK Official Hackathon</span>
-            <span>·</span>
-            <span>Zero-Data Selling</span>
-            <span>·</span>
-            <a
-              href="https://github.com/yab-g4u/Novarion.git"
-              target="_blank"
-              rel="noreferrer"
-              className="hover:text-white flex items-center gap-1 transition-colors"
-            >
-              Star on GitHub <ExternalLink size={10} />
-            </a>
-          </div>
-        </div>
-
+        {/* Soft bottom gradient overlay fading into the background */}
+        <div 
+          className="absolute bottom-0 left-0 right-0 h-[48%] bg-gradient-to-t from-[#FAF9F5] via-[#FAF9F5]/45 to-transparent pointer-events-none" 
+        />
       </div>
     </footer>
   );

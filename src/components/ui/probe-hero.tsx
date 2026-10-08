@@ -49,7 +49,6 @@ export const ProbeHero: React.FC<ProbeHeroProps> = ({
   onExploreDemo,
 }) => {
   const navigate = useNavigate();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
   // 3 Tabs: 'investigation' | 'graph' | 'testing' (Assumptions & risks menu removed as requested)
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<'investigation' | 'graph' | 'testing'>('graph');
@@ -127,11 +126,35 @@ export const ProbeHero: React.FC<ProbeHeroProps> = ({
   // ── Tab 2: Living Evidence Graph Selected Card State (Matching image.png) ──
   const [selectedCardId, setSelectedCardId] = useState<string | null>('card-scholar');
 
-  // ── Tab 3: Product Testing State (Tiny UI) ──
-  const [testPreset, setTestPreset] = useState<'pricing' | 'onboarding' | 'checkout'>('pricing');
+  // ── Tab 3: links.et Real Payment Verification Simulation State ──
+  const [linksEtInput, setLinksEtInput] = useState('DJ54GCQAQ6K');
+  const [isReceiptVerified, setIsReceiptVerified] = useState(true);
+  const [isVerifyingLoading, setIsVerifyingLoading] = useState(false);
+  const [showRawJson, setShowRawJson] = useState(false);
   const [isTestRunning, setIsTestRunning] = useState(true);
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [deviceMode, setDeviceMode] = useState<'desktop' | 'mobile'>('desktop');
+
+  const handleVerifyReceipt = (refVal = 'DJ54GCQAQ6K') => {
+    setIsVerifyingLoading(true);
+    setTimeout(() => {
+      setIsVerifyingLoading(false);
+      setIsReceiptVerified(true);
+      setLinksEtInput(refVal);
+    }, 350);
+  };
+
+  const handleRestartSimulation = () => {
+    setIsTestRunning(true);
+    setIsReceiptVerified(false);
+    setLinksEtInput('');
+    setTimeout(() => {
+      setLinksEtInput('DJ54GCQAQ6K');
+      setTimeout(() => {
+        setIsReceiptVerified(true);
+      }, 450);
+    }, 600);
+  };
 
   const handleStart = () => {
     if (onTryProbe) {
@@ -167,189 +190,16 @@ export const ProbeHero: React.FC<ProbeHeroProps> = ({
   };
 
   return (
-    <div className="relative w-full bg-[#FAF9F5] text-[#111111] overflow-hidden font-['Geist','Inter',-apple-system,sans-serif] selection:bg-[#1E65F6]/15 selection:text-[#111111]">
+    <div 
+      className="relative w-full bg-[#FAF9F5] text-[#111111] overflow-hidden font-['Geist','Inter',-apple-system,sans-serif] selection:bg-[#1E65F6]/15 selection:text-[#111111]"
+      style={{
+        backgroundImage: 'radial-gradient(#CBD5E1 0.75px, transparent 0.75px)',
+        backgroundSize: '24px 24px',
+      }}
+    >
       
       {/* ─────────────────────────────────────────────────────────────
-          1. TOP NAVIGATION BAR (Exact Addis AI proportions & clean layout)
-          ───────────────────────────────────────────────────────────── */}
-      <header className="w-full max-w-7xl mx-auto px-6 sm:px-8 py-5 flex items-center justify-between relative z-30">
-        
-        {/* Left: Brand Identity */}
-        <a 
-          href="/" 
-          className="flex items-center gap-2.5 group focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E65F6] rounded-md"
-          aria-label="Probe Home"
-        >
-          <div className="w-8 h-8 rounded-lg bg-[#111111] flex items-center justify-center text-white p-1.5 shadow-2xs group-hover:scale-105 transition-transform">
-            <ProbeLogo className="w-full h-full text-white" inverted />
-          </div>
-          <span className="font-bold text-[19px] tracking-tight text-[#111111]">
-            Probe
-          </span>
-        </a>
-
-        {/* Center: Desktop Navigation Links */}
-        <nav className="hidden md:flex items-center gap-7 lg:gap-8" aria-label="Main Navigation">
-          <a
-            href="#live-investigation"
-            onClick={handleScrollToInvestigation}
-            className="text-[14px] font-medium text-[#4B5563] hover:text-[#111111] transition-colors"
-          >
-            Product
-          </a>
-          <a
-            href="#live-investigation"
-            onClick={handleScrollToInvestigation}
-            className="text-[14px] font-medium text-[#4B5563] hover:text-[#111111] transition-colors"
-          >
-            Research
-          </a>
-          <a
-            href="#section-evidence-graph"
-            onClick={handleScrollToDemo}
-            className="text-[14px] font-medium text-[#4B5563] hover:text-[#111111] transition-colors"
-          >
-            Evidence Graph
-          </a>
-          <a
-            href="#section-testing"
-            onClick={(e) => {
-              e.preventDefault();
-              const el = document.getElementById('section-testing');
-              if (el) el.scrollIntoView({ behavior: 'smooth' });
-            }}
-            className="text-[14px] font-medium text-[#4B5563] hover:text-[#111111] transition-colors"
-          >
-            Experiments
-          </a>
-          <a
-            href="/signin"
-            onClick={(e) => {
-              e.preventDefault();
-              navigate('/signin');
-            }}
-            className="text-[14px] font-medium text-[#4B5563] hover:text-[#111111] transition-colors"
-          >
-            Pricing
-          </a>
-        </nav>
-
-        {/* Right: Actions */}
-        <div className="hidden md:flex items-center gap-4">
-          <button
-            type="button"
-            onClick={() => navigate('/signin')}
-            className="text-[14px] font-medium text-[#111111] hover:text-black transition-colors px-2 py-1.5 cursor-pointer"
-          >
-            Log in
-          </button>
-          <button
-            type="button"
-            onClick={handleStart}
-            className="bg-[#1E65F6] hover:bg-[#1554D1] text-white px-5 py-2.5 rounded-full text-[14px] font-medium transition-all shadow-xs flex items-center gap-1.5 cursor-pointer group"
-          >
-            <span>Get started</span>
-            <span className="group-hover:translate-x-0.5 transition-transform">→</span>
-          </button>
-        </div>
-
-        {/* Mobile Hamburger Button */}
-        <div className="md:hidden flex items-center">
-          <button
-            type="button"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-2 text-[#111111] hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
-            aria-label="Toggle navigation menu"
-          >
-            {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
-          </button>
-        </div>
-
-        {/* Mobile Slideout Menu */}
-        {mobileMenuOpen && (
-          <div className="md:hidden absolute top-full left-0 right-0 bg-[#FAF9F5] border-b border-[#E5E7EB] px-6 py-5 shadow-lg z-50 flex flex-col gap-4 animate-in fade-in slide-in-from-top-2 duration-200">
-            <a
-              href="#live-investigation"
-              onClick={(e) => {
-                setMobileMenuOpen(false);
-                handleScrollToInvestigation(e);
-              }}
-              className="text-base font-medium text-[#111111] py-1"
-            >
-              Product
-            </a>
-            <a
-              href="#live-investigation"
-              onClick={(e) => {
-                setMobileMenuOpen(false);
-                handleScrollToInvestigation(e);
-              }}
-              className="text-base font-medium text-[#111111] py-1"
-            >
-              Research
-            </a>
-            <a
-              href="#section-evidence-graph"
-              onClick={(e) => {
-                setMobileMenuOpen(false);
-                handleScrollToDemo(e);
-              }}
-              className="text-base font-medium text-[#111111] py-1"
-            >
-              Evidence Graph
-            </a>
-            <a
-              href="#section-testing"
-              onClick={(e) => {
-                setMobileMenuOpen(false);
-                e.preventDefault();
-                const el = document.getElementById('section-testing');
-                if (el) el.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className="text-base font-medium text-[#111111] py-1"
-            >
-              Experiments
-            </a>
-            <a
-              href="/signin"
-              onClick={(e) => {
-                setMobileMenuOpen(false);
-                e.preventDefault();
-                navigate('/signin');
-              }}
-              className="text-base font-medium text-[#111111] py-1"
-            >
-              Pricing
-            </a>
-            <div className="pt-3 border-t border-[#E5E7EB] flex flex-col gap-2.5">
-              <button
-                type="button"
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  navigate('/signin');
-                }}
-                className="w-full text-center py-2.5 text-sm font-medium text-[#111111] bg-white border border-[#E5E7EB] rounded-full"
-              >
-                Log in
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  handleStart();
-                }}
-                className="w-full text-center py-2.5 text-sm font-medium text-white bg-[#1E65F6] rounded-full flex items-center justify-center gap-1.5"
-              >
-                <span>Get started</span>
-                <span>→</span>
-              </button>
-            </div>
-          </div>
-        )}
-      </header>
-
-      {/* ─────────────────────────────────────────────────────────────
-          2. SCATTERED CIRCULAR SOURCE LOGOS (Reddit, GitHub, X, ScholarXiv, Google, LinkedIn)
+          SCATTERED CIRCULAR SOURCE LOGOS (Reddit, GitHub, X, ScholarXiv, Google, LinkedIn)
           Placed in a calm scattered circle constellation across the off-white canvas
           ───────────────────────────────────────────────────────────── */}
       <div className="pointer-events-none absolute inset-0 max-w-7xl mx-auto overflow-hidden z-10 hidden md:block" aria-hidden="true">
@@ -423,7 +273,7 @@ export const ProbeHero: React.FC<ProbeHeroProps> = ({
       {/* ─────────────────────────────────────────────────────────────
           3. MAIN HERO CONTENT (Exact Addis AI centered composition & whitespace)
           ───────────────────────────────────────────────────────────── */}
-      <section className="relative z-20 pt-10 sm:pt-14 pb-0 flex flex-col items-center text-center px-4 sm:px-6 max-w-5xl mx-auto">
+      <section className="relative z-20 pt-20 sm:pt-28 pb-0 flex flex-col items-center text-center px-4 sm:px-6 max-w-5xl mx-auto">
         
         {/* Announcement Pill */}
         <a
@@ -1015,8 +865,8 @@ export const ProbeHero: React.FC<ProbeHeroProps> = ({
           )}
 
           {/* ─────────────────────────────────────────────────────────────
-              TAB 3: PRODUCT TESTING (TINY UI FOR TESTING UIs)
-              (Calm, steady design, no blinking)
+              TAB 3: PRODUCT TESTING (SIMULATING links.et ETHIOPIAN PAYMENT VERIFICATION)
+              Simulates verifying real receipt DJ54GCQAQ6K on links.et perfectly
               ───────────────────────────────────────────────────────────── */}
           {activeWorkspaceTab === 'testing' && (
             <div className="p-4 sm:p-6 bg-white flex flex-col gap-4">
@@ -1027,27 +877,20 @@ export const ProbeHero: React.FC<ProbeHeroProps> = ({
                   <span className="text-xs font-bold text-[#111111] font-mono uppercase">
                     SIMULATED AGENT UI TESTING
                   </span>
-                  <span className="px-2 py-0.5 rounded bg-[#EFF6FF] text-[#1D4ED8] text-[10px] font-mono font-semibold">
-                    Autonomous Playwright Session #841
+                  <span className="px-2 py-0.5 rounded bg-[#ECFDF5] text-[#059669] text-[10px] font-mono font-semibold border border-[#A7F3D0]">
+                    Target: links.et (Receipt #DJ54GCQAQ6K)
                   </span>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {/* Preset Selector */}
-                  <select
-                    value={testPreset}
-                    onChange={(e) => setTestPreset(e.target.value as any)}
-                    className="px-2.5 py-1 rounded-lg border border-[#E5E7EB] bg-white text-xs font-medium text-[#111111] outline-none"
-                  >
-                    <option value="pricing">Test Target: Pricing & Checkout UI</option>
-                    <option value="onboarding">Test Target: Onboarding Flow</option>
-                    <option value="checkout">Test Target: Payment Modal</option>
-                  </select>
+                  <div className="text-[11px] font-mono text-[#6B7280] hidden sm:block">
+                    Gateway: <span className="text-[#10B981] font-bold">Telebirr Verified</span>
+                  </div>
 
                   <button
                     type="button"
                     onClick={() => setDeviceMode(deviceMode === 'desktop' ? 'mobile' : 'desktop')}
-                    className="p-1.5 rounded-lg border border-[#E5E7EB] bg-white hover:bg-black/5 text-[#4B5563] transition-colors"
+                    className="p-1.5 rounded-lg border border-[#E5E7EB] bg-white hover:bg-black/5 text-[#4B5563] transition-colors cursor-pointer"
                     title="Toggle device view"
                   >
                     {deviceMode === 'desktop' ? <Monitor size={14} /> : <Smartphone size={14} />}
@@ -1055,105 +898,279 @@ export const ProbeHero: React.FC<ProbeHeroProps> = ({
                 </div>
               </div>
 
-              {/* Testing Canvas: Tiny UI Browser & Diagnostics */}
+              {/* Testing Canvas: links.et Simulator & Probe Diagnostics */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
                 
-                {/* Left: The Tiny UI Browser (7 Cols) */}
+                {/* Left: The links.et Simulated Browser (7 Cols) */}
                 <div className="lg:col-span-7 flex flex-col gap-2">
                   
                   {/* Tiny Browser Frame */}
-                  <div className={`rounded-xl border border-[#E5E7EB] bg-white shadow-sm overflow-hidden flex flex-col transition-all ${
+                  <div className={`rounded-xl border border-[#27272A] bg-[#090A0F] shadow-md overflow-hidden flex flex-col transition-all ${
                     deviceMode === 'mobile' ? 'max-w-sm mx-auto' : 'w-full'
                   }`}>
-                    {/* Tiny Browser Chrome */}
-                    <div className="px-3 py-2 bg-[#F4F4F5] border-b border-[#E5E7EB] flex items-center justify-between text-xs">
+                    {/* Browser Top Chrome */}
+                    <div className="px-3 py-2 bg-[#18181B] border-b border-[#27272A] flex items-center justify-between text-xs">
                       <div className="flex items-center gap-1.5">
                         <span className="w-2.5 h-2.5 rounded-full bg-[#EF4444]" />
                         <span className="w-2.5 h-2.5 rounded-full bg-[#F59E0B]" />
                         <span className="w-2.5 h-2.5 rounded-full bg-[#10B981]" />
                       </div>
-                      <div className="px-2.5 py-0.5 rounded bg-white border border-[#E5E7EB] text-[10px] font-mono text-[#6B7280] truncate max-w-[200px]">
-                        https://app.probe.io/checkout/pricing-v2
+                      <div className="px-2.5 py-0.5 rounded bg-[#090A0F] border border-[#27272A] text-[10px] font-mono text-[#A1A1AA] truncate max-w-[220px]">
+                        https://links.et/verify
                       </div>
                       <div className="flex items-center gap-1 text-[10px] text-[#10B981] font-mono">
                         <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
-                        <span>TESTING</span>
+                        <span>LIVE ENGINE</span>
                       </div>
                     </div>
 
-                    {/* Inside Tiny UI: The App Interface Being Tested */}
-                    <div className="relative p-5 bg-[#FAF9F5] min-h-[260px] flex flex-col justify-between overflow-hidden">
+                    {/* Inside links.et App Simulation */}
+                    <div 
+                      className="relative p-4 sm:p-5 bg-[#0A0B0E] text-white min-h-[380px] flex flex-col justify-between overflow-hidden text-left"
+                      style={{
+                        backgroundImage: 'radial-gradient(#27272A 0.75px, transparent 0.75px)',
+                        backgroundSize: '16px 16px',
+                      }}
+                    >
                       
                       {/* Animated Simulated User Cursor */}
-                      <div className="absolute z-20 pointer-events-none transition-all duration-700 ease-out"
+                      <div 
+                        className="absolute z-30 pointer-events-none transition-all duration-700 ease-out"
                         style={{
-                          left: isTestRunning ? '52%' : '40%',
-                          top: isTestRunning ? '64%' : '30%'
+                          left: isReceiptVerified ? '82%' : '48%',
+                          top: isReceiptVerified ? '68%' : '52%',
                         }}
                       >
-                        <MousePointer size={18} className="text-[#111111] fill-[#111111] drop-shadow-md" />
-                        <span className="ml-4 -mt-2 inline-block px-1.5 py-0.5 rounded bg-[#111111] text-white text-[9px] font-mono whitespace-nowrap">
-                          Simulated Founder (Skeptical)
+                        <MousePointer size={18} className="text-white fill-white drop-shadow-md" />
+                        <span className="ml-4 -mt-2 inline-block px-1.5 py-0.5 rounded bg-[#10B981] text-white text-[9px] font-mono whitespace-nowrap shadow-sm">
+                          Simulated Merchant (Testing DJ54GCQAQ6K)
                         </span>
                       </div>
 
-                      {/* Click Heatmap Ripple (Steady, no ping) */}
+                      {/* Click Heatmap Ripple */}
                       {showHeatmap && (
-                        <div className="absolute left-[48%] top-[60%] w-8 h-8 -ml-4 -mt-4 rounded-full bg-[#EF4444]/25 border border-[#EF4444]/40 pointer-events-none" />
+                        <div 
+                          className="absolute pointer-events-none transition-all duration-500 rounded-full bg-[#10B981]/25 border border-[#10B981]/40"
+                          style={{
+                            left: isReceiptVerified ? '80%' : '50%',
+                            top: isReceiptVerified ? '66%' : '50%',
+                            width: '36px',
+                            height: '36px',
+                            transform: 'translate(-50%, -50%)',
+                          }}
+                        />
                       )}
 
-                      {/* Tiny App Header */}
-                      <div className="flex items-center justify-between text-xs pb-3 border-b border-[#E5E7EB]/60">
-                        <div className="font-bold text-[#111111]">Probe Intelligence Pro</div>
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#1E65F6]/10 text-[#1E65F6] font-semibold">
-                          $49 / month
+                      {/* 1. links.et Simulated Top Bar */}
+                      <div className="flex items-center justify-between pb-3 border-b border-white/10 text-xs">
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-4 rounded bg-[#10B981]/20 border border-[#10B981]/50 flex items-center justify-center text-[#10B981] font-bold text-[10px]">
+                            ℓ
+                          </div>
+                          <span className="font-bold tracking-tight text-white text-xs">links<span className="text-[#10B981]">.et</span></span>
+                        </div>
+                        <div className="hidden sm:flex items-center gap-3 text-[10px] text-neutral-400">
+                          <span className="text-white font-medium">Verify</span>
+                          <span>Guides</span>
+                          <span>Pricing</span>
+                          <span>Docs</span>
+                          <span>Dashboard</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[10px] font-mono text-neutral-400 bg-white/5 px-2 py-0.5 rounded border border-white/10">
+                          <span>Ctrl K</span>
+                        </div>
+                      </div>
+
+                      {/* 2. links.et Headline & Description */}
+                      <div className="my-3 text-center flex flex-col items-center">
+                        <h4 className="text-base sm:text-lg font-bold tracking-tight text-white">
+                          Verify any Ethiopian payment link.
+                        </h4>
+                        <p className="mt-1 text-[11px] text-neutral-400 max-w-sm leading-relaxed">
+                          Paste a payment link, reference, or screenshot from any Ethiopian bank or wallet. We check it with the bank and show you the real receipt.
+                        </p>
+
+                        {/* Read Docs & API Key Buttons */}
+                        <div className="mt-2.5 flex items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            className="px-2.5 py-1 rounded bg-white text-[#0A0B0E] text-[10px] font-medium hover:bg-neutral-200 transition-colors cursor-pointer"
+                          >
+                            📖 Read the docs
+                          </button>
+                          <button
+                            type="button"
+                            className="px-2.5 py-1 rounded bg-white/5 border border-white/20 text-white text-[10px] font-medium hover:bg-white/10 transition-colors cursor-pointer"
+                          >
+                            Get an API key →
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 3. Supported Bank Badges */}
+                      <div className="flex flex-wrap items-center justify-center gap-1 my-2">
+                        <span className="text-[9px] font-mono text-neutral-500 uppercase mr-1">SUPPORTS</span>
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-950/50 text-emerald-300 border border-emerald-500/30 text-[9px] font-medium">
+                          Telebirr
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded bg-purple-950/50 text-purple-300 border border-purple-500/30 text-[9px] font-medium">
+                          CBE
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded bg-pink-950/50 text-pink-300 border border-pink-500/30 text-[9px] font-medium">
+                          CBE Birr
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-950/50 text-emerald-300 border border-emerald-500/30 text-[9px] font-medium">
+                          M-PESA
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded bg-amber-950/50 text-amber-300 border border-amber-500/30 text-[9px] font-medium">
+                          BOA
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded bg-blue-950/50 text-blue-300 border border-blue-500/30 text-[9px] font-medium">
+                          Dashen Bank
                         </span>
                       </div>
 
-                      {/* Tiny App Content */}
-                      <div className="my-3 flex flex-col gap-2">
-                        <div className="text-xs font-semibold text-[#111111]">
-                          Validate ideas before writing code
+                      {/* 4. Verification Input Box (Simulating real reference: DJ54GCQAQ6K) */}
+                      <div className="my-2 flex flex-col gap-1">
+                        <div className="flex items-center justify-between text-[10px] font-mono">
+                          <span className="text-[#10B981] font-semibold">Telebirr</span>
+                          <span className="text-neutral-500">e.g. Telebirr / CBE / BOA</span>
                         </div>
-                        <div className="flex flex-col gap-1 text-[11px] text-[#4B5563]">
-                          <div className="flex items-center gap-1.5">
-                            <Check size={12} className="text-[#10B981]" />
-                            <span>Full multi-source crawler (Reddit, X, arXiv)</span>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <Check size={12} className="text-[#10B981]" />
-                            <span>Living Evidence Graph export</span>
-                          </div>
+                        
+                        <div className="relative flex items-center rounded-xl bg-[#111218] border border-[#10B981]/60 shadow-[0_0_12px_rgba(16,185,129,0.15)] p-1">
+                          <input
+                            type="text"
+                            value={linksEtInput}
+                            onChange={(e) => setLinksEtInput(e.target.value)}
+                            placeholder="Paste payment link or reference..."
+                            className="flex-1 bg-transparent px-3 py-1.5 text-xs text-white font-mono outline-none placeholder:text-neutral-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleVerifyReceipt(linksEtInput || 'DJ54GCQAQ6K')}
+                            disabled={isVerifyingLoading}
+                            className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-[#10B981] text-white text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                          >
+                            <Search size={12} />
+                            <span>{isVerifyingLoading ? 'Verifying...' : 'Verify'}</span>
+                          </button>
                         </div>
+                        <span className="text-[9px] text-neutral-500 text-center mt-0.5">
+                          Anonymous · 10 verifications per hour per IP · cached forever
+                        </span>
                       </div>
 
-                      {/* Primary CTA with UX Friction Annotation */}
-                      <div className="relative mt-2">
-                        <button
-                          type="button"
-                          className="w-full py-2 rounded-lg bg-[#111111] text-white text-xs font-medium flex items-center justify-center gap-1 shadow-xs"
-                        >
-                          <span>Start 14-Day Validation Trial</span>
-                        </button>
+                      {/* 5. The Verified Receipt Card (Exact Clone of Image 3) */}
+                      {isReceiptVerified && (
+                        <div className="mt-2 p-3 sm:p-4 rounded-xl bg-[#111218] border border-white/10 shadow-lg flex flex-col gap-2.5 animate-in fade-in duration-200">
+                          {/* Receipt Card Header */}
+                          <div className="flex items-center justify-between pb-2 border-b border-white/10 text-xs">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[#10B981] font-bold flex items-center gap-1 text-xs">
+                                <Check size={13} className="text-[#10B981] stroke-[3]" />
+                                <span>Verified</span>
+                              </span>
+                              <span className="px-1.5 py-0.2 rounded bg-white/10 text-[9px] font-mono text-neutral-300">
+                                cache hit
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setIsReceiptVerified(false)}
+                                className="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 text-[9px] text-neutral-400 hover:text-white flex items-center gap-1 border border-white/10 cursor-pointer"
+                                title="Invalidate cache and re-query"
+                              >
+                                <span>🗑 Invalidate</span>
+                              </button>
+                              <span className="text-[10px] font-mono text-neutral-400">Telebirr</span>
+                            </div>
+                          </div>
 
-                        {/* ANNOTATED UX FRICTION CALLOUT */}
-                        <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 w-full max-w-[280px] p-1.5 rounded-lg bg-[#FEF2F2] border border-[#FECACA] shadow-sm flex items-center gap-1.5 text-[10px] text-[#991B1B] z-30">
-                          <span>Friction: Missing &ldquo;Cancel anytime&rdquo; badge. -24% checkout completion.</span>
+                          {/* 3-Column Metadata Grid */}
+                          <div className="grid grid-cols-3 gap-2 text-left font-mono">
+                            <div>
+                              <span className="text-[9px] text-neutral-400 block">Reference</span>
+                              <span className="text-[11px] font-bold text-white truncate block">
+                                DJ54GCQAQ6K
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[9px] text-neutral-400 block">Status</span>
+                              <span className="text-[11px] font-bold text-emerald-400 block">
+                                Completed
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[9px] text-neutral-400 block">Amount</span>
+                              <span className="text-[11px] font-bold text-white block">
+                                836.67 Birr ETB
+                              </span>
+                            </div>
+
+                            <div className="mt-1">
+                              <span className="text-[9px] text-neutral-400 block">Payer</span>
+                              <span className="text-[10px] font-semibold text-white truncate block">
+                                Yeabsera Sisay Tadesse
+                              </span>
+                            </div>
+                            <div className="mt-1">
+                              <span className="text-[9px] text-neutral-400 block">Credited</span>
+                              <span className="text-[10px] font-semibold text-white truncate block">
+                                Ethiopian Electric Utility Prepaid
+                              </span>
+                            </div>
+                            <div className="mt-1">
+                              <span className="text-[9px] text-neutral-400 block">When</span>
+                              <span className="text-[10px] font-semibold text-neutral-300 block">
+                                05-10-2026 22:30:17
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Raw JSON Accordion & Verification Meter */}
+                          <div className="pt-1.5 border-t border-white/10 flex flex-col gap-1.5 text-[9px] text-neutral-400">
+                            <button
+                              type="button"
+                              onClick={() => setShowRawJson(!showRawJson)}
+                              className="text-left text-[#10B981] hover:underline flex items-center gap-1 cursor-pointer"
+                            >
+                              <span>{showRawJson ? '∧ Hide raw JSON' : '∨ Show raw JSON'}</span>
+                            </button>
+
+                            {showRawJson && (
+                              <pre className="p-2 rounded bg-black/60 border border-white/10 text-[9px] text-emerald-300 font-mono overflow-x-auto">
+{`{
+  "reference": "DJ54GCQAQ6K",
+  "status": "COMPLETED",
+  "amount": 836.67,
+  "currency": "ETB",
+  "payer": "Yeabsera Sisay Tadesse",
+  "credited": "Ethiopian Electric Utility Prepaid",
+  "timestamp": "2026-10-05T22:30:17Z",
+  "provider": "telebirr"
+}`}
+                              </pre>
+                            )}
+
+                            <span className="text-[9px] text-neutral-500">
+                              ▤ 7 demo verifications left this hour
+                            </span>
+                          </div>
                         </div>
-                      </div>
+                      )}
 
-                      <div className="h-6" />
                     </div>
                   </div>
                 </div>
 
-                {/* Right: Live UX Diagnostics & Friction Extraction (5 Cols) */}
+                {/* Right: Probe Live UX Diagnostics & Friction Extraction (5 Cols) */}
                 <div className="lg:col-span-5 flex flex-col gap-3">
                   <div className="flex items-center justify-between pb-1 border-b border-[#F0F0F2]">
                     <span className="text-xs font-semibold text-[#111111] uppercase tracking-wider font-mono">
-                      Telemetry & Friction Log
+                      Probe UX Diagnostics
                     </span>
-                    <span className="text-[11px] font-mono text-[#10B981]">Real-Time Diagnostics</span>
+                    <span className="text-[11px] font-mono text-[#10B981]">Telebirr Engine Live</span>
                   </div>
 
                   <div className="p-3.5 rounded-xl border border-[#E5E7EB] bg-[#FAF9F5] flex flex-col gap-3">
@@ -1161,44 +1178,52 @@ export const ProbeHero: React.FC<ProbeHeroProps> = ({
                     {/* Session Log Items */}
                     <div className="flex flex-col gap-2 font-mono text-[11px]">
                       <div className="flex items-center justify-between p-2 rounded bg-white border border-[#E5E7EB]">
-                        <span className="text-[#111111]">00:01 · Landing Loaded</span>
-                        <span className="text-[#166534]">Fast (180ms)</span>
+                        <span className="text-[#111111]">00:01 · Gateway Ready: links.et</span>
+                        <span className="text-[#166534]">Fast (78ms)</span>
                       </div>
                       <div className="flex items-center justify-between p-2 rounded bg-white border border-[#E5E7EB]">
-                        <span className="text-[#111111]">00:02 · Dwell on Pricing</span>
-                        <span className="text-[#1D4ED8]">Normal (1.4s)</span>
+                        <span className="text-[#111111]">00:02 · Input: DJ54GCQAQ6K</span>
+                        <span className="text-[#1D4ED8]">Telebirr Detected</span>
+                      </div>
+                      <div className="flex items-center justify-between p-2 rounded bg-[#ECFDF5] border border-[#A7F3D0]">
+                        <span className="text-[#065F46] font-bold">00:03 · Bank Verified: 836.67 ETB</span>
+                        <span className="text-[#10B981] font-bold">Cache Hit (240ms)</span>
                       </div>
                       <div className="flex items-center justify-between p-2 rounded bg-[#FEF2F2] border border-[#FECACA]">
-                        <span className="text-[#991B1B] font-bold">00:03 · Hesitation at CTA</span>
-                        <span className="text-[#EF4444]">Friction (3.1s delay)</span>
+                        <span className="text-[#991B1B] font-bold">00:04 · Missing Webhook Copy CTA</span>
+                        <span className="text-[#EF4444]">Friction (1.8s dwell)</span>
                       </div>
                     </div>
 
                     {/* Synthesis & AI Recommendation */}
                     <div className="p-3 rounded-lg bg-white border border-[#E5E7EB] flex flex-col gap-1.5">
                       <div className="flex items-center gap-1.5 text-xs font-bold text-[#111111]">
-                        <span>Recommended A/B Variant</span>
+                        <span className="text-[#10B981]">✓</span>
+                        <span>Probe Friction Extraction</span>
                       </div>
                       <p className="text-[11px] text-[#4B5563] leading-relaxed">
-                        Add a subtle guarantee text: <em>&ldquo;No credit card required · 1-click export&rdquo;</em> directly beneath the trial button to reduce bounce by 22%.
+                        Receipt <strong>DJ54GCQAQ6K</strong> resolved with 100% data fidelity for <em>Ethiopian Electric Utility</em>. However, 38% of integrating developers hesitate after viewing verified receipt because there is no 1-click &ldquo;Copy webhook payload&rdquo; button.
                       </p>
+                      <div className="p-2 rounded bg-[#EFF6FF] border border-[#BFDBFE] text-[10px] text-[#1E40AF]">
+                        <strong>A/B Recommendation:</strong> Add a 1-click webhook simulation button directly under the receipt card to lift API developer conversion by +34%.
+                      </div>
                     </div>
 
                     {/* Test Controls */}
                     <div className="flex items-center gap-2 pt-1">
                       <button
                         type="button"
-                        onClick={() => setIsTestRunning(!isTestRunning)}
-                        className="flex-1 py-1.5 rounded-lg bg-[#111111] hover:bg-[#1E65F6] text-white text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                        onClick={handleRestartSimulation}
+                        className="flex-1 py-1.5 rounded-lg bg-[#111111] hover:bg-[#10B981] text-white text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                       >
-                        {isTestRunning ? <RotateCcw size={12} /> : <Play size={12} />}
-                        <span>{isTestRunning ? 'Restart Simulation' : 'Run Agent Test'}</span>
+                        <RotateCcw size={12} />
+                        <span>Replay Simulation</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => setShowHeatmap(!showHeatmap)}
-                        className="px-3 py-1.5 rounded-lg border border-[#E5E7EB] bg-white hover:bg-black/5 text-xs font-medium text-[#4B5563] transition-colors"
+                        className="px-3 py-1.5 rounded-lg border border-[#E5E7EB] bg-white hover:bg-black/5 text-xs font-medium text-[#4B5563] transition-colors cursor-pointer"
                       >
                         {showHeatmap ? 'Hide Heatmap' : 'Show Heatmap'}
                       </button>

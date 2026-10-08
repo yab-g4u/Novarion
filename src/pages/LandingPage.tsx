@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ProbeNavbar } from '../components/ui/ProbeNavbar';
 import { ProbeHero } from '../components/ui/probe-hero';
 import { ProbeSignalStrip } from '../components/landing/ProbeSignalStrip';
 import { LiveInvestigationExperience } from '../components/landing/LiveInvestigationExperience';
 import { EvidenceGraph } from '../components/EvidenceGraph';
 import { ProductTestingSection } from '../components/ProductTestingSection';
-import { FinalCTARefined } from '../components/landing/FinalCTARefined';
+import { ProbeFAQ } from '../components/landing/ProbeFAQ';
 import { ShapeWavesFooter } from '../components/landing/ShapeWavesFooter';
 import { safeRefreshScrollTrigger } from '../motion/gsapConfig';
 import { InvestigationResultData, generateDynamicInvestigation } from '../lib/research/dynamicInvestigationResolver';
@@ -77,8 +78,39 @@ export const LandingPage: React.FC = () => {
   };
 
   return (
-    <div className="probe-app min-h-screen flex flex-col bg-white text-[#0A0D14] font-['Geist','Inter',-apple-system,sans-serif] selection:bg-[#0F52BA]/15 selection:text-[#0A0D14]">
+    <div 
+      className="probe-app min-h-screen flex flex-col bg-[#FAF9F5] text-[#0A0D14] font-['Geist','Inter',-apple-system,sans-serif] selection:bg-[#0F52BA]/15 selection:text-[#0A0D14]"
+      style={{
+        backgroundImage: 'radial-gradient(#CBD5E1 0.75px, transparent 0.75px)',
+        backgroundSize: '24px 24px',
+      }}
+    >
       
+      {/* ── PERSISTENT SUSPENDED DOCK NAVBAR (STICKS PERMANENTLY AS USERS SCROLL) ── */}
+      <ProbeNavbar
+        onGetStarted={() => handleStartInvestigating()}
+        onLogin={() => navigate('/signin')}
+        onScrollToInvestigation={(e) => {
+          e?.preventDefault();
+          const el = document.getElementById('live-investigation');
+          if (el) el.scrollIntoView({ behavior: 'smooth' });
+        }}
+        onScrollToEvidenceGraph={() => {
+          const el = document.getElementById('section-evidence-graph');
+          if (el) el.scrollIntoView({ behavior: 'smooth' });
+        }}
+        onScrollToTesting={(e) => {
+          e?.preventDefault();
+          const el = document.getElementById('section-testing');
+          if (el) el.scrollIntoView({ behavior: 'smooth' });
+        }}
+        onScrollToFAQ={(e) => {
+          e?.preventDefault();
+          const el = document.getElementById('section-faq');
+          if (el) el.scrollIntoView({ behavior: 'smooth' });
+        }}
+      />
+
       {/* EXPERIENCE A: HERO SECTION (CINEMATIC VIDEO BACKGROUND, REFINED PROBE BRANDING) */}
       <ProbeHero
         onTryProbe={() => {
@@ -106,25 +138,41 @@ export const LandingPage: React.FC = () => {
       />
 
       {/* EXPERIENCE C: LIVING EVIDENCE GRAPH (MATCHES evidence-graph.png WITH ELK.JS & REACT FLOW) */}
-      <div id="section-evidence-graph" className="w-full bg-white py-12 sm:py-16">
+      <div 
+        id="section-evidence-graph" 
+        className="w-full bg-[#FAF9F5] border-t border-[#E5E7EB] py-12 sm:py-16"
+        style={{
+          backgroundImage: 'radial-gradient(#CBD5E1 0.75px, transparent 0.75px)',
+          backgroundSize: '24px 24px',
+        }}
+      >
         <EvidenceGraph
           externalGraphData={currentInvestigation.graphData}
         />
       </div>
 
       {/* EXPERIENCE D: PRODUCT TESTING (SIMULATED USER ENGINE WITH LIVE SESSIONS & FRICTION EXTRACTION) */}
-      <div id="section-testing" className="w-full bg-white">
+      <div 
+        id="section-testing" 
+        className="w-full bg-[#FAF9F5] border-t border-[#E5E7EB]"
+        style={{
+          backgroundImage: 'radial-gradient(#CBD5E1 0.75px, transparent 0.75px)',
+          backgroundSize: '24px 24px',
+        }}
+      >
         <ProductTestingSection />
       </div>
 
-      {/* EXPERIENCE E: FINAL CTA & SIGN IN */}
-      <FinalCTARefined
-        onStartInvestigating={(idea) => handleStartInvestigating(idea)}
-        onExploreProduct={handleExploreProduct}
+      {/* EXPERIENCE E: COMPREHENSIVE VALIDATION INTELLIGENCE FAQ */}
+      <ProbeFAQ
+        onStartInvestigating={() => handleStartInvestigating()}
       />
 
-      {/* SHAPEWAVES FOOTER WITH PROBE TYPOGRAPHY */}
-      <ShapeWavesFooter />
+      {/* FOOTER SECTION: MINIMALIST RECONNECT HERO WITH PROBE WATERMARK (image.png) */}
+      <ShapeWavesFooter 
+        onStartInvestigating={() => handleStartInvestigating()}
+        onExploreProduct={handleExploreProduct}
+      />
 
     </div>
   );

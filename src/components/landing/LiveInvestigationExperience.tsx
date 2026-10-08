@@ -97,7 +97,14 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
   };
 
   return (
-    <div id="live-investigation" className="relative w-full bg-white text-[#0A0D14] font-['Geist','Inter',-apple-system,sans-serif] selection:bg-[#0F52BA]/15 selection:text-[#0A0D14] overflow-hidden">
+    <div 
+      id="live-investigation" 
+      className="relative w-full bg-[#FAF9F5] text-[#0A0D14] font-['Geist','Inter',-apple-system,sans-serif] selection:bg-[#0F52BA]/15 selection:text-[#0A0D14] overflow-hidden border-t border-[#E5E7EB]"
+      style={{
+        backgroundImage: 'radial-gradient(#CBD5E1 0.75px, transparent 0.75px)',
+        backgroundSize: '24px 24px',
+      }}
+    >
       {/* 2. HERO HEADLINE & SEARCH INPUT (MATCHES home-page.png) */}
       <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-10 sm:pt-14 pb-8 text-center relative z-20">
         

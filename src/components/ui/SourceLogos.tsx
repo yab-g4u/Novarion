@@ -31,18 +31,79 @@ export const XLogo: React.FC<{ className?: string }> = ({ className = 'w-6 h-6' 
 );
 
 export const ScholarXivLogo: React.FC<{ className?: string }> = ({ className = 'w-6 h-6' }) => (
-  <svg viewBox="0 0 24 24" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
-    {/* Science atom and scholarly research paper icon */}
-    {/* Center document */}
-    <rect x="7" y="5" width="10" height="14" rx="2" stroke="#111827" strokeWidth="1.6" fill="#F8FAFC" />
-    <line x1="9.5" y1="8" x2="14.5" y2="8" stroke="#111827" strokeWidth="1.4" strokeLinecap="round" />
-    <line x1="9.5" y1="11" x2="14.5" y2="11" stroke="#111827" strokeWidth="1.4" strokeLinecap="round" />
-    <line x1="9.5" y1="14" x2="13" y2="14" stroke="#111827" strokeWidth="1.4" strokeLinecap="round" />
-    {/* Atom orbital loops */}
-    <ellipse cx="12" cy="12" rx="10" ry="4.5" transform="rotate(-30 12 12)" stroke="#111827" strokeWidth="1.4" />
-    <circle cx="20.5" cy="7.2" r="1.5" fill="#111827" />
-    <ellipse cx="12" cy="12" rx="10" ry="4.5" transform="rotate(30 12 12)" stroke="#111827" strokeWidth="1.4" />
-    <circle cx="3.5" cy="7.2" r="1.5" fill="#111827" />
+  <svg viewBox="0 0 100 100" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
+    {/* Exact ScholarXiv Atom & Research Paper Emblem matching reference */}
+    {/* 1. Orbit 1: Vertical Ellipse */}
+    <ellipse
+      cx="50"
+      cy="50"
+      rx="16"
+      ry="36"
+      stroke="#111827"
+      strokeWidth="5.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    {/* Electron 1 on vertical orbit */}
+    <circle cx="56" cy="28" r="5" fill="#111827" />
+
+    {/* 2. Orbit 2: Diagonal Ellipse (tilted down-left to up-right, -30 deg) */}
+    <ellipse
+      cx="50"
+      cy="50"
+      rx="37"
+      ry="15"
+      transform="rotate(-30 50 50)"
+      stroke="#111827"
+      strokeWidth="5.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    {/* Electron 2 on diagonal orbit */}
+    <circle cx="28.5" cy="54" r="5" fill="#111827" />
+
+    {/* 3. Orbit 3: Diagonal Ellipse (tilted up-left to down-right, +30 deg) */}
+    <ellipse
+      cx="50"
+      cy="50"
+      rx="37"
+      ry="15"
+      transform="rotate(30 50 50)"
+      stroke="#111827"
+      strokeWidth="5.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    {/* Electron 3 on diagonal orbit */}
+    <circle cx="65" cy="65.5" r="5" fill="#111827" />
+
+    {/* 4. Center Document / Paper Core (Vertical sides, slanted top/bottom & stripes) */}
+    <path
+      d="M44 42 L56 36 V58 L44 64 Z"
+      stroke="#111827"
+      strokeWidth="5.5"
+      strokeLinejoin="round"
+      fill="#FFFFFF"
+    />
+    {/* Three parallel text lines */}
+    <path
+      d="M45.5 47 L53.5 43"
+      stroke="#111827"
+      strokeWidth="4"
+      strokeLinecap="round"
+    />
+    <path
+      d="M45.5 53 L53.5 49"
+      stroke="#111827"
+      strokeWidth="4"
+      strokeLinecap="round"
+    />
+    <path
+      d="M45.5 59 L53.5 55"
+      stroke="#111827"
+      strokeWidth="4"
+      strokeLinecap="round"
+    />
   </svg>
 );
 
