@@ -401,7 +401,7 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
             </div>
             <div className="flex items-center gap-3 text-[10px] text-[#868C98]">
               <span>Execution: <strong>{testResult.telemetry.totalExecutionTimeMs}ms</strong></span>
-              <span>Gemini calls: <strong>{testResult.telemetry.geminiCalls}</strong></span>
+              <span>Model calls: <strong>{testResult.telemetry.geminiCalls}</strong></span>
               <span>Deterministic: <strong>{testResult.telemetry.deterministicClassifications}</strong></span>
             </div>
           </div>

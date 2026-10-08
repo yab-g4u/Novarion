@@ -132,7 +132,7 @@ export const VoiceInteractionHUD: React.FC = () => {
               />
               {getStatusBadge()}
               <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#868C98]">
-                Gemini 3.8 Live
+                Probe Voice
               </span>
             </div>
 
@@ -176,7 +176,7 @@ export const VoiceInteractionHUD: React.FC = () => {
               <button
                 type="button"
                 onClick={stopVoice}
-                title="Disconnect Gemini Live Voice"
+                title="Disconnect voice"
                 className="p-1.5 text-[#868C98] hover:text-[#DC2626] hover:bg-[#FEE2E2]/60 rounded-full transition-colors cursor-pointer"
               >
                 <X size={15} />

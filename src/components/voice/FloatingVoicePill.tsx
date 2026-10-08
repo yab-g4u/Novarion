@@ -153,7 +153,7 @@ export const FloatingVoicePill: React.FC = () => {
                 />
                 <span>{voiceState.toUpperCase()}</span>
               </span>
-              <span className="text-[10px] font-mono text-[#868C98]">Gemini 3.8 Live</span>
+              <span className="text-[10px] font-mono text-[#868C98]">Voice</span>
             </div>
 
             <div className="flex items-center gap-1">
