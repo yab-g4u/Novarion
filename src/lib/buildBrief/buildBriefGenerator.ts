@@ -64,7 +64,7 @@ export interface BuildBriefData {
  */
 function extractDomainHints(query: string): string {
   const q = query.toLowerCase();
-  if ((q.includes('recipe') && q.includes('pantry')) || q.includes('recipe generator') || q.includes('what to cook tonight')) {
+  if (q.includes('cook') || q.includes('recipe') || q.includes('meal') || q.includes('pantry') || q.includes('food')) {
     return 'cooking';
   }
   if (q.includes('bookkeep') || q.includes('tax') || q.includes('account') || q.includes('invoice') || q.includes('freelanc')) {

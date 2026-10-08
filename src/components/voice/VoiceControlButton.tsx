@@ -18,15 +18,7 @@ export const VoiceControlButton: React.FC<VoiceControlButtonProps> = ({
   type = 'clover',
   shading = 'fabric',
 }) => {
-  const { 
-    voiceState, 
-    isConnected, 
-    isMuted, 
-    currentAction, 
-    currentActionArgs,
-    startVoice, 
-    stopVoice 
-  } = useVoice();
+  const { voiceState, isConnected, isMuted, startVoice, stopVoice } = useVoice();
 
   const handleToggle = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -44,18 +36,6 @@ export const VoiceControlButton: React.FC<VoiceControlButtonProps> = ({
   const isListening = voiceState === 'listening';
   const isBusy = isConnected && (isExecuting || isSpeaking || isThinking || isListening);
 
-  const getStatusText = () => {
-    if (!isConnected) return 'Click bot to interact with voice';
-    if (isExecuting && currentAction) {
-      const argHint = currentActionArgs?.idea || currentActionArgs?.productUrl || currentActionArgs?.target || '';
-      return `Executing: ${currentAction.replace(/_/g, ' ')}${argHint ? ` (${argHint})` : ''}`;
-    }
-    if (isSpeaking) return 'Probe Voice: Speaking...';
-    if (isThinking) return 'Probe Voice: Processing...';
-    if (isListening) return 'Probe Voice: Listening...';
-    return 'Probe Voice Active';
-  };
-
   const avatarSize = typeof size === 'number'
     ? size
     : size === 'sm'
@@ -71,103 +51,75 @@ export const VoiceControlButton: React.FC<VoiceControlButtonProps> = ({
     : 'p-1';
 
   return (
-    <div className="relative inline-flex items-center gap-1.5 shrink-0 select-none">
-      <button
-        type="button"
-        onClick={handleToggle}
-        title={getStatusText()}
-        aria-label={isConnected ? 'Stop Voice Control' : 'Start Voice Control'}
-        className={`relative inline-flex items-center justify-center rounded-full transition-all duration-300 cursor-pointer select-none active:scale-95 group ${containerPadding} ${
-          isConnected
-            ? isSpeaking
-              ? 'bg-[#0096FF]/20 ring-2 ring-[#0096FF] shadow-[0_0_16px_rgba(0,150,255,0.4)]'
-              : isExecuting
-              ? 'bg-[#F59E0B]/20 ring-2 ring-[#F59E0B] shadow-[0_0_14px_rgba(245,158,11,0.35)]'
-              : isThinking
-              ? 'bg-[#8B5CF6]/20 ring-2 ring-[#8B5CF6] shadow-[0_0_14px_rgba(139,92,246,0.3)]'
-              : 'bg-[#0096FF]/15 ring-2 ring-[#0096FF]/70 shadow-[0_0_12px_rgba(0,150,255,0.25)]'
-            : 'bg-[#0096FF]/10 hover:bg-[#0096FF]/20 border border-[#0096FF]/20 hover:border-[#0096FF]/40 shadow-xs'
-        } ${className}`}
-      >
-        {/* Sound wave pulse ring when active */}
-        {isConnected && (
-          <span
-            className={`absolute -inset-1 rounded-full pointer-events-none animate-ping opacity-25 ${
-              isSpeaking ? 'bg-[#0096FF]' : isListening ? 'bg-[#10B981]' : isExecuting ? 'bg-[#F59E0B]' : 'bg-[#8B5CF6]'
-            }`}
-          />
-        )}
-
-        {/* Bot Avatar */}
-        <BotAvatar
-          type={type}
-          size={avatarSize}
-          state={isBusy ? 'working' : isConnected ? 'default' : 'sleeping'}
-          face={isSpeaking ? 'mouth' : 'eyes'}
-          shading={shading}
-        />
-
-        {/* Muted indicator badge */}
-        {isConnected && isMuted && (
-          <span
-            title="Microphone is muted"
-            className="absolute -bottom-0.5 -right-0.5 bg-[#EF4444] text-white p-0.5 rounded-full shadow-xs ring-1 ring-white"
-          >
-            <MicOff size={10} />
-          </span>
-        )}
-
-        {/* Live status dot */}
-        {isConnected && !isMuted && (
-          <span
-            className={`absolute top-0 right-0 w-2 h-2 rounded-full ring-1 ring-white ${
-              isSpeaking
-                ? 'bg-[#0096FF] animate-bounce'
-                : isExecuting
-                ? 'bg-[#F59E0B] animate-pulse'
-                : isThinking
-                ? 'bg-[#8B5CF6] animate-pulse'
-                : 'bg-[#10B981] animate-ping'
-            }`}
-          />
-        )}
-      </button>
-
-      {/* Subtle inline status indicator badge if connected */}
+    <button
+      type="button"
+      onClick={handleToggle}
+      title={
+        isConnected
+          ? `Probe Voice Active (${voiceState.toUpperCase()}) — Click bot to stop`
+          : 'Click bot to interact with voice'
+      }
+      aria-label={isConnected ? 'Stop Voice Control' : 'Start Voice Control'}
+      className={`relative inline-flex items-center justify-center rounded-full transition-all duration-300 cursor-pointer select-none active:scale-95 group ${containerPadding} ${
+        isConnected
+          ? isSpeaking
+            ? 'bg-[#0096FF]/20 ring-2 ring-[#0096FF] shadow-[0_0_16px_rgba(0,150,255,0.4)]'
+            : isExecuting
+            ? 'bg-[#F59E0B]/20 ring-2 ring-[#F59E0B] shadow-[0_0_14px_rgba(245,158,11,0.35)]'
+            : isThinking
+            ? 'bg-[#8B5CF6]/20 ring-2 ring-[#8B5CF6] shadow-[0_0_14px_rgba(139,92,246,0.3)]'
+            : 'bg-[#0096FF]/15 ring-2 ring-[#0096FF]/70 shadow-[0_0_12px_rgba(0,150,255,0.25)]'
+          : 'bg-[#0096FF]/10 hover:bg-[#0096FF]/20 border border-[#0096FF]/20 hover:border-[#0096FF]/40 shadow-xs'
+      } ${className}`}
+    >
+      {/* Sound wave pulse ring when active */}
       {isConnected && (
         <span
-          className={`hidden md:inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-mono font-medium transition-all ${
-            isSpeaking
-              ? 'bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE]'
-              : isExecuting
-              ? 'bg-[#FFFBEB] text-[#D97706] border border-[#FDE68A] animate-pulse'
-              : isThinking
-              ? 'bg-[#F5F3FF] text-[#7C3AED] border border-[#DDD6FE]'
-              : 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]'
+          className={`absolute -inset-1 rounded-full pointer-events-none animate-ping opacity-25 ${
+            isSpeaking ? 'bg-[#0096FF]' : isListening ? 'bg-[#10B981]' : 'bg-[#8B5CF6]'
           }`}
+        />
+      )}
+
+      {/* Bot Avatar from Libraries.dev */}
+      <BotAvatar
+        type={type}
+        size={avatarSize}
+        state={isBusy ? 'working' : isConnected ? 'default' : 'sleeping'}
+        face={isSpeaking ? 'mouth' : 'eyes'}
+        shading={shading}
+      />
+
+      {/* Muted indicator badge */}
+      {isConnected && isMuted && (
+        <span
+          title="Microphone is muted"
+          className="absolute -bottom-0.5 -right-0.5 bg-[#EF4444] text-white p-0.5 rounded-full shadow-xs ring-1 ring-white"
         >
-          <span
-            className={`w-1 h-1 rounded-full ${
-              isSpeaking
-                ? 'bg-[#1D4ED8]'
-                : isExecuting
-                ? 'bg-[#D97706]'
-                : isThinking
-                ? 'bg-[#7C3AED]'
-                : 'bg-[#059669]'
-            }`}
-          />
-          <span className="uppercase text-[8px] tracking-tight">
-            {isExecuting ? 'RUN' : voiceState}
-          </span>
+          <MicOff size={10} />
         </span>
+      )}
+
+      {/* Live status dot */}
+      {isConnected && !isMuted && (
+        <span
+          className={`absolute top-0 right-0 w-2 h-2 rounded-full ring-1 ring-white ${
+            isSpeaking
+              ? 'bg-[#0096FF] animate-bounce'
+              : isExecuting
+              ? 'bg-[#F59E0B] animate-pulse'
+              : isThinking
+              ? 'bg-[#8B5CF6] animate-pulse'
+              : 'bg-[#10B981] animate-ping'
+          }`}
+        />
       )}
 
       {showLabel && (
-        <span className="ml-1 font-medium hidden sm:inline text-xs text-[#0A0D14]">
+        <span className="ml-2 font-medium hidden sm:inline text-xs text-[#0A0D14]">
           {isConnected ? voiceState.toUpperCase() : 'Voice'}
         </span>
       )}
-    </div>
+    </button>
   );
 };

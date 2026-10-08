@@ -264,23 +264,6 @@ export class RedditProvider implements ResearchProvider {
     });
 
     const relevant = scored.filter(s => s.hits > 0).sort((a, b) => b.hits - a.hits);
-    if (relevant.length > 0) {
-      return relevant.slice(0, limit).map(s => s.post);
-    }
-
-    const cleanSubject = query.replace(/[^\w\s]/g, ' ').trim().slice(0, 60);
-    return [
-      {
-        id: `reddit-dyn-${Date.now()}-1`,
-        sourceType: 'reddit',
-        provider: 'reddit',
-        title: `Real practitioner feedback on ${cleanSubject}: what tools or workarounds are you actually using?`,
-        url: `https://reddit.com/search/?q=${encodeURIComponent(query)}`,
-        author: { name: 'u/founder_operator' },
-        publishedAt: '2026-02-18',
-        excerpt: `Has anyone found an effective solution for ${cleanSubject}? Most existing products force you into bloated setups, and everyone on our team defaults back to manual spreadsheets or DIY workarounds.`,
-        metadata: { subreddit: 'r/startups', score: 342, commentCount: 88, hasFirstHandExperience: true }
-      }
-    ];
+    return relevant.slice(0, limit).map(s => s.post);
   }
 }

@@ -255,8 +255,8 @@ export function generateDynamicInvestigation(
 
   const q = rawQuery.trim().toLowerCase();
 
-  // 1. DOMAIN: Explicit Pantry Recipe Planning only
-  if ((q.includes('recipe') && q.includes('pantry')) || q.includes('recipe planner app') || q.includes('what to cook tonight')) {
+  // 1. DOMAIN: Cooking / Meal Planning
+  if (q.includes('cook') || q.includes('recipe') || q.includes('meal') || q.includes('pantry') || q.includes('food') || q.includes('diet')) {
     const cookingSources: DynamicEvidenceSource[] = [
       {
         id: 'g-cook-1',

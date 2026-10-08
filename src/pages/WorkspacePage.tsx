@@ -28,6 +28,7 @@ import { DynamicGraphData, DynamicEvidenceSource } from '../types/evidenceGraph'
 import { ProbeLogo } from '../components/ProbeLogo';
 import { roomCodeFromIdea } from '../lib/collaboration/useInvestigationRoom';
 import { useVoice } from '../contexts/VoiceContext';
+import { VoiceControlButton } from '../components/voice/VoiceControlButton';
 
 // Investigation Workspace Components
 import { InvestigationSidebar, SidebarSection } from '../components/investigation/InvestigationSidebar';
@@ -41,12 +42,7 @@ import {
   InvestigationRecord, 
   GroupedInvestigations 
 } from '../types/investigation';
-import { 
-  AuthUser, 
-  getCurrentUser, 
-  handleAuthRedirectCallback, 
-  subscribeToAuthState 
-} from '../lib/auth/authService';
+import { AuthUser } from '../lib/auth/authService';
 import { 
   getSavedInvestigations, 
   persistInvestigations, 
@@ -58,9 +54,7 @@ import {
   assembleFinalInvestigationRecord,
   deleteInvestigation, 
   groupInvestigationsByDate,
-  generateInvestigationId,
-  updateInvestigation,
-  loadRemoteInvestigations 
+  generateInvestigationId 
 } from '../lib/investigations/investigationManager';
 
 function investigationToGraphData(inv: InvestigationRecord): DynamicGraphData {
@@ -137,36 +131,6 @@ export const WorkspacePage: React.FC = () => {
     return raw ? JSON.parse(raw) : { id: 'user_founder', name: 'Founder', email: 'founder@probe.dev' };
   });
 
-  // Persistent authentication: check existing session and handle OAuth callbacks on load
-  useEffect(() => {
-    let isMounted = true;
-
-    void (async () => {
-      await handleAuthRedirectCallback();
-      const current = await getCurrentUser();
-      if (isMounted && current) {
-        setUser(current);
-        try {
-          localStorage.setItem('probe_auth_user', JSON.stringify(current));
-        } catch {}
-      }
-    })();
-
-    const unsubscribe = subscribeToAuthState((updatedUser) => {
-      if (isMounted && updatedUser) {
-        setUser(updatedUser);
-        try {
-          localStorage.setItem('probe_auth_user', JSON.stringify(updatedUser));
-        } catch {}
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
-  }, []);
-
   // Saved Investigations List
   const [savedInvestigations, setSavedInvestigations] = useState<InvestigationRecord[]>(() => {
     return getSavedInvestigations(user?.id);
@@ -184,6 +148,8 @@ export const WorkspacePage: React.FC = () => {
   // UI state for Panels
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  // Right Evidence Panel is kept minimal/closed by default
+  const [showEvidencePanel, setShowEvidencePanel] = useState<boolean>(false);
   const [selectedResearchNode, setSelectedResearchNode] = useState<string | null>(null);
   const [activePipelineStage, setActivePipelineStage] = useState<PipelineStage>('evidence');
 
@@ -202,33 +168,17 @@ export const WorkspacePage: React.FC = () => {
   const [isCreatingChat, setIsCreatingChat] = useState(false);
   const pendingRecordRef = useRef<InvestigationRecord | null>(null);
 
-  // Synchronize saved investigations with user identity & load remotely persisted history
-  useEffect(() => {
-    const local = getSavedInvestigations(user?.id);
-    setSavedInvestigations(local);
-    void loadRemoteInvestigations(user?.id).then((remote) => {
-      if (remote && remote.length > 0) {
-        const currentSaved = getSavedInvestigations(user?.id);
-        const map = new Map<string, InvestigationRecord>();
-        for (const item of remote) map.set(item.id, item);
-        for (const item of currentSaved) map.set(item.id, item);
-        const merged = Array.from(map.values());
-        persistInvestigations(merged, user?.id);
-        setSavedInvestigations(merged);
-      }
-    });
-  }, [user?.id]);
-
   // Synchronize active investigation with query parameter
   useEffect(() => {
     const chatIdParam = searchParams.get('chat');
-    const isNew = searchParams.get('new') === 'true' || chatIdParam === 'new';
+    const isNew = searchParams.get('new') === 'true';
 
     if (isNew) {
       setActiveInvestigationIdState('');
       setActiveInvestigation(null);
       setActiveGraphData(null);
       setInvestigationIdea('');
+      setShowEvidencePanel(false);
       return;
     }
 
@@ -244,7 +194,7 @@ export const WorkspacePage: React.FC = () => {
       }
     }
 
-    // If on /app/research without ?chat=, check if active chat was remembered, else show clean empty view
+    // Default to last active investigation or first available
     const lastActiveId = getActiveInvestigationId(user?.id);
     if (lastActiveId) {
       const match = getInvestigationById(lastActiveId, user?.id);
@@ -257,108 +207,69 @@ export const WorkspacePage: React.FC = () => {
       }
     }
 
-    // Default to clean empty view so user can start a fresh investigation
-    setActiveInvestigationIdState('');
-    setActiveInvestigation(null);
-    setActiveGraphData(null);
-    setInvestigationIdea('');
+    const currentList = getSavedInvestigations(user?.id);
+    if (currentList.length > 0) {
+      const first = currentList[0];
+      setActiveInvestigationIdState(first.id);
+      setActiveInvestigation(first);
+      setActiveInvestigationId(first.id, user?.id);
+      setActiveGraphData(investigationToGraphData(first));
+      setInvestigationIdea(first.query);
+    } else {
+      setActiveInvestigationIdState('');
+      setActiveInvestigation(null);
+      setActiveGraphData(null);
+      setInvestigationIdea('');
+    }
   }, [searchParams, user?.id]);
 
-  // Keep Gemini Live synchronized with full active workspace conversation memory
+  // Keep Gemini Live aware of active workspace context
   useEffect(() => {
     const topContradiction = activeGraphData?.sources?.find(
       (s: any) => s.relationship === 'Challenges'
     )?.excerpt;
 
-    const recentMessages = (activeInvestigation?.messages || [])
-      .slice(-10)
-      .map((m) => ({
-        role: m.role,
-        content: m.content.slice(0, 500),
-        timestamp: m.timestamp
-      }));
-
-    const experimentTitles = (activeInvestigation?.experiments || []).map((e) => e.title);
-    const assumptionList = (activeInvestigation?.assumptions || []).map((a) => a.text);
-
     updateVoiceContext({
-      investigationId: activeInvestigation?.id,
-      currentIdea: activeInvestigation?.query || activeInvestigation?.title || investigationIdea || 'New research idea',
-      title: activeInvestigation?.title,
+      currentIdea: investigationIdea || 'New research idea',
       activeTab,
-      assumptions: assumptionList.length > 0 ? assumptionList : (activeGraphData?.coreAssumption ? [activeGraphData.coreAssumption] : []),
+      assumptions: activeGraphData?.coreAssumption ? [activeGraphData.coreAssumption] : [],
       strongestContradiction: topContradiction || null,
       evidenceCount: activeGraphData?.sources?.length || 0,
-      recentMessages,
-      experiments: experimentTitles,
-      documentFileName: activeInvestigation?.documentFileName
     });
-  }, [investigationIdea, activeTab, activeGraphData, activeInvestigation, updateVoiceContext]);
-
-  // Persist completed voice dialogue turns into active investigation chat history
-  useEffect(() => {
-    const handleVoiceTurnCompleted = (e: any) => {
-      const { userText, agentText } = e.detail || {};
-      if (!userText && !agentText) return;
-      if (!activeInvestigation) return;
-
-      const newMsgs = [...activeInvestigation.messages];
-      if (userText) {
-        newMsgs.push({
-          id: `msg_${Date.now()}_voice_u`,
-          role: 'user',
-          content: userText,
-          timestamp: Date.now()
-        });
-      }
-      if (agentText) {
-        newMsgs.push({
-          id: `msg_${Date.now()}_voice_a`,
-          role: 'assistant',
-          content: agentText,
-          timestamp: Date.now()
-        });
-      }
-
-      const updatedRecord: InvestigationRecord = {
-        ...activeInvestigation,
-        messages: newMsgs,
-        updatedAt: Date.now()
-      };
-
-      setActiveInvestigation(updatedRecord);
-      updateInvestigation(updatedRecord, user?.id);
-    };
-
-    window.addEventListener('probe:voice-turn-completed', handleVoiceTurnCompleted);
-    return () => window.removeEventListener('probe:voice-turn-completed', handleVoiceTurnCompleted);
-  }, [activeInvestigation, user?.id]);
+  }, [investigationIdea, activeTab, activeGraphData, updateVoiceContext]);
 
   // =========================================================================
-  // CORE ACTION: New Investigation (Reliable, fast, clean)
+  // CORE ACTION: New Investigation
   // =========================================================================
   const handleNewInvestigation = useCallback(() => {
-    isCreatingChatRef.current = false;
-    setIsCreatingChat(false);
+    if (isCreatingChatRef.current) return;
+    isCreatingChatRef.current = true;
+    setIsCreatingChat(true);
     setCreationError(null);
-    setIsInvestigating(false);
-    setThinkingQuery('');
-
-    // Reset investigation state
-    setActiveInvestigationIdState('');
-    setActiveInvestigation(null);
-    setActiveGraphData(null);
-    setInvestigationIdea('');
-    setSelectedResearchNode(null);
 
     try {
-      localStorage.removeItem('probe_active_idea');
-    } catch {}
-    setActiveInvestigationId('', user?.id);
+      const newSessionId = generateInvestigationId();
 
-    // Cleanly navigate to research root without query params
-    navigate('/app/research', { replace: true });
-    setIsMobileSidebarOpen(false);
+      setActiveInvestigationIdState('');
+      setActiveInvestigation(null);
+      setActiveGraphData(null);
+      setInvestigationIdea('');
+      setShowEvidencePanel(false);
+      setSelectedResearchNode(null);
+      localStorage.removeItem('probe_active_idea');
+      setActiveInvestigationId('', user?.id);
+
+      navigate(`/app/research?chat=${newSessionId}&new=true`, { replace: true });
+      setIsMobileSidebarOpen(false);
+    } catch (err: any) {
+      console.error('[Workspace] Failed to create new chat:', err);
+      setCreationError(err?.message || 'Failed to start a new chat. Please try again.');
+    } finally {
+      setTimeout(() => {
+        isCreatingChatRef.current = false;
+        setIsCreatingChat(false);
+      }, 200);
+    }
   }, [navigate, user?.id]);
 
   // Global Keyboard Shortcut: Cmd+K / Ctrl+K for New Investigation
@@ -438,9 +349,6 @@ export const WorkspacePage: React.FC = () => {
 
     const saved = getSavedInvestigations(user?.id);
     setSavedInvestigations(saved);
-
-    // Immediately update URL to active chat
-    navigate(`/app/research?chat=${initialRecord.id}`, { replace: true });
 
     // 2. Start single background stream for live progress and direct result
     let streamSucceeded = false;
@@ -549,12 +457,11 @@ export const WorkspacePage: React.FC = () => {
     (updated: InvestigationRecord) => {
       setActiveInvestigation(updated);
       setActiveGraphData(investigationToGraphData(updated));
-      const exists = savedInvestigations.some((inv) => inv.id === updated.id);
-      const nextList = exists
-        ? savedInvestigations.map((inv) => (inv.id === updated.id ? updated : inv))
-        : [updated, ...savedInvestigations];
-      persistInvestigations(nextList, user?.id);
-      setSavedInvestigations(nextList);
+      persistInvestigations(
+        savedInvestigations.map((inv) => (inv.id === updated.id ? updated : inv)),
+        user?.id
+      );
+      setSavedInvestigations(getSavedInvestigations(user?.id));
     },
     [savedInvestigations, user?.id]
   );
@@ -582,6 +489,7 @@ export const WorkspacePage: React.FC = () => {
       navigate('/app/evidence');
     } else if (section === 'competitors') {
       setActiveTab('research');
+      setShowEvidencePanel(true);
       setSelectedResearchNode('competitors');
     } else if (section === 'validation_lab' || section === 'experiments') {
       setActiveTab('testing');
@@ -670,8 +578,8 @@ export const WorkspacePage: React.FC = () => {
         {/* SECTION A: RESEARCH WORKSPACE (DEFAULT & PRIMARY) */}
         {activeTab === 'research' && (
           <div className="flex-1 flex h-full overflow-hidden relative">
-            {/* Main Center Area - Full Width */}
-            <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#FAFAFA] w-full">
+            {/* Main Center Area */}
+            <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#FAFAFA]">
               {activeInvestigation && activeInvestigation.messages.length > 0 ? (
                 /* CONVERSATION STREAM: User query pill, inline thinking mode, and editorial results */
                 <InvestigationConversation
@@ -679,6 +587,7 @@ export const WorkspacePage: React.FC = () => {
                   onUpdateInvestigation={handleUpdateInvestigation}
                   onSelectResearchNode={(nodeType) => {
                     setSelectedResearchNode(nodeType);
+                    setShowEvidencePanel(true);
                   }}
                   selectedResearchNode={selectedResearchNode}
                   onOpenTestingTab={() => navigate('/app/testing')}
@@ -693,6 +602,8 @@ export const WorkspacePage: React.FC = () => {
                   onNewChat={handleNewInvestigation}
                   isCreatingChat={isCreatingChat}
                   onSelectSource={handleOpenSourceDetail}
+                  isRightPanelOpen={showEvidencePanel}
+                  onToggleRightPanel={() => setShowEvidencePanel((prev) => !prev)}
                   isLiveInvestigating={isInvestigating}
                   liveSteps={streamedSteps}
                   activeTier={streamedTier}
@@ -714,6 +625,40 @@ export const WorkspacePage: React.FC = () => {
                 />
               )}
             </div>
+
+            {/* ========================================================================= */}
+            {/* 3. RIGHT PANEL: COLLAPSIBLE EVIDENCE & SOURCES PANEL (CLOSED BY DEFAULT) */}
+            {/* ========================================================================= */}
+            {showEvidencePanel && activeInvestigation && (
+              <div className="hidden lg:block w-80 xl:w-96 border-l border-[#E5E7EB] bg-[#FBFBFA] h-full overflow-y-auto shrink-0 animate-in slide-in-from-right-4 duration-200">
+                <InvestigationContextPanel
+                  investigation={activeInvestigation}
+                  onUpdateInvestigation={handleUpdateInvestigation}
+                  activeTabOverride={selectedResearchNode}
+                  onOpenSourceModal={handleOpenSourceDetail}
+                  onClose={() => setShowEvidencePanel(false)}
+                />
+              </div>
+            )}
+
+            {/* Mobile Slide-Over Evidence Panel */}
+            {showEvidencePanel && activeInvestigation && (
+              <div className="fixed inset-0 z-50 lg:hidden flex justify-end">
+                <div 
+                  className="fixed inset-0 bg-black/40 backdrop-blur-xs" 
+                  onClick={() => setShowEvidencePanel(false)} 
+                />
+                <div className="relative w-80 max-w-[85vw] bg-[#FBFBFA] h-full shadow-2xl z-10">
+                  <InvestigationContextPanel
+                    investigation={activeInvestigation}
+                    onUpdateInvestigation={handleUpdateInvestigation}
+                    activeTabOverride={selectedResearchNode}
+                    onOpenSourceModal={handleOpenSourceDetail}
+                    onClose={() => setShowEvidencePanel(false)}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
 

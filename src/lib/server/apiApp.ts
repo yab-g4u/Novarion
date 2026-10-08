@@ -225,7 +225,7 @@ export function createApiApp() {
           user_id: userId,
           data: record,
           updated_at: new Date().toISOString()
-        }).catch(() => {});
+        });
       }
     } catch {
       // ignore

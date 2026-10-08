@@ -38,7 +38,7 @@ function parseIdeaProfile(normIdea: string): IdeaProfile {
 
   // Domain detection
   let domain = 'general';
-  if (/\b(recipe\s+app|cooking\s+recipes?|what\s+to\s+cook|pantry\s+meals?)\b/i.test(lower)) {
+  if (/\b(cook|cooking|recipe|recipes|meal|meals|kitchen|food|diet|dinner|ingredient|ingredients)\b/i.test(lower)) {
     domain = 'cooking';
   } else if (/\b(bookkeep|bookkeeping|accounting|accountant|invoic|invoice|tax|cpa|quickbooks|expense|ledger)\b/i.test(lower)) {
     domain = 'accounting';
@@ -49,11 +49,12 @@ function parseIdeaProfile(normIdea: string): IdeaProfile {
   }
 
   // Target user detection
-  const userMatch = lower.match(/(?:for|helps|assists|targets)\s+([a-z\s]+?)(?:\s+(?:with|who|to|find|get|in|on|$))/i);
+  const userMatch = lower.match(/for\s+([a-z\s]+?)(?:\s+(?:with|who|to|in|on|$))/i);
   let targetUser = userMatch ? userMatch[1].trim() : '';
 
   if (!targetUser) {
-    if (domain === 'accounting') targetUser = 'freelancers';
+    if (domain === 'cooking') targetUser = 'home cooks';
+    else if (domain === 'accounting') targetUser = 'freelancers';
     else if (domain === 'developer_tools') targetUser = 'software developers';
     else targetUser = rawTokens[rawTokens.length - 1] || 'target users';
   }

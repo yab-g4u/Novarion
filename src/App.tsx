@@ -5,6 +5,7 @@ import { SignInPage } from './pages/SignInPage';
 import { WorkspacePage } from './pages/WorkspacePage';
 import { SharedInvestigationPage } from './pages/SharedInvestigationPage';
 import { VoiceProvider } from './contexts/VoiceContext';
+import { FloatingVoicePill } from './components/voice/FloatingVoicePill';
 
 export const App: React.FC = () => {
   return (
@@ -29,6 +30,9 @@ export const App: React.FC = () => {
         {/* Catch-all redirects to landing */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+
+      {/* FLOATING VOICE CONTROL PILL FOR THE ENTIRE WEBSITE */}
+      <FloatingVoicePill />
     </VoiceProvider>
   );
 };

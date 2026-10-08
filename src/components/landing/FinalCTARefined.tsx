@@ -52,59 +52,63 @@ export const FinalCTARefined: React.FC<FinalCTARefinedProps> = ({
   return (
     <section
       ref={sectionRef}
-      className="relative z-10 w-full bg-white py-24 sm:py-32 text-center overflow-hidden"
+      className="relative z-10 w-full bg-[#fdfcfc] py-24 sm:py-32 border-b border-[#ebe8e4] text-center overflow-hidden"
     >
       <div
         ref={contentRef}
-        className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 will-change-transform"
+        className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 will-change-transform space-y-6"
       >
         {/* Subtle Eyebrow */}
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#F1F3F5] border border-[#E5E7EB] text-[11px] font-mono font-semibold uppercase tracking-wider text-[#525866] mb-6">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#0F52BA]" />
-          <span>ZERO-RISK INVESTIGATION</span>
+        <div className="flex items-center justify-center gap-2 text-xs font-mono text-[#777169] uppercase tracking-wider">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#000000]" />
+          <span>Zero-Risk Investigation</span>
+          <span className="text-[#ebe8e4]">/</span>
+          <span>48-Hour Falsification Gates</span>
         </div>
 
         {/* Headline */}
-        <h2 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-[#0A0D14] leading-[1.08] max-w-2xl mx-auto">
-          Before you build further, Probe it.
+        <h2 className="headline-display text-[#000000] max-w-2xl mx-auto">
+          Before you build further, <span className="italic font-light">Probe it.</span>
         </h2>
 
         {/* Supporting Line */}
-        <p className="mt-4 text-lg sm:text-xl text-[#525866] max-w-xl mx-auto font-normal">
-          Put your assumptions against real evidence.
+        <p className="text-base sm:text-lg text-[#777169] max-w-xl mx-auto font-['Inter',sans-serif] leading-relaxed">
+          Put your assumptions against real-world evidence, adversarial practitioner threads, and live UX friction scans.
         </p>
 
         {/* Input Bar or Action Buttons */}
-        <div className="mt-10 max-w-xl mx-auto">
+        <div className="mt-8 max-w-xl mx-auto">
           <form
             onSubmit={handleSubmit}
-            className="flex flex-col sm:flex-row items-stretch sm:items-center bg-[#FAFAFA] border border-[#CBD5E1] hover:border-[#94A3B8] focus-within:border-[#0A0D14] focus-within:ring-4 focus-within:ring-black/5 rounded-2xl sm:rounded-3xl p-2 sm:p-2.5 shadow-sm transition-all"
+            className="flex flex-col sm:flex-row items-stretch sm:items-center bg-[#f5f3f1] border border-[#ebe8e4] focus-within:border-[#000000] rounded-[24px] p-2 sm:p-2.5 shadow-subtle-2 transition-all gap-2"
           >
             <input
               type="text"
               value={idea}
               onChange={(e) => setIdea(e.target.value)}
-              placeholder="What are you planning to build?"
-              className="flex-1 bg-transparent px-3 py-2.5 text-sm sm:text-base font-medium text-[#0A0D14] placeholder:text-[#94A3B8] focus:outline-none"
+              placeholder="What are you planning to build? (e.g. AI voice agent for clinic scheduling)"
+              className="flex-1 bg-[#fdfcfc] px-4 py-3 rounded-full text-xs sm:text-sm font-['Inter',sans-serif] text-[#000000] placeholder:text-[#a59f97] border border-[#ebe8e4] focus:outline-none focus:border-[#000000]"
             />
-            <Button
+            <button
               type="submit"
-              className="mt-2 sm:mt-0 px-6 h-11 rounded-xl sm:rounded-2xl bg-[#0A0D14] hover:bg-[#1E293B] text-white text-sm font-semibold flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer shrink-0"
+              className="btn-pill-filled px-6 py-3 text-xs sm:text-sm shrink-0 shadow-subtle cursor-pointer"
             >
-              <span>Start investigating</span>
+              <span>Probe Hypothesis</span>
               <ArrowRight size={14} />
-            </Button>
+            </button>
           </form>
 
           {/* Secondary CTA */}
-          <div className="mt-5 flex items-center justify-center gap-6 text-xs font-mono">
+          <div className="mt-5 flex items-center justify-center gap-6 text-xs font-mono text-[#777169]">
             <button
               onClick={onExploreProduct}
               type="button"
-              className="text-[#525866] hover:text-[#0A0D14] underline underline-offset-4 cursor-pointer transition-colors"
+              className="hover:text-[#000000] underline underline-offset-4 cursor-pointer transition-colors"
             >
-              Explore the product →
+              Launch Platform Workspace →
             </button>
+            <span>·</span>
+            <span>Zero credit card required</span>
           </div>
         </div>
       </div>

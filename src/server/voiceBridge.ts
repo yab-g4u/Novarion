@@ -23,7 +23,7 @@ const PROBE_TOOLS: { functionDeclarations: ToolFunctionDeclaration[] }[] = [
           properties: {
             idea: {
               type: 'STRING',
-              description: 'The core business idea, problem, or hypothesis to investigate (e.g. "B2B sales automation", "Developer API", "Consumer marketplace", or any user-provided idea).'
+              description: 'The core business idea, problem, or hypothesis to investigate (e.g. "AI inventory system for restaurants").'
             }
           },
           required: ['idea']
@@ -92,7 +92,7 @@ const PROBE_TOOLS: { functionDeclarations: ToolFunctionDeclaration[] }[] = [
             },
             method: {
               type: 'STRING',
-              description: 'Testing methodology (e.g. "User interviews", "Landing page smoke test", "Interactive usability test", "A/B test").'
+              description: 'Testing methodology (e.g. "Interview 10 restaurant GMs", "Landing page smoke test", "Usability test").'
             }
           },
           required: ['title']
@@ -100,42 +100,20 @@ const PROBE_TOOLS: { functionDeclarations: ToolFunctionDeclaration[] }[] = [
       },
       {
         name: 'start_product_test',
-        description: 'Navigates to the Product Testing subsystem and launches a real autonomous Playwright browser testing session on any website URL. Trigger immediately when user says "Test chatgpt.com", "Test links.et", or "Test <website URL>".',
+        description: 'Navigates to the Product Testing subsystem and launches an autonomous browser agent session to empirically test a product workflow.',
         parameters: {
           type: 'OBJECT',
           properties: {
             productUrl: {
               type: 'STRING',
-              description: 'The website URL to test (e.g. "https://chatgpt.com", "https://links.et", or any user-specified URL).'
+              description: 'Product URL to test (defaults to "https://links.et/" or user specified URL).'
             },
             task: {
               type: 'STRING',
-              description: 'Optional specific user journey or test goal. If omitted, defaults to evaluating the landing page and core usability.'
+              description: 'The user journey task to execute in the browser.'
             }
           },
-          required: ['productUrl']
-        }
-      },
-      {
-        name: 'execute_browser_action',
-        description: 'Executes a follow-up live browser action or user journey on the tested website in Probe live preview, such as clicking a button or testing a flow. Trigger when user says "Click the login button", "Test the signup flow", "Click pricing", etc.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            action: {
-              type: 'STRING',
-              description: 'The browser action: "click", "test_flow", "navigate", or "type".'
-            },
-            target: {
-              type: 'STRING',
-              description: 'Target element, button, link, or flow to test (e.g. "login button", "signup flow", "pricing link", "get started").'
-            },
-            text: {
-              type: 'STRING',
-              description: 'Optional text to type if action is "type".'
-            }
-          },
-          required: ['action', 'target']
+          required: ['productUrl', 'task']
         }
       },
       {
@@ -176,22 +154,15 @@ const SYSTEM_INSTRUCTION = `You are Probe Voice — the real-time voice intellig
 Probe is an empirical investigation platform for founders to stress-test ideas before building.
 Your role:
 1. You directly CONTROL and OPERATE the Probe web application using your available tools.
-2. When the user asks you to research an idea, check academic papers, find contradictions, create experiments, test a website, or click buttons, YOU MUST CALL THE CORRESPONDING TOOL.
+2. When the user asks you to research an idea, check academic papers, find contradictions, create experiments, or start a product test, YOU MUST CALL THE CORRESPONDING TOOL.
 3. Keep spoken responses concise, punchy, confident, and natural (1-3 sentences maximum). Avoid markdown, bullet points, or visual formatting in spoken speech.
-4. Voice context & persistent conversation memory:
-   - You share FULL conversation memory with Probe's text chat and active workspace.
-   - Refer to previously stated ideas, user-provided info, assumptions, and past decisions naturally without asking the user to repeat themselves.
-   - When the user says "Create an experiment for that" or "Create an experiment for it", refer to the currently selected or strongest contradiction/assumption from the active investigation.
+4. Voice context awareness:
+   - When the user says "Create an experiment for that" or "Create an experiment for it", refer to the currently selected or strongest contradiction or assumption from the active investigation.
    - When the user asks to check academic research, call search_academic_research.
+   - When the user asks to start a product test, call start_product_test with appropriate product URL and task.
    - When the user asks to see contradictions, call show_strongest_contradiction.
-5. Voice-controlled live website testing:
-   - When the user says "Test chatgpt.com", "Test links.et", or "Test <any website URL>", IMMEDIATELY call start_product_test with the target URL.
-   - When the user issues follow-up browser commands like "Click the login button", "Test the signup flow", or "Click get started", IMMEDIATELY call execute_browser_action.
-6. Domain Agnostic (NO cooking/restaurant bias):
-   - You are completely domain-agnostic. NEVER assume, suggest, or default to cooking, recipes, food, or restaurants unless the user explicitly requested that specific domain.
-   - Adapt dynamically to ANY legitimate idea, B2B software, developer tool, consumer tech, or website URL the user presents.
-7. Hands-free dialogue:
-   - Normal operations execute immediately. Speak natural, conversational confirmations of what was executed.`;
+5. You operate in continuous hands-free dialogue. The user can speak anytime, interrupt you, or give follow-up commands without touching the keyboard.
+6. Safety: Normal actions (research, filtering, experiments, navigation) execute immediately. If the user asks for destructive operations like deleting all data, ask for confirmation first.`;
 
 export function setupVoiceBridge(server: HttpServer) {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -201,16 +172,7 @@ export function setupVoiceBridge(server: HttpServer) {
 
   const wss = new WebSocketServer({ noServer: true });
 
-  wss.on('error', (err: any) => {
-    console.warn('[Probe Voice WSS error]:', err?.message || err);
-  });
-
   server.on('upgrade', (request, socket, head) => {
-    // Suppress unhandled socket errors on raw upgrade socket
-    socket.on('error', (err: any) => {
-      console.warn('[Probe Voice Socket upgrade warning]:', err?.message || err);
-    });
-
     const pathname = request.url?.split('?')[0];
     if (pathname === '/api/voice/live') {
       wss.handleUpgrade(request, socket, head, (ws) => {
@@ -220,39 +182,14 @@ export function setupVoiceBridge(server: HttpServer) {
   });
 
   wss.on('connection', async (clientWs: WebSocket) => {
-    // 1. Attach client socket error listener IMMEDIATELY
-    clientWs.on('error', (err: any) => {
-      console.warn('[Probe Voice Bridge] Client socket warning:', err?.message || err);
-    });
-
-    // Helper: Safe send that always supplies an error callback to avoid unhandled senderOnError
-    const safeSend = (payload: any) => {
-      if (clientWs.readyState === WebSocket.OPEN) {
-        try {
-          const str = typeof payload === 'string' ? payload : JSON.stringify(payload);
-          clientWs.send(str, (err) => {
-            if (err) {
-              console.warn('[Probe Voice Bridge] clientWs send error:', err?.message || err);
-            }
-          });
-        } catch (e: any) {
-          console.warn('[Probe Voice Bridge] clientWs send caught exception:', e?.message || e);
-        }
-      }
-    };
-
     console.log('[Probe Voice Bridge] Client connected to live voice socket');
 
     if (!apiKey) {
-      safeSend({
+      clientWs.send(JSON.stringify({
         type: 'error',
         message: 'GEMINI_API_KEY is not configured on the server. Please check your environment variables.'
-      });
-      try {
-        clientWs.close();
-      } catch {
-        // ignore
-      }
+      }));
+      clientWs.close();
       return;
     }
 
@@ -290,7 +227,9 @@ export function setupVoiceBridge(server: HttpServer) {
           onopen: () => {
             console.log('[Probe Voice Bridge] Connected to Gemini Live API');
             isConnectedToGemini = true;
-            safeSend({ type: 'ready' });
+            if (clientWs.readyState === WebSocket.OPEN) {
+              clientWs.send(JSON.stringify({ type: 'ready' }));
+            }
           },
           onmessage: (message: LiveServerMessage) => {
             if (clientWs.readyState !== WebSocket.OPEN) return;
@@ -299,74 +238,80 @@ export function setupVoiceBridge(server: HttpServer) {
             const parts = message.serverContent?.modelTurn?.parts || [];
             for (const part of parts) {
               if (part.inlineData?.data) {
-                safeSend({
+                clientWs.send(JSON.stringify({
                   type: 'audio',
                   audio: part.inlineData.data
-                });
+                }));
               }
               if (part.text) {
-                safeSend({
+                clientWs.send(JSON.stringify({
                   type: 'agent_text',
                   text: part.text
-                });
+                }));
               }
             }
 
             // 2. Interruption / Barge-in
             if (message.serverContent?.interrupted) {
-              safeSend({ type: 'interrupted' });
+              clientWs.send(JSON.stringify({ type: 'interrupted' }));
             }
 
             // 3. Live User Input Transcription
             if (message.serverContent?.inputTranscription?.text) {
-              safeSend({
+              clientWs.send(JSON.stringify({
                 type: 'user_transcript',
                 text: message.serverContent.inputTranscription.text
-              });
+              }));
             }
 
             // 4. Live Model Output Spoken Transcription
             if (message.serverContent?.outputTranscription?.text) {
-              safeSend({
+              clientWs.send(JSON.stringify({
                 type: 'agent_transcript',
                 text: message.serverContent.outputTranscription.text
-              });
+              }));
             }
 
             // 5. Turn Complete
             if (message.serverContent?.turnComplete) {
-              safeSend({ type: 'turn_complete' });
+              clientWs.send(JSON.stringify({ type: 'turn_complete' }));
             }
 
             // 6. Tool Calls: Expose real Probe actions to the client UI
             if (message.toolCall?.functionCalls && message.toolCall.functionCalls.length > 0) {
               console.log('[Probe Voice Bridge] Model requested tool call:', message.toolCall.functionCalls);
-              safeSend({
+              clientWs.send(JSON.stringify({
                 type: 'tool_call',
                 functionCalls: message.toolCall.functionCalls
-              });
+              }));
             }
           },
           onerror: (err: any) => {
-            console.warn('[Probe Voice Bridge] Gemini Live warning/error:', err?.message || err);
-            safeSend({
-              type: 'error',
-              message: err?.message || 'Gemini Live session encountered an error'
-            });
+            console.error('[Probe Voice Bridge] Gemini Live error:', err);
+            if (clientWs.readyState === WebSocket.OPEN) {
+              clientWs.send(JSON.stringify({
+                type: 'error',
+                message: err?.message || 'Gemini Live session encountered an error'
+              }));
+            }
           },
           onclose: (e: any) => {
             console.log('[Probe Voice Bridge] Gemini Live connection closed:', e?.reason || e);
             isConnectedToGemini = false;
-            safeSend({ type: 'session_closed' });
+            if (clientWs.readyState === WebSocket.OPEN) {
+              clientWs.send(JSON.stringify({ type: 'session_closed' }));
+            }
           }
         }
       });
     } catch (err: any) {
-      console.warn('[Probe Voice Bridge] Failed to connect to Gemini Live API:', err?.message || err);
-      safeSend({
-        type: 'error',
-        message: err?.message || 'Failed to initialize Gemini Live session'
-      });
+      console.error('[Probe Voice Bridge] Failed to connect to Gemini Live API:', err);
+      if (clientWs.readyState === WebSocket.OPEN) {
+        clientWs.send(JSON.stringify({
+          type: 'error',
+          message: err?.message || 'Failed to initialize Gemini Live session'
+        }));
+      }
       return;
     }
 
@@ -377,90 +322,61 @@ export function setupVoiceBridge(server: HttpServer) {
         // A. Real-time audio chunks from microphone (16kHz PCM little-endian base64)
         if (msg.type === 'audio' && msg.audio) {
           if (liveSession && isConnectedToGemini) {
-            try {
-              liveSession.sendRealtimeInput({
-                audio: {
-                  data: msg.audio,
-                  mimeType: 'audio/pcm;rate=16000'
-                }
-              });
-            } catch (e: any) {
-              console.warn('[Probe Voice Bridge] Error sending audio chunk:', e?.message || e);
-            }
+            liveSession.sendRealtimeInput({
+              audio: {
+                data: msg.audio,
+                mimeType: 'audio/pcm;rate=16000'
+              }
+            });
           }
         }
 
         // B. Context update from client UI
         else if (msg.type === 'context_update' && msg.context) {
           if (liveSession && isConnectedToGemini) {
-            try {
-              const ctx = msg.context;
-              const formattedMessages = Array.isArray(ctx.recentMessages) && ctx.recentMessages.length > 0
-                ? ctx.recentMessages
-                    .map((m: any) => `  [${(m.role || 'user').toUpperCase()}]: ${m.content}`)
-                    .join('\n')
-                : 'No prior messages in session';
-
-              const contextText = `[PROBE ACTIVE CONVERSATION MEMORY & WORKSPACE STATE]
-- Active Idea / Topic: "${ctx.currentIdea || 'none'}"
-- Investigation Title: "${ctx.title || ctx.currentIdea || 'none'}"
+            const ctx = msg.context;
+            const contextText = `[PROBE UI CONTEXT UPDATE]
+- Active Idea: "${ctx.currentIdea || 'none'}"
 - Current Section: ${ctx.activeTab || 'research'}
 - Extracted Assumptions: ${JSON.stringify(ctx.assumptions || [])}
 - Strongest Contradiction: "${ctx.strongestContradiction || 'none'}"
-- Validation Experiments: ${JSON.stringify(ctx.experiments || [])}
-- User Decisions & Info: "${ctx.userDecisions || 'none'}"
-- Verified Evidence Signals: ${ctx.evidenceCount || 0}
-- Attached Context Document: "${ctx.documentFileName || 'none'}"
-- Shared Text & Voice Conversation History:
-${formattedMessages}
+- Selected Item: "${ctx.selectedItem || 'none'}"
+- Verified Evidence Count: ${ctx.evidenceCount || 0}`;
 
-Note: Use this shared memory to answer follow-up questions seamlessly without asking the user to repeat themselves.`;
-
-              liveSession.sendClientContent({
-                turns: [
-                  {
-                    role: 'user',
-                    parts: [{ text: contextText }]
-                  }
-                ],
-                turnComplete: false
-              });
-            } catch (e: any) {
-              console.warn('[Probe Voice Bridge] Error sending context update:', e?.message || e);
-            }
+            liveSession.sendClientContent({
+              turns: [
+                {
+                  role: 'user',
+                  parts: [{ text: contextText }]
+                }
+              ],
+              turnComplete: false
+            });
           }
         }
 
         // C. Tool execution response from client UI
         else if (msg.type === 'tool_response' && msg.functionResponses) {
           if (liveSession && isConnectedToGemini) {
-            try {
-              console.log('[Probe Voice Bridge] Sending tool response back to Gemini:', msg.functionResponses);
-              liveSession.sendToolResponse({
-                functionResponses: msg.functionResponses
-              });
-            } catch (e: any) {
-              console.warn('[Probe Voice Bridge] Error sending tool response:', e?.message || e);
-            }
+            console.log('[Probe Voice Bridge] Sending tool response back to Gemini:', msg.functionResponses);
+            liveSession.sendToolResponse({
+              functionResponses: msg.functionResponses
+            });
           }
         }
 
         // D. Text prompt fallback / text injection
         else if (msg.type === 'text_input' && msg.text) {
           if (liveSession && isConnectedToGemini) {
-            try {
-              liveSession.sendClientContent({
-                turns: [
-                  {
-                    role: 'user',
-                    parts: [{ text: msg.text }]
-                  }
-                ],
-                turnComplete: true
-              });
-            } catch (e: any) {
-              console.warn('[Probe Voice Bridge] Error sending text input:', e?.message || e);
-            }
+            liveSession.sendClientContent({
+              turns: [
+                {
+                  role: 'user',
+                  parts: [{ text: msg.text }]
+                }
+              ],
+              turnComplete: true
+            });
           }
         }
 
@@ -475,15 +391,17 @@ Note: Use this shared memory to answer follow-up questions seamlessly without as
 
     clientWs.on('close', () => {
       console.log('[Probe Voice Bridge] Client disconnected');
-      isConnectedToGemini = false;
       if (liveSession) {
         try {
           liveSession.close();
-        } catch {
+        } catch (e) {
           // ignore
         }
-        liveSession = null;
       }
+    });
+
+    clientWs.on('error', (err) => {
+      console.error('[Probe Voice Bridge] Client socket error:', err);
     });
   });
 

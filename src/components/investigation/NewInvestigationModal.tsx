@@ -86,10 +86,10 @@ export const NewInvestigationModal: React.FC<NewInvestigationModalProps> = ({
   };
 
   const sampleIdeas = [
+    'AI meal planner that scans receipts to eliminate manual pantry logging',
     'Autonomous code reviewer bot that comments on pull requests without noise',
     'Student housing sublet and roommate platform with verified .edu identity',
-    'AI compliance auditor for HIPAA medical records and patient workflows',
-    'Automated invoice reconciliation and cash flow forecasting for small businesses'
+    'AI compliance auditor for HIPAA medical records and patient workflows'
   ];
 
   return (
@@ -129,7 +129,7 @@ export const NewInvestigationModal: React.FC<NewInvestigationModalProps> = ({
               rows={3}
               value={ideaText}
               onChange={(e) => setIdeaText(e.target.value)}
-              placeholder="e.g. Autonomous customer support triage agent, or paste your elevator pitch / PRD overview..."
+              placeholder="e.g. AI-powered recipe planner with receipt OCR, or paste your elevator pitch / PRD overview..."
               className="w-full p-3 rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] text-xs text-[#0A0D14] placeholder-[#9CA3AF] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#0A0D14] focus:border-[#0A0D14] transition-all resize-none"
               autoFocus
             />

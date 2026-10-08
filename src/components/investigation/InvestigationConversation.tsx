@@ -395,23 +395,28 @@ Probe completed a multi-source investigation across Reddit, web discussions, and
           />
         </div>
 
-        {/* Right: Actions (Jump to Evidence, Share, Voice, New) */}
+        {/* Right: Actions (Toggle Evidence Panel, Share, Voice, New) */}
         <div className="flex items-center gap-1.5 shrink-0">
-          <button
-            type="button"
-            onClick={() => {
-              const el = document.getElementById('latest-research-dossier');
-              if (el) el.scrollIntoView({ behavior: 'smooth' });
-            }}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer bg-white text-[#0A0D14] border-[#E5E7EB] hover:bg-[#F9FAFB] shadow-2xs"
-            title="Inspect Attached Evidence & Topology"
-          >
-            <Layers size={13} className="text-[#0091FF]" />
-            <span className="hidden sm:inline">Evidence</span>
-            <span className="px-1 rounded-full text-[9px] font-mono bg-[#EFF6FF] text-[#0091FF]">
-              {totalEvidenceCount}
-            </span>
-          </button>
+          {onToggleRightPanel && (
+            <button
+              type="button"
+              onClick={onToggleRightPanel}
+              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
+                isRightPanelOpen
+                  ? 'bg-[#0A0D14] text-white border-[#0A0D14] shadow-xs'
+                  : 'bg-white text-[#0A0D14] border-[#E5E7EB] hover:bg-[#F9FAFB] shadow-2xs'
+              }`}
+              title="Toggle Evidence & Sources panel"
+            >
+              <Layers size={13} className={isRightPanelOpen ? 'text-white' : 'text-[#0091FF]'} />
+              <span className="hidden sm:inline">Evidence</span>
+              <span className={`px-1 rounded-full text-[9px] font-mono ${
+                isRightPanelOpen ? 'bg-white/20 text-white' : 'bg-[#EFF6FF] text-[#0091FF]'
+              }`}>
+                {totalEvidenceCount}
+              </span>
+            </button>
+          )}
 
           {onShareInvestigation && (
             <button
@@ -424,6 +429,8 @@ Probe completed a multi-source investigation across Reddit, web discussions, and
               <span className="hidden sm:inline">Share</span>
             </button>
           )}
+
+          <VoiceControlButton size="sm" />
 
           {onNewChat && (
             <button
@@ -440,9 +447,9 @@ Probe completed a multi-source investigation across Reddit, web discussions, and
         </div>
       </div>
 
-      {/* 2. CONVERSATION MESSAGE STREAM - FULL AVAILABLE WIDTH */}
-      <div className="flex-1 overflow-y-auto px-3 sm:px-6 md:px-8 py-6">
-        <div className="max-w-4xl lg:max-w-5xl mx-auto space-y-6 w-full">
+      {/* 2. CONVERSATION MESSAGE STREAM */}
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-8 py-6">
+        <div className="max-w-4xl mx-auto space-y-6 w-full">
           {investigation.messages.map((message) => {
             const isUser = message.role === 'user';
             return (
@@ -477,12 +484,15 @@ Probe completed a multi-source investigation across Reddit, web discussions, and
                     </div>
                   </div>
                 ) : (
-                  <div className="w-full max-w-4xl lg:max-w-5xl rounded-2xl p-4 sm:p-6 transition-all bg-white border border-[#E5E7EB] shadow-xs text-[#1F242F]">
+                  <div className="w-full max-w-3xl rounded-2xl p-4 sm:p-5 transition-all bg-white border border-[#E5E7EB] shadow-xs text-[#1F242F]">
                     <StructuredResponseRenderer
                       content={message.content}
                       onSelectCitation={(cit) => {
                         if (onSelectSource) {
                           onSelectSource({ label: cit, id: cit });
+                        }
+                        if (onToggleRightPanel && !isRightPanelOpen) {
+                          onToggleRightPanel();
                         }
                       }}
                     />

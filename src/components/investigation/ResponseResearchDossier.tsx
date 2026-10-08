@@ -11,10 +11,7 @@ import {
   ExternalLink,
   Share2,
   CheckCircle2,
-  Compass,
-  Network,
-  Globe,
-  HelpCircle
+  Compass
 } from 'lucide-react';
 import { 
   InvestigationRecord, 
@@ -22,6 +19,7 @@ import {
   ValidationExperiment, 
   ResearchContradiction 
 } from '../../types/investigation';
+import { Assumption } from '../../lib/research/types';
 import { InteractiveEvidenceNodeGraph } from './InteractiveEvidenceNodeGraph';
 import { generateDynamicInvestigation, RadialEvidenceItem } from '../../lib/research/dynamicInvestigationResolver';
 import { ScholarXivLogo } from '../ScholarXivLogo';
@@ -62,201 +60,33 @@ export const ResponseResearchDossier: React.FC<ResponseResearchDossierProps> = (
     0
   );
 
-  const handleNodeClick = (tab: 'graph' | 'assumptions' | 'contradictions' | 'academic' | 'experiments') => {
-    if (isDossierExpanded && activeTab === tab) {
-      setIsDossierExpanded(false);
-    } else {
-      setActiveTab(tab);
-      setIsDossierExpanded(true);
-    }
-  };
-
   return (
-    <div id="latest-research-dossier" className="w-full mt-5 space-y-3.5 border-t border-[#F1F3F5] pt-4">
-      {/* 1. INTERACTIVE RESEARCH NODES RIBBON (CLICKABLE NODES FOR PROGRESSIVE DISCLOSURE) */}
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between px-1">
-          <div className="flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-wider text-[#64748B] font-bold">
-            <Sparkles size={11} className="text-[#0091FF]" />
-            <span>Interactive Research Artifacts</span>
+    <div className="w-full mt-5 space-y-4">
+      {/* 1. INTERACTIVE NODE GRAPH (MATCHES image.png) */}
+      <div className="p-3 sm:p-5 rounded-2xl bg-[#FAFAFA] border border-[#E5E7EB] shadow-2xs">
+        <div className="flex items-center justify-between mb-3 px-1">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-[#10B981]" />
+            <span className="text-xs font-bold text-[#0A0D14] uppercase tracking-wider font-mono">
+              Live Evidence Topology
+            </span>
           </div>
-          <span className="text-[10px] font-mono text-[#94A3B8]">
-            Click any node to inspect deeper evidence
+          <span className="text-[11px] font-mono text-[#64748B]">
+            Drag nodes to reposition • Scroll or click Contradictions to reveal opposing signals
           </span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-          {/* Node 1: Evidence Topology (Graph) */}
-          <button
-            type="button"
-            onClick={() => handleNodeClick('graph')}
-            className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer group flex flex-col justify-between ${
-              isDossierExpanded && activeTab === 'graph'
-                ? 'bg-[#0A0D14] text-white border-[#0A0D14] shadow-xs'
-                : 'bg-[#FAFAFA] hover:bg-white text-[#0A0D14] border-[#E5E7EB] hover:border-[#CBD5E1] shadow-2xs'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-1.5">
-              <div className={`w-6 h-6 rounded-lg flex items-center justify-center p-1 ${
-                isDossierExpanded && activeTab === 'graph' ? 'bg-white/20 text-white' : 'bg-[#EFF6FF] text-[#0091FF]'
-              }`}>
-                <Network size={13} />
-              </div>
-              <span className={`w-2 h-2 rounded-full ${
-                isDossierExpanded && activeTab === 'graph' ? 'bg-[#10B981]' : 'bg-[#10B981] animate-pulse'
-              }`} />
-            </div>
-            <div>
-              <div className="text-xs font-bold font-['Geist',sans-serif] leading-tight">
-                Evidence Graph
-              </div>
-              <div className={`text-[10px] font-mono mt-0.5 truncate ${
-                isDossierExpanded && activeTab === 'graph' ? 'text-white/70' : 'text-[#64748B]'
-              }`}>
-                Interactive topology
-              </div>
-            </div>
-          </button>
-
-          {/* Node 2: Assumptions */}
-          <button
-            type="button"
-            onClick={() => handleNodeClick('assumptions')}
-            className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer group flex flex-col justify-between ${
-              isDossierExpanded && activeTab === 'assumptions'
-                ? 'bg-[#0A0D14] text-white border-[#0A0D14] shadow-xs'
-                : 'bg-[#FAFAFA] hover:bg-white text-[#0A0D14] border-[#E5E7EB] hover:border-[#CBD5E1] shadow-2xs'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-1.5">
-              <div className={`w-6 h-6 rounded-lg flex items-center justify-center p-1 ${
-                isDossierExpanded && activeTab === 'assumptions' ? 'bg-white/20 text-white' : 'bg-[#F5F3FF] text-[#7C3AED]'
-              }`}>
-                <Layers size={13} />
-              </div>
-              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full font-bold ${
-                isDossierExpanded && activeTab === 'assumptions' ? 'bg-white/20 text-white' : 'bg-[#F5F3FF] text-[#7C3AED]'
-              }`}>
-                {assumptions.length}
-              </span>
-            </div>
-            <div>
-              <div className="text-xs font-bold font-['Geist',sans-serif] leading-tight">
-                Assumptions
-              </div>
-              <div className={`text-[10px] font-mono mt-0.5 truncate ${
-                isDossierExpanded && activeTab === 'assumptions' ? 'text-white/70' : 'text-[#64748B]'
-              }`}>
-                Core hypotheses
-              </div>
-            </div>
-          </button>
-
-          {/* Node 3: Contradictions */}
-          <button
-            type="button"
-            onClick={() => handleNodeClick('contradictions')}
-            className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer group flex flex-col justify-between ${
-              isDossierExpanded && activeTab === 'contradictions'
-                ? 'bg-[#0A0D14] text-white border-[#0A0D14] shadow-xs'
-                : 'bg-[#FAFAFA] hover:bg-white text-[#0A0D14] border-[#E5E7EB] hover:border-[#CBD5E1] shadow-2xs'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-1.5">
-              <div className={`w-6 h-6 rounded-lg flex items-center justify-center p-1 ${
-                isDossierExpanded && activeTab === 'contradictions' ? 'bg-white/20 text-white' : 'bg-[#FEF2F2] text-[#DC2626]'
-              }`}>
-                <ShieldAlert size={13} />
-              </div>
-              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full font-bold ${
-                isDossierExpanded && activeTab === 'contradictions' ? 'bg-white/20 text-white' : 'bg-[#FEF2F2] text-[#DC2626]'
-              }`}>
-                {contradictions.length}
-              </span>
-            </div>
-            <div>
-              <div className="text-xs font-bold font-['Geist',sans-serif] leading-tight">
-                Contradictions
-              </div>
-              <div className={`text-[10px] font-mono mt-0.5 truncate ${
-                isDossierExpanded && activeTab === 'contradictions' ? 'text-white/70' : 'text-[#64748B]'
-              }`}>
-                Fatal friction risks
-              </div>
-            </div>
-          </button>
-
-          {/* Node 4: ScholarXIV Academic */}
-          <button
-            type="button"
-            onClick={() => handleNodeClick('academic')}
-            className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer group flex flex-col justify-between ${
-              isDossierExpanded && activeTab === 'academic'
-                ? 'bg-[#0A0D14] text-white border-[#0A0D14] shadow-xs'
-                : 'bg-[#FAFAFA] hover:bg-white text-[#0A0D14] border-[#E5E7EB] hover:border-[#CBD5E1] shadow-2xs'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-1.5">
-              <div className={`w-6 h-6 rounded-lg flex items-center justify-center p-1 ${
-                isDossierExpanded && activeTab === 'academic' ? 'bg-white/20 text-white' : 'bg-[#EEF2FF] text-[#4F46E5]'
-              }`}>
-                <ScholarXivLogo className="w-3.5 h-3.5" />
-              </div>
-              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full font-bold ${
-                isDossierExpanded && activeTab === 'academic' ? 'bg-white/20 text-white' : 'bg-[#EEF2FF] text-[#4F46E5]'
-              }`}>
-                {scholarPapersCount || 3}
-              </span>
-            </div>
-            <div>
-              <div className="text-xs font-bold font-['Geist',sans-serif] leading-tight">
-                ScholarXIV
-              </div>
-              <div className={`text-[10px] font-mono mt-0.5 truncate ${
-                isDossierExpanded && activeTab === 'academic' ? 'text-white/70' : 'text-[#64748B]'
-              }`}>
-                Academic literature
-              </div>
-            </div>
-          </button>
-
-          {/* Node 5: Smoke Tests */}
-          <button
-            type="button"
-            onClick={() => handleNodeClick('experiments')}
-            className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer group flex flex-col justify-between col-span-2 sm:col-span-1 ${
-              isDossierExpanded && activeTab === 'experiments'
-                ? 'bg-[#0A0D14] text-white border-[#0A0D14] shadow-xs'
-                : 'bg-[#FAFAFA] hover:bg-white text-[#0A0D14] border-[#E5E7EB] hover:border-[#CBD5E1] shadow-2xs'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-1.5">
-              <div className={`w-6 h-6 rounded-lg flex items-center justify-center p-1 ${
-                isDossierExpanded && activeTab === 'experiments' ? 'bg-white/20 text-white' : 'bg-[#F0FDF4] text-[#16A34A]'
-              }`}>
-                <FlaskConical size={13} />
-              </div>
-              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full font-bold ${
-                isDossierExpanded && activeTab === 'experiments' ? 'bg-white/20 text-white' : 'bg-[#F0FDF4] text-[#16A34A]'
-              }`}>
-                {experiments.length}
-              </span>
-            </div>
-            <div>
-              <div className="text-xs font-bold font-['Geist',sans-serif] leading-tight">
-                Smoke Tests
-              </div>
-              <div className={`text-[10px] font-mono mt-0.5 truncate ${
-                isDossierExpanded && activeTab === 'experiments' ? 'text-white/70' : 'text-[#64748B]'
-              }`}>
-                Actionable validation
-              </div>
-            </div>
-          </button>
-        </div>
+        <InteractiveEvidenceNodeGraph
+          ideaText={investigation.query || investigation.title}
+          supportItems={dynamicData.supportItems}
+          contradictItems={dynamicData.contradictItems}
+          unknownItem={dynamicData.unknownItem}
+          isThinking={false}
+          onSelectSource={onSelectSource}
+        />
       </div>
 
-      {/* 2. COMPACT EXPANDABLE SECTION CONTAINING FULL ARTIFACT DETAILS */}
+      {/* 2. COMPACT EXPANDABLE RESEARCH DOSSIER SECTION */}
       <div className="rounded-2xl border border-[#E5E7EB] bg-white overflow-hidden shadow-2xs transition-all">
         {/* Toggle Button Bar */}
         <button
@@ -300,21 +130,8 @@ export const ResponseResearchDossier: React.FC<ResponseResearchDossierProps> = (
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-[#F1F3F5] scrollbar-none">
               <button
                 type="button"
-                onClick={() => setActiveTab('graph')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 ${
-                  activeTab === 'graph'
-                    ? 'bg-[#0A0D14] text-white shadow-2xs'
-                    : 'bg-[#F3F4F6] text-[#4B5563] hover:text-[#0A0D14]'
-                }`}
-              >
-                <Network size={13} />
-                <span>Evidence Topology (Graph)</span>
-              </button>
-
-              <button
-                type="button"
                 onClick={() => setActiveTab('assumptions')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
                   activeTab === 'assumptions'
                     ? 'bg-[#0A0D14] text-white shadow-2xs'
                     : 'bg-[#F3F4F6] text-[#4B5563] hover:text-[#0A0D14]'
@@ -327,7 +144,7 @@ export const ResponseResearchDossier: React.FC<ResponseResearchDossierProps> = (
               <button
                 type="button"
                 onClick={() => setActiveTab('contradictions')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
                   activeTab === 'contradictions'
                     ? 'bg-[#0A0D14] text-white shadow-2xs'
                     : 'bg-[#F3F4F6] text-[#4B5563] hover:text-[#0A0D14]'
@@ -340,7 +157,7 @@ export const ResponseResearchDossier: React.FC<ResponseResearchDossierProps> = (
               <button
                 type="button"
                 onClick={() => setActiveTab('academic')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
                   activeTab === 'academic'
                     ? 'bg-[#0A0D14] text-white shadow-2xs'
                     : 'bg-[#F3F4F6] text-[#4B5563] hover:text-[#0A0D14]'
@@ -353,7 +170,7 @@ export const ResponseResearchDossier: React.FC<ResponseResearchDossierProps> = (
               <button
                 type="button"
                 onClick={() => setActiveTab('experiments')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
                   activeTab === 'experiments'
                     ? 'bg-[#0A0D14] text-white shadow-2xs'
                     : 'bg-[#F3F4F6] text-[#4B5563] hover:text-[#0A0D14]'
@@ -364,79 +181,45 @@ export const ResponseResearchDossier: React.FC<ResponseResearchDossierProps> = (
               </button>
             </div>
 
-            {/* TAB CONTENT 0: EVIDENCE TOPOLOGY GRAPH (MATCHING image.png) */}
-            {activeTab === 'graph' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between px-1">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-[#10B981]" />
-                    <span className="text-xs font-bold text-[#0A0D14] uppercase tracking-wider font-mono">
-                      Live Evidence Topology Graph
-                    </span>
-                  </div>
-                  <span className="text-[11px] font-mono text-[#64748B]">
-                    Drag nodes to reposition • Scroll or pinch to zoom • Click sources to inspect
-                  </span>
-                </div>
-
-                <div className="rounded-xl bg-[#FAFAFA] border border-[#E5E7EB] p-2 sm:p-4">
-                  <InteractiveEvidenceNodeGraph
-                    ideaText={investigation.query || investigation.title}
-                    supportItems={dynamicData.supportItems}
-                    contradictItems={dynamicData.contradictItems}
-                    unknownItem={dynamicData.unknownItem}
-                    isThinking={false}
-                    onSelectSource={onSelectSource}
-                  />
-                </div>
-              </div>
-            )}
-
             {/* TAB CONTENT 1: ASSUMPTIONS */}
             {activeTab === 'assumptions' && (
               <div className="space-y-2.5">
-                {assumptions.length > 0 ? (
-                  assumptions.map((assump, idx) => (
-                    <div
-                      key={assump.id || idx}
-                      className="p-3 rounded-xl bg-[#FAFAFA] border border-[#E5E7EB] hover:border-[#CBD5E1] transition-all text-left"
-                    >
-                      <div className="flex items-center justify-between text-[10px] font-mono mb-1">
-                        <span className="uppercase font-bold text-[#64748B]">
-                          HYPOTHESIS #{idx + 1} • {assump.category || 'Core'}
-                        </span>
-                        <span className={`px-2 py-0.5 rounded-full font-bold ${
-                          assump.status === 'SUPPORTED'
-                            ? 'bg-[#ECFDF5] text-[#059669]'
-                            : assump.status === 'CHALLENGED'
-                            ? 'bg-[#FEF2F2] text-[#DC2626]'
-                            : 'bg-[#FFFBEB] text-[#D97706]'
-                        }`}>
-                          {assump.status ? assump.status.toUpperCase() : 'UNKNOWN'} • {assump.testability ? `${assump.testability}% testable` : '85% confidence'}
-                        </span>
-                      </div>
-
-                      <p className="text-xs font-semibold text-[#0A0D14] leading-relaxed">
-                        {assump.text}
-                      </p>
-
-                      {onResearchAssumptionScholarXiv && (
-                        <button
-                          type="button"
-                          onClick={() => onResearchAssumptionScholarXiv(assump.id, assump.text)}
-                          className="mt-2 text-[11px] font-mono text-[#4F46E5] hover:underline flex items-center gap-1 cursor-pointer font-semibold"
-                        >
-                          <ScholarXivLogo className="w-3 h-3 text-[#4F46E5]" />
-                          <span>Run targeted ScholarXIV literature sweep →</span>
-                        </button>
-                      )}
+                {assumptions.map((assump, idx) => (
+                  <div
+                    key={assump.id || idx}
+                    className="p-3 rounded-xl bg-[#FAFAFA] border border-[#E5E7EB] hover:border-[#CBD5E1] transition-all text-left"
+                  >
+                    <div className="flex items-center justify-between text-[10px] font-mono mb-1">
+                      <span className="uppercase font-bold text-[#64748B]">
+                        HYPOTHESIS #{idx + 1} • {assump.category || 'Core'}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full font-bold ${
+                        assump.status === 'SUPPORTED'
+                          ? 'bg-[#ECFDF5] text-[#059669]'
+                          : assump.status === 'CHALLENGED'
+                          ? 'bg-[#FEF2F2] text-[#DC2626]'
+                          : 'bg-[#FFFBEB] text-[#D97706]'
+                      }`}>
+                        {assump.status ? assump.status.toUpperCase() : 'UNKNOWN'} • {assump.testability ? `${assump.testability}% testable` : '85% confidence'}
+                      </span>
                     </div>
-                  ))
-                ) : (
-                  <div className="p-4 rounded-xl bg-[#F8FAFC] text-center text-xs text-[#64748B]">
-                    No explicit assumptions isolated for this query yet.
+
+                    <p className="text-xs font-semibold text-[#0A0D14] leading-relaxed">
+                      {assump.text}
+                    </p>
+
+                    {onResearchAssumptionScholarXiv && (
+                      <button
+                        type="button"
+                        onClick={() => onResearchAssumptionScholarXiv(assump.id, assump.text)}
+                        className="mt-2 text-[11px] font-mono text-[#4F46E5] hover:underline flex items-center gap-1 cursor-pointer font-semibold"
+                      >
+                        <ScholarXivLogo className="w-3 h-3 text-[#4F46E5]" />
+                        <span>Run targeted ScholarXIV literature sweep →</span>
+                      </button>
+                    )}
                   </div>
-                )}
+                ))}
               </div>
             )}
 
@@ -522,48 +305,42 @@ export const ResponseResearchDossier: React.FC<ResponseResearchDossierProps> = (
             {/* TAB CONTENT 4: EXPERIMENTS */}
             {activeTab === 'experiments' && (
               <div className="space-y-2.5 text-left">
-                {experiments.length > 0 ? (
-                  experiments.map((exp, idx) => (
-                    <div key={exp.id || idx} className="p-3.5 rounded-xl bg-[#F0FDF4] border border-[#BBF7D0] space-y-2">
-                      <div className="flex items-center justify-between text-[10px] font-mono">
-                        <span className="font-bold text-[#166534] uppercase flex items-center gap-1">
-                          <FlaskConical size={12} />
-                          <span>{exp.testType ? exp.testType.replace('_', ' ').toUpperCase() : 'SMOKE TEST'}</span>
-                        </span>
-                        <span className="text-[#166534] font-semibold">{exp.duration || '48 Hours'}</span>
-                      </div>
-
-                      <h4 className="text-xs font-bold text-[#0A0D14]">{exp.title}</h4>
-                      <p className="text-[11px] text-[#374151] leading-relaxed">
-                        <strong>Hypothesis:</strong> {exp.hypothesis}
-                      </p>
-
-                      <div className="flex items-center justify-between pt-1">
-                        <span className="text-[10px] font-mono text-[#166534]">
-                          Success: {exp.successMetric}
-                        </span>
-
-                        {onOpenTestingTab && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (onLaunchExperiment) onLaunchExperiment(exp);
-                              onOpenTestingTab();
-                            }}
-                            className="px-2.5 py-1 rounded-lg bg-[#0A0D14] text-white text-[11px] font-semibold hover:bg-[#1E293B] flex items-center gap-1 transition-colors cursor-pointer"
-                          >
-                            <Compass size={11} />
-                            <span>Run in Playwright Testing →</span>
-                          </button>
-                        )}
-                      </div>
+                {experiments.map((exp, idx) => (
+                  <div key={exp.id || idx} className="p-3.5 rounded-xl bg-[#F0FDF4] border border-[#BBF7D0] space-y-2">
+                    <div className="flex items-center justify-between text-[10px] font-mono">
+                      <span className="font-bold text-[#166534] uppercase flex items-center gap-1">
+                        <FlaskConical size={12} />
+                        <span>{exp.testType ? exp.testType.replace('_', ' ').toUpperCase() : 'SMOKE TEST'}</span>
+                      </span>
+                      <span className="text-[#166534] font-semibold">{exp.duration || '48 Hours'}</span>
                     </div>
-                  ))
-                ) : (
-                  <div className="p-4 rounded-xl bg-[#F8FAFC] text-center text-xs text-[#64748B]">
-                    No smoke tests created for this idea yet.
+
+                    <h4 className="text-xs font-bold text-[#0A0D14]">{exp.title}</h4>
+                    <p className="text-[11px] text-[#374151] leading-relaxed">
+                      <strong>Hypothesis:</strong> {exp.hypothesis}
+                    </p>
+
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-[10px] font-mono text-[#166534]">
+                        Success: {exp.successMetric}
+                      </span>
+
+                      {onOpenTestingTab && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onLaunchExperiment) onLaunchExperiment(exp);
+                            onOpenTestingTab();
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-[#0A0D14] text-white text-[11px] font-semibold hover:bg-[#1E293B] flex items-center gap-1 transition-colors cursor-pointer"
+                        >
+                          <Compass size={11} />
+                          <span>Run in Playwright Testing →</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
-                )}
+                ))}
               </div>
             )}
 
@@ -589,5 +366,3 @@ export const ResponseResearchDossier: React.FC<ResponseResearchDossierProps> = (
     </div>
   );
 };
-
-export default ResponseResearchDossier;

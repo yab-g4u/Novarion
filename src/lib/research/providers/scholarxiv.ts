@@ -198,46 +198,22 @@ export class ScholarXIVProvider implements ResearchProvider {
     });
 
     const relevant = scored.filter(s => s.hits > 0).sort((a, b) => b.hits - a.hits);
-    if (relevant.length > 0) {
-      return relevant.slice(0, limit).map(s => ({
-        id: `scholarxiv-${s.paper.id}`,
-        sourceType: 'scholarxiv',
+    return relevant.slice(0, limit).map(s => ({
+      id: `scholarxiv-${s.paper.id}`,
+      sourceType: 'scholarxiv',
+      provider: 'scholarxiv',
+      title: s.paper.title,
+      url: `https://www.scholarxiv.com/papers/${s.paper.id}`,
+      author: { name: s.paper.authors },
+      publishedAt: s.paper.date,
+      excerpt: s.paper.abstract,
+      fullText: s.paper.abstract,
+      metadata: {
         provider: 'scholarxiv',
-        title: s.paper.title,
-        url: `https://www.scholarxiv.com/papers/${s.paper.id}`,
-        author: { name: s.paper.authors },
-        publishedAt: s.paper.date,
-        excerpt: s.paper.abstract,
-        fullText: s.paper.abstract,
-        metadata: {
-          provider: 'scholarxiv',
-          underlyingSource: 'ScholarXIV Peer-Reviewed Archive',
-          paperId: s.paper.id,
-          isPeerReviewed: true
-        }
-      }));
-    }
-
-    // Dynamic empirical synthesis for any user domain
-    const cleanSubject = query.replace(/[^\w\s]/g, ' ').trim().slice(0, 60);
-    return [
-      {
-        id: `scholarxiv-dyn-${Date.now()}-1`,
-        sourceType: 'scholarxiv',
-        provider: 'scholarxiv',
-        title: `Empirical Adoption Dynamics and Cognitive Friction in ${cleanSubject}`,
-        url: `https://scholar.google.com/scholar?q=${encodeURIComponent(query)}`,
-        author: { name: 'Dr. M. Thorne, E. Chen et al. (HCI & Behavioral Systems)' },
-        publishedAt: '2025-11-04',
-        excerpt: `A multi-cohort empirical study analyzing user retention and workflow adoption barriers for "${cleanSubject}". The authors find that sustained engagement drops by 64% when time-to-first-value exceeds 3 minutes or requires manual onboarding configurations.`,
-        fullText: `Controlled behavioral trial of 520 target practitioners evaluating tools designed for "${cleanSubject}". While baseline demand signals are high, switching costs against existing workflows remain the dominant failure mode.`,
-        metadata: {
-          provider: 'scholarxiv',
-          underlyingSource: 'ScholarXIV Peer-Reviewed Archive',
-          paperId: 'sx-dyn-empirical',
-          isPeerReviewed: true
-        }
+        underlyingSource: 'ScholarXIV Peer-Reviewed Archive',
+        paperId: s.paper.id,
+        isPeerReviewed: true
       }
-    ];
+    }));
   }
 }

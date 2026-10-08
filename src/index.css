@@ -169,11 +169,38 @@
   animation: dashTravel 1.8s linear infinite;
 }
 
+/* Rotating Highlight Word Keyframes */
+@keyframes probeHighlightWordExit {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(calc(-1 * var(--probe-shift-y, 12px)));
+    opacity: 0;
+  }
+}
+
+@keyframes probeHighlightWordEnter {
+  0% {
+    transform: translateY(var(--probe-shift-y, 12px));
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .hero-moving-grid {
     animation: none;
   }
   .connector-pulse {
     animation: none;
+  }
+  .probe-word-anim {
+    animation: none !important;
+    transform: none !important;
   }
 }

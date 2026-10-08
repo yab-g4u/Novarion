@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ProbeHero } from '../components/ui/probe-hero';
+import { ProbeSignalStrip } from '../components/landing/ProbeSignalStrip';
 import { LiveInvestigationExperience } from '../components/landing/LiveInvestigationExperience';
 import { EvidenceGraph } from '../components/EvidenceGraph';
 import { ProductTestingSection } from '../components/ProductTestingSection';
@@ -93,6 +94,9 @@ export const LandingPage: React.FC = () => {
           if (el) el.scrollIntoView({ behavior: 'smooth' });
         }}
       />
+
+      {/* SUBTLE FULL-WIDTH SIGNAL STRIP (QUIET INFRASTRUCTURE LAYER) */}
+      <ProbeSignalStrip />
 
       {/* EXPERIENCE B: LIVE INVESTIGATION (EXACT CLONE OF home-page.png) */}
       <LiveInvestigationExperience

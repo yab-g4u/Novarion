@@ -817,7 +817,7 @@ export const ProductTestingWorkspace: React.FC<ProductTestingWorkspaceProps> = (
 
                 <button
                   type="button"
-                  onClick={handleStartTesting}
+                  onClick={() => handleStartTesting()}
                   disabled={isTestingInProgress || !productUrl.trim()}
                   className="px-6 py-3 rounded-xl bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer active:scale-98 disabled:opacity-50 shrink-0 self-start sm:self-end"
                 >
