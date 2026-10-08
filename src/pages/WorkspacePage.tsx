@@ -28,7 +28,6 @@ import { DynamicGraphData, DynamicEvidenceSource } from '../types/evidenceGraph'
 import { ProbeLogo } from '../components/ProbeLogo';
 import { roomCodeFromIdea } from '../lib/collaboration/useInvestigationRoom';
 import { useVoice } from '../contexts/VoiceContext';
-import { VoiceControlButton } from '../components/voice/VoiceControlButton';
 
 // Investigation Workspace Components
 import { InvestigationSidebar, SidebarSection } from '../components/investigation/InvestigationSidebar';
@@ -59,7 +58,9 @@ import {
   assembleFinalInvestigationRecord,
   deleteInvestigation, 
   groupInvestigationsByDate,
-  generateInvestigationId 
+  generateInvestigationId,
+  updateInvestigation,
+  loadRemoteInvestigations 
 } from '../lib/investigations/investigationManager';
 
 function investigationToGraphData(inv: InvestigationRecord): DynamicGraphData {
@@ -201,6 +202,23 @@ export const WorkspacePage: React.FC = () => {
   const [isCreatingChat, setIsCreatingChat] = useState(false);
   const pendingRecordRef = useRef<InvestigationRecord | null>(null);
 
+  // Synchronize saved investigations with user identity & load remotely persisted history
+  useEffect(() => {
+    const local = getSavedInvestigations(user?.id);
+    setSavedInvestigations(local);
+    void loadRemoteInvestigations(user?.id).then((remote) => {
+      if (remote && remote.length > 0) {
+        const currentSaved = getSavedInvestigations(user?.id);
+        const map = new Map<string, InvestigationRecord>();
+        for (const item of remote) map.set(item.id, item);
+        for (const item of currentSaved) map.set(item.id, item);
+        const merged = Array.from(map.values());
+        persistInvestigations(merged, user?.id);
+        setSavedInvestigations(merged);
+      }
+    });
+  }, [user?.id]);
+
   // Synchronize active investigation with query parameter
   useEffect(() => {
     const chatIdParam = searchParams.get('chat');
@@ -246,20 +264,75 @@ export const WorkspacePage: React.FC = () => {
     setInvestigationIdea('');
   }, [searchParams, user?.id]);
 
-  // Keep Gemini Live aware of active workspace context
+  // Keep Gemini Live synchronized with full active workspace conversation memory
   useEffect(() => {
     const topContradiction = activeGraphData?.sources?.find(
       (s: any) => s.relationship === 'Challenges'
     )?.excerpt;
 
+    const recentMessages = (activeInvestigation?.messages || [])
+      .slice(-10)
+      .map((m) => ({
+        role: m.role,
+        content: m.content.slice(0, 500),
+        timestamp: m.timestamp
+      }));
+
+    const experimentTitles = (activeInvestigation?.experiments || []).map((e) => e.title);
+    const assumptionList = (activeInvestigation?.assumptions || []).map((a) => a.text);
+
     updateVoiceContext({
-      currentIdea: investigationIdea || 'New research idea',
+      investigationId: activeInvestigation?.id,
+      currentIdea: activeInvestigation?.query || activeInvestigation?.title || investigationIdea || 'New research idea',
+      title: activeInvestigation?.title,
       activeTab,
-      assumptions: activeGraphData?.coreAssumption ? [activeGraphData.coreAssumption] : [],
+      assumptions: assumptionList.length > 0 ? assumptionList : (activeGraphData?.coreAssumption ? [activeGraphData.coreAssumption] : []),
       strongestContradiction: topContradiction || null,
       evidenceCount: activeGraphData?.sources?.length || 0,
+      recentMessages,
+      experiments: experimentTitles,
+      documentFileName: activeInvestigation?.documentFileName
     });
-  }, [investigationIdea, activeTab, activeGraphData, updateVoiceContext]);
+  }, [investigationIdea, activeTab, activeGraphData, activeInvestigation, updateVoiceContext]);
+
+  // Persist completed voice dialogue turns into active investigation chat history
+  useEffect(() => {
+    const handleVoiceTurnCompleted = (e: any) => {
+      const { userText, agentText } = e.detail || {};
+      if (!userText && !agentText) return;
+      if (!activeInvestigation) return;
+
+      const newMsgs = [...activeInvestigation.messages];
+      if (userText) {
+        newMsgs.push({
+          id: `msg_${Date.now()}_voice_u`,
+          role: 'user',
+          content: userText,
+          timestamp: Date.now()
+        });
+      }
+      if (agentText) {
+        newMsgs.push({
+          id: `msg_${Date.now()}_voice_a`,
+          role: 'assistant',
+          content: agentText,
+          timestamp: Date.now()
+        });
+      }
+
+      const updatedRecord: InvestigationRecord = {
+        ...activeInvestigation,
+        messages: newMsgs,
+        updatedAt: Date.now()
+      };
+
+      setActiveInvestigation(updatedRecord);
+      updateInvestigation(updatedRecord, user?.id);
+    };
+
+    window.addEventListener('probe:voice-turn-completed', handleVoiceTurnCompleted);
+    return () => window.removeEventListener('probe:voice-turn-completed', handleVoiceTurnCompleted);
+  }, [activeInvestigation, user?.id]);
 
   // =========================================================================
   // CORE ACTION: New Investigation (Reliable, fast, clean)
@@ -476,11 +549,12 @@ export const WorkspacePage: React.FC = () => {
     (updated: InvestigationRecord) => {
       setActiveInvestigation(updated);
       setActiveGraphData(investigationToGraphData(updated));
-      persistInvestigations(
-        savedInvestigations.map((inv) => (inv.id === updated.id ? updated : inv)),
-        user?.id
-      );
-      setSavedInvestigations(getSavedInvestigations(user?.id));
+      const exists = savedInvestigations.some((inv) => inv.id === updated.id);
+      const nextList = exists
+        ? savedInvestigations.map((inv) => (inv.id === updated.id ? updated : inv))
+        : [updated, ...savedInvestigations];
+      persistInvestigations(nextList, user?.id);
+      setSavedInvestigations(nextList);
     },
     [savedInvestigations, user?.id]
   );

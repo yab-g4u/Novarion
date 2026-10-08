@@ -30,7 +30,6 @@ import {
 } from '../lib/research/types';
 import { DynamicGraphData, DynamicEvidenceSource } from '../types/evidenceGraph';
 import { BuildBriefPanel } from './buildBrief/BuildBriefPanel';
-import { VoiceControlButton } from './voice/VoiceControlButton';
 import { InvestigationThinkingMode } from './investigation/InvestigationThinkingMode';
 
 interface PressureTestWorkspaceProps {
@@ -42,7 +41,7 @@ interface PressureTestWorkspaceProps {
 }
 
 export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
-  initialIdea = 'I want to build a cooking app',
+  initialIdea = 'Autonomous AI code reviewer for pull requests',
   externalIdea,
   onOpenSourceModal,
   onPressureTestUpdated,
@@ -295,13 +294,12 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
                   runInvestigation();
                 }
               }}
-              placeholder="e.g. I want to build a cooking app"
+              placeholder="e.g. AI-powered customer support triage, or any product idea..."
               className="w-full text-base font-medium text-[#0A0D14] placeholder:text-[#94A3B8] border border-[#CBD5E1] rounded-2xl px-4 py-3 focus:outline-none focus:border-[#0F52BA] focus:ring-2 focus:ring-[#0F52BA]/15 transition-all bg-[#FAFAFA]"
             />
           </div>
 
           <div className="flex items-center gap-2 flex-shrink-0">
-            <VoiceControlButton size="md" />
             <button
               type="button"
               onClick={() => runInvestigation()}
@@ -328,7 +326,7 @@ export const PressureTestWorkspace: React.FC<PressureTestWorkspaceProps> = ({
           <span>Test Pre-built Cases:</span>
           {[
             'search about OCR for students files',
-            'I want to build a cooking app',
+            'Autonomous AI code reviewer for pull requests',
             'I want to build an AI bookkeeping product for freelancers.',
             'A local-first encrypted collaborative workspace for remote engineering teams.'
           ].map((sample) => (

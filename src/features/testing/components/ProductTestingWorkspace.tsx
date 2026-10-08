@@ -305,9 +305,13 @@ export const ProductTestingWorkspace: React.FC<ProductTestingWorkspaceProps> = (
   };
 
   // Launch Playwright Real User Simulation
-  const handleStartTesting = async () => {
-    const finalUrl = normalizeUrl(productUrl);
-    const finalTask = testQuery.trim() || 'Evaluate overall product usability, navigation, and user friction';
+  const handleStartTesting = async (overrideUrl?: string, overrideTask?: string) => {
+    const rawUrl = overrideUrl || productUrl;
+    const finalUrl = normalizeUrl(rawUrl);
+    const finalTask = (overrideTask || testQuery || '').trim() || 'Evaluate overall product usability, navigation, and user friction';
+
+    if (overrideUrl) setProductUrl(finalUrl);
+    if (overrideTask) setTestQuery(finalTask);
 
     localStorage.setItem('probe_test_url', finalUrl);
     localStorage.setItem('probe_test_task', finalTask);
@@ -378,6 +382,52 @@ export const ProductTestingWorkspace: React.FC<ProductTestingWorkspaceProps> = (
       showToast(`Error: ${err.message}`);
     }
   };
+
+  // Auto-launch pending voice test on mount if navigating into testing tab
+  useEffect(() => {
+    const isPending = localStorage.getItem('probe_test_pending_auto_launch');
+    if (isPending === 'true') {
+      localStorage.removeItem('probe_test_pending_auto_launch');
+      const pendingUrl = localStorage.getItem('probe_test_url');
+      const pendingTask = localStorage.getItem('probe_test_task');
+      if (pendingUrl) {
+        handleStartTesting(pendingUrl, pendingTask || undefined);
+      }
+    }
+  }, []);
+
+  // Synchronize with voice-triggered testing and browser actions
+  useEffect(() => {
+    const handleVoiceStartTest = (e: any) => {
+      const { productUrl: vUrl, task: vTask } = e.detail || {};
+      if (vUrl) {
+        setProductUrl(vUrl);
+        if (vTask) setTestQuery(vTask);
+        handleStartTesting(vUrl, vTask);
+      }
+    };
+
+    const handleVoiceBrowserAction = (e: any) => {
+      const { action, target, text } = e.detail || {};
+      if (target) {
+        const actionTask = action === 'test_flow'
+          ? `Test the ${target} flow and observe user friction`
+          : action === 'type'
+          ? `Type "${text || ''}" into ${target} and submit form`
+          : `Click the ${target} and observe the updated screen`;
+        setTestQuery(actionTask);
+        handleStartTesting(undefined, actionTask);
+      }
+    };
+
+    window.addEventListener('probe_start_test', handleVoiceStartTest);
+    window.addEventListener('probe_browser_action', handleVoiceBrowserAction);
+
+    return () => {
+      window.removeEventListener('probe_start_test', handleVoiceStartTest);
+      window.removeEventListener('probe_browser_action', handleVoiceBrowserAction);
+    };
+  }, [productUrl, testQuery]);
 
   // Reset workspace to run a new test
   const handleRunNewTest = () => {

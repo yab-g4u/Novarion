@@ -425,8 +425,6 @@ Probe completed a multi-source investigation across Reddit, web discussions, and
             </button>
           )}
 
-          <VoiceControlButton size="sm" />
-
           {onNewChat && (
             <button
               type="button"

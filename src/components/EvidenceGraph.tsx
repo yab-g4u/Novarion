@@ -44,7 +44,6 @@ import { useInvestigationRoom } from '../lib/collaboration/useInvestigationRoom'
 import { ShareInvestigationModal } from './collaboration/ShareInvestigationModal';
 import { NodeDetailDrawer, SelectedNodeContext } from './collaboration/NodeDetailDrawer';
 import { ValidationTest, NodeDecision } from '../types/collaboration';
-import { VoiceControlButton } from './voice/VoiceControlButton';
 
 interface EvidenceGraphProps {
   onSelectSource?: (source: any) => void;
@@ -849,7 +848,6 @@ export const EvidenceGraph: React.FC<EvidenceGraphProps> = ({
             >
               <Maximize2 size={13} />
             </button>
-            <VoiceControlButton size="sm" />
           </div>
         </div>
       </div>

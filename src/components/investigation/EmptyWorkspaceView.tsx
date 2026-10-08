@@ -244,16 +244,16 @@ export const EmptyWorkspaceView: React.FC<EmptyWorkspaceViewProps> = ({
                   onChange={handleFileUpload}
                   className="hidden"
                 />
-
-                <VoiceControlButton size="sm" />
               </div>
 
-              <button
-                type="button"
-                onClick={() => handleSubmit()}
-                disabled={(!query.trim() && !attachedFile) || isSubmitting}
-                className="flex items-center gap-2 px-5 py-2 rounded-xl bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-semibold disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer shadow-xs active:scale-98"
-              >
+              <div className="flex items-center gap-2">
+                <VoiceControlButton size="sm" />
+                <button
+                  type="button"
+                  onClick={() => handleSubmit()}
+                  disabled={(!query.trim() && !attachedFile) || isSubmitting}
+                  className="flex items-center gap-2 px-5 py-2 rounded-xl bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-semibold disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer shadow-xs active:scale-98"
+                >
                 {isSubmitting ? (
                   <>
                     <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -268,6 +268,7 @@ export const EmptyWorkspaceView: React.FC<EmptyWorkspaceViewProps> = ({
               </button>
             </div>
           </div>
+        </div>
 
           {/* 4 Starting Action Cards (Linear-like, compact, off-white) */}
           <div className="pt-2">

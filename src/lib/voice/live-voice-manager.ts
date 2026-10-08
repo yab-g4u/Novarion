@@ -17,6 +17,7 @@ export interface LiveVoiceManagerCallbacks {
   onUserTranscript: (text: string) => void;
   onAgentTranscript: (text: string) => void;
   onAgentTextChunk?: (text: string) => void;
+  onTurnComplete?: (userText: string, agentText: string) => void;
   onToolExecuting: (toolName: string, args: Record<string, any>) => void;
   onToolComplete: (toolName: string, result: any) => void;
   onError: (error: string) => void;
@@ -41,6 +42,8 @@ export class LiveVoiceManager {
   
   private silenceTimer: any = null;
   private speakingActive = false;
+  private currentUserTranscript = '';
+  private currentAgentTranscript = '';
 
   constructor(callbacks: LiveVoiceManagerCallbacks) {
     this.callbacks = callbacks;
@@ -188,6 +191,7 @@ export class LiveVoiceManager {
 
       case 'user_transcript':
         if (msg.text) {
+          this.currentUserTranscript += (this.currentUserTranscript ? ' ' : '') + msg.text;
           this.callbacks.onUserTranscript(msg.text);
           this.setState('thinking');
         }
@@ -195,6 +199,7 @@ export class LiveVoiceManager {
 
       case 'agent_transcript':
         if (msg.text) {
+          this.currentAgentTranscript += (this.currentAgentTranscript ? ' ' : '') + msg.text;
           this.callbacks.onAgentTranscript(msg.text);
         }
         break;
@@ -207,11 +212,17 @@ export class LiveVoiceManager {
 
       case 'interrupted':
         this.stopAudioPlayback();
+        this.currentAgentTranscript = '';
         this.callbacks.onInterrupted();
         this.setState('listening');
         break;
 
       case 'turn_complete':
+        if (this.callbacks.onTurnComplete && (this.currentUserTranscript.trim() || this.currentAgentTranscript.trim())) {
+          this.callbacks.onTurnComplete(this.currentUserTranscript.trim(), this.currentAgentTranscript.trim());
+          this.currentUserTranscript = '';
+          this.currentAgentTranscript = '';
+        }
         if (this.activeSources.length === 0) {
           this.setState('listening');
         }

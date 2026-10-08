@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 import { TestingSession } from './TestingSession';
 import { BrowserSessionData } from '../../../lib/testing/testing.types';
-import { VoiceControlButton } from '../../../components/voice/VoiceControlButton';
 
 interface TestingWorkspaceProps {
   onSyncToGraph?: (evidence: any) => void;
@@ -169,7 +168,6 @@ export const TestingWorkspace: React.FC<TestingWorkspaceProps> = ({ onSyncToGrap
                 className="flex-1 text-sm font-medium text-[#0A0D14] placeholder:text-[#94A3B8] border border-[#CBD5E1] rounded-2xl px-4 py-3 bg-[#FAFAFA] focus:outline-none focus:border-[#0F52BA] focus:ring-2 focus:ring-[#0F52BA]/15 transition-all"
               />
               <div className="flex items-center gap-2 flex-shrink-0">
-                <VoiceControlButton size="md" />
                 <button
                   type="button"
                   onClick={() => handleStartTest()}

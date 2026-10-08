@@ -169,14 +169,20 @@ export function createApiApp() {
   // Global rate limiter for API endpoints
   app.use('/api', generalApiRateLimiter.middleware);
 
-  // REST API: GET /api/investigations
-  app.get('/api/investigations', (_req: Request, res: Response) => {
-    const list = Array.from(serverInvestigationsById.values());
+  // REST API: GET /api/investigations (User isolated conversation memory)
+  app.get('/api/investigations', (req: Request, res: Response) => {
+    const userId = req.query.userId ? String(req.query.userId).trim() : null;
+    let list = Array.from(serverInvestigationsById.values());
+    if (userId) {
+      list = list.filter((inv: any) => inv.userId === userId);
+    } else {
+      list = list.filter((inv: any) => !inv.userId || inv.userId === 'user_founder' || inv.userId === 'guest');
+    }
     return res.status(200).json({ investigations: list });
   });
 
-  // REST API: POST /api/investigations
-  app.post('/api/investigations', (req: Request, res: Response) => {
+  // REST API: POST /api/investigations (Save & sync investigation + chat history)
+  app.post('/api/investigations', async (req: Request, res: Response) => {
     const body = req.body;
     if (!body || typeof body !== 'object') {
       return res.status(400).json({ error: 'Invalid investigation payload' });
@@ -185,6 +191,7 @@ export function createApiApp() {
     const inv = body.investigation && typeof body.investigation === 'object' ? body.investigation : body;
     const id = String(inv.id || inv.roomId || '').trim();
     const shareId = String(inv.shareId || body.shareId || '').trim();
+    const userId = body.userId || inv.userId || null;
 
     if (!id && !shareId) {
       return res.status(400).json({ error: 'Investigation id or shareId is required' });
@@ -195,6 +202,7 @@ export function createApiApp() {
       id: id || shareId,
       roomId: id || shareId,
       shareId: shareId || inv.shareId || id,
+      userId,
       updatedAt: Date.now(),
     };
 
@@ -203,6 +211,24 @@ export function createApiApp() {
     }
     if (record.shareId) {
       serverInvestigationsByShareId.set(record.shareId, record);
+    }
+
+    // Persist to Supabase if available
+    try {
+      const { getSupabaseClient } = await import('../supabase');
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        await supabase.from('investigations').upsert({
+          id: record.id,
+          title: record.title || 'Investigation',
+          query: record.query || '',
+          user_id: userId,
+          data: record,
+          updated_at: new Date().toISOString()
+        }).catch(() => {});
+      }
+    } catch {
+      // ignore
     }
 
     return res.status(200).json({

@@ -20,7 +20,7 @@ const CHALLENGE_PHRASES = [
 // Incompatible domain clusters for hard topic-mismatch gating
 export const DOMAIN_SIGNATURES: Record<string, RegExp> = {
   accounting: /\b(bookkeeping|quickbooks|invoice|invoices|receipts|accounting|tax|taxes|cpa|deduction|stripe|bank feeds|ledger|freshbooks|wave)\b/i,
-  cooking: /\b(cooking|cook|recipe|recipes|pantry|dinner|meal|meals|ingredients|kitchen|leftovers|grocery|groceries|eat|eating|food|dish|dishes)\b/i,
+  cooking: /\b(recipe|recipes|pantry\s+inventory|dinner\s+recipe|what\s+to\s+cook)\b/i,
   coding: /\b(coding|compiler|ide|github|debugger|syntax|api deprecation|codebase|typescript|python|developer|pull request|git repo)\b/i,
   crypto: /\b(crypto|bitcoin|ethereum|tokenomics|web3|wallet|minting|solana|blockchain)\b/i,
   health: /\b(clinical|diagnosis|patient|doctor|hipaa|hospital|pharmacology|medical)\b/i

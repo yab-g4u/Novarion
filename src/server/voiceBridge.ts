@@ -23,7 +23,7 @@ const PROBE_TOOLS: { functionDeclarations: ToolFunctionDeclaration[] }[] = [
           properties: {
             idea: {
               type: 'STRING',
-              description: 'The core business idea, problem, or hypothesis to investigate (e.g. "AI inventory system for restaurants").'
+              description: 'The core business idea, problem, or hypothesis to investigate (e.g. "B2B sales automation", "Developer API", "Consumer marketplace", or any user-provided idea).'
             }
           },
           required: ['idea']
@@ -92,7 +92,7 @@ const PROBE_TOOLS: { functionDeclarations: ToolFunctionDeclaration[] }[] = [
             },
             method: {
               type: 'STRING',
-              description: 'Testing methodology (e.g. "Interview 10 restaurant GMs", "Landing page smoke test", "Usability test").'
+              description: 'Testing methodology (e.g. "User interviews", "Landing page smoke test", "Interactive usability test", "A/B test").'
             }
           },
           required: ['title']
@@ -100,20 +100,42 @@ const PROBE_TOOLS: { functionDeclarations: ToolFunctionDeclaration[] }[] = [
       },
       {
         name: 'start_product_test',
-        description: 'Navigates to the Product Testing subsystem and launches an autonomous browser agent session to empirically test a product workflow.',
+        description: 'Navigates to the Product Testing subsystem and launches a real autonomous Playwright browser testing session on any website URL. Trigger immediately when user says "Test chatgpt.com", "Test links.et", or "Test <website URL>".',
         parameters: {
           type: 'OBJECT',
           properties: {
             productUrl: {
               type: 'STRING',
-              description: 'Product URL to test (defaults to "https://links.et/" or user specified URL).'
+              description: 'The website URL to test (e.g. "https://chatgpt.com", "https://links.et", or any user-specified URL).'
             },
             task: {
               type: 'STRING',
-              description: 'The user journey task to execute in the browser.'
+              description: 'Optional specific user journey or test goal. If omitted, defaults to evaluating the landing page and core usability.'
             }
           },
-          required: ['productUrl', 'task']
+          required: ['productUrl']
+        }
+      },
+      {
+        name: 'execute_browser_action',
+        description: 'Executes a follow-up live browser action or user journey on the tested website in Probe live preview, such as clicking a button or testing a flow. Trigger when user says "Click the login button", "Test the signup flow", "Click pricing", etc.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            action: {
+              type: 'STRING',
+              description: 'The browser action: "click", "test_flow", "navigate", or "type".'
+            },
+            target: {
+              type: 'STRING',
+              description: 'Target element, button, link, or flow to test (e.g. "login button", "signup flow", "pricing link", "get started").'
+            },
+            text: {
+              type: 'STRING',
+              description: 'Optional text to type if action is "type".'
+            }
+          },
+          required: ['action', 'target']
         }
       },
       {
@@ -154,15 +176,22 @@ const SYSTEM_INSTRUCTION = `You are Probe Voice — the real-time voice intellig
 Probe is an empirical investigation platform for founders to stress-test ideas before building.
 Your role:
 1. You directly CONTROL and OPERATE the Probe web application using your available tools.
-2. When the user asks you to research an idea, check academic papers, find contradictions, create experiments, or start a product test, YOU MUST CALL THE CORRESPONDING TOOL.
+2. When the user asks you to research an idea, check academic papers, find contradictions, create experiments, test a website, or click buttons, YOU MUST CALL THE CORRESPONDING TOOL.
 3. Keep spoken responses concise, punchy, confident, and natural (1-3 sentences maximum). Avoid markdown, bullet points, or visual formatting in spoken speech.
-4. Voice context awareness:
-   - When the user says "Create an experiment for that" or "Create an experiment for it", refer to the currently selected or strongest contradiction or assumption from the active investigation.
+4. Voice context & persistent conversation memory:
+   - You share FULL conversation memory with Probe's text chat and active workspace.
+   - Refer to previously stated ideas, user-provided info, assumptions, and past decisions naturally without asking the user to repeat themselves.
+   - When the user says "Create an experiment for that" or "Create an experiment for it", refer to the currently selected or strongest contradiction/assumption from the active investigation.
    - When the user asks to check academic research, call search_academic_research.
-   - When the user asks to start a product test, call start_product_test with appropriate product URL and task.
    - When the user asks to see contradictions, call show_strongest_contradiction.
-5. You operate in continuous hands-free dialogue. The user can speak anytime, interrupt you, or give follow-up commands without touching the keyboard.
-6. Safety: Normal actions (research, filtering, experiments, navigation) execute immediately. If the user asks for destructive operations like deleting all data, ask for confirmation first.`;
+5. Voice-controlled live website testing:
+   - When the user says "Test chatgpt.com", "Test links.et", or "Test <any website URL>", IMMEDIATELY call start_product_test with the target URL.
+   - When the user issues follow-up browser commands like "Click the login button", "Test the signup flow", or "Click get started", IMMEDIATELY call execute_browser_action.
+6. Domain Agnostic (NO cooking/restaurant bias):
+   - You are completely domain-agnostic. NEVER assume, suggest, or default to cooking, recipes, food, or restaurants unless the user explicitly requested that specific domain.
+   - Adapt dynamically to ANY legitimate idea, B2B software, developer tool, consumer tech, or website URL the user presents.
+7. Hands-free dialogue:
+   - Normal operations execute immediately. Speak natural, conversational confirmations of what was executed.`;
 
 export function setupVoiceBridge(server: HttpServer) {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -366,13 +395,26 @@ export function setupVoiceBridge(server: HttpServer) {
           if (liveSession && isConnectedToGemini) {
             try {
               const ctx = msg.context;
-              const contextText = `[PROBE UI CONTEXT UPDATE]
-- Active Idea: "${ctx.currentIdea || 'none'}"
+              const formattedMessages = Array.isArray(ctx.recentMessages) && ctx.recentMessages.length > 0
+                ? ctx.recentMessages
+                    .map((m: any) => `  [${(m.role || 'user').toUpperCase()}]: ${m.content}`)
+                    .join('\n')
+                : 'No prior messages in session';
+
+              const contextText = `[PROBE ACTIVE CONVERSATION MEMORY & WORKSPACE STATE]
+- Active Idea / Topic: "${ctx.currentIdea || 'none'}"
+- Investigation Title: "${ctx.title || ctx.currentIdea || 'none'}"
 - Current Section: ${ctx.activeTab || 'research'}
 - Extracted Assumptions: ${JSON.stringify(ctx.assumptions || [])}
 - Strongest Contradiction: "${ctx.strongestContradiction || 'none'}"
-- Selected Item: "${ctx.selectedItem || 'none'}"
-- Verified Evidence Count: ${ctx.evidenceCount || 0}`;
+- Validation Experiments: ${JSON.stringify(ctx.experiments || [])}
+- User Decisions & Info: "${ctx.userDecisions || 'none'}"
+- Verified Evidence Signals: ${ctx.evidenceCount || 0}
+- Attached Context Document: "${ctx.documentFileName || 'none'}"
+- Shared Text & Voice Conversation History:
+${formattedMessages}
+
+Note: Use this shared memory to answer follow-up questions seamlessly without asking the user to repeat themselves.`;
 
               liveSession.sendClientContent({
                 turns: [

@@ -152,38 +152,68 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
 
         case 'start_product_test': {
-          const productUrl = args.productUrl || 'https://links.et/';
-          const task = args.task || 'Verify core user journey and measure friction';
+          let pUrl = (args.productUrl || '').trim();
+          if (!pUrl) {
+            pUrl = 'https://links.et/';
+          } else if (!pUrl.startsWith('http://') && !pUrl.startsWith('https://')) {
+            pUrl = `https://${pUrl}`;
+          }
+          const task = (args.task || 'Evaluate landing page, core user journey, and UX friction').trim();
 
-          localStorage.setItem('probe_test_url', productUrl);
+          localStorage.setItem('probe_test_url', pUrl);
           localStorage.setItem('probe_test_task', task);
+          localStorage.setItem('probe_test_pending_auto_launch', 'true');
 
           if (!location.pathname.startsWith('/app/testing')) {
             navigate('/app/testing');
           }
 
-          window.dispatchEvent(
-            new CustomEvent('probe_start_test', {
-              detail: { productUrl, task }
-            })
-          );
+          // Trigger live testing workspace event immediately and with retries
+          const trigger = () => {
+            window.dispatchEvent(
+              new CustomEvent('probe_start_test', {
+                detail: { productUrl: pUrl, task }
+              })
+            );
+          };
+          setTimeout(trigger, 60);
+          setTimeout(trigger, 200);
+          setTimeout(trigger, 500);
 
-          // Trigger test session API
-          try {
-            const res = await fetch('/api/testing/session', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ productUrl, task, maxSteps: 25, timeoutMs: 120000 })
-            });
-            if (res.ok) {
-              const session = await res.json();
-              return { status: 'product_test_launched', sessionId: session.sessionId, productUrl, task };
-            }
-          } catch (e) {
-            // ignore
+          return {
+            status: 'product_test_launched',
+            productUrl: pUrl,
+            task,
+            message: `Opening ${pUrl} in Probe live testing preview with Playwright session.`
+          };
+        }
+
+        case 'execute_browser_action':
+        case 'browser_action': {
+          const action = args.action || 'click';
+          const target = args.target || 'core button';
+          const text = args.text;
+
+          if (!location.pathname.startsWith('/app/testing')) {
+            navigate('/app/testing');
           }
 
-          return { status: 'product_test_launched', productUrl, task };
+          const trigger = () => {
+            window.dispatchEvent(
+              new CustomEvent('probe_browser_action', {
+                detail: { action, target, text }
+              })
+            );
+          };
+          setTimeout(trigger, 60);
+          setTimeout(trigger, 200);
+
+          return {
+            status: 'browser_action_executed',
+            action,
+            target,
+            message: `Executing ${action} on "${target}" in live preview.`
+          };
         }
 
         case 'navigate_view': {
@@ -239,6 +269,19 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         onStateChange: (st) => setVoiceState(st),
         onUserTranscript: (txt) => setUserTranscript(txt),
         onAgentTranscript: (txt) => setAgentTranscript(txt),
+        onTurnComplete: (userTxt, agentTxt) => {
+          if (typeof window !== 'undefined' && (userTxt.trim() || agentTxt.trim())) {
+            window.dispatchEvent(
+              new CustomEvent('probe:voice-turn-completed', {
+                detail: {
+                  userText: userTxt.trim(),
+                  agentText: agentTxt.trim(),
+                  timestamp: Date.now()
+                }
+              })
+            );
+          }
+        },
         onToolExecuting: (tool, args) => {
           setCurrentAction(tool);
           setCurrentActionArgs(args);
