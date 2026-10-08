@@ -11,9 +11,7 @@ import {
   X,
   Clock,
   Sparkles,
-  Trophy,
   Network,
-  FlaskConical,
   ListTodo,
   Box,
   Layers,
@@ -185,38 +183,6 @@ export const InvestigationSidebar: React.FC<InvestigationSidebarProps> = ({
           <div className="flex items-center gap-2.5">
             <Network size={16} className={activeSection === 'evidence' ? 'text-[#0A0D14]' : 'text-[#64748B]'} />
             <span>Evidence</span>
-          </div>
-        </button>
-
-        {/* Competitors */}
-        <button
-          type="button"
-          onClick={() => onNavigateSection?.('competitors')}
-          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-medium transition-colors cursor-pointer ${
-            activeSection === 'competitors'
-              ? 'bg-[#F4F4F5] text-[#0A0D14] font-bold'
-              : 'text-[#475569] hover:text-[#0A0D14] hover:bg-[#F4F4F5]'
-          }`}
-        >
-          <div className="flex items-center gap-2.5">
-            <Trophy size={16} className={activeSection === 'competitors' ? 'text-[#0A0D14]' : 'text-[#64748B]'} />
-            <span>Competitors</span>
-          </div>
-        </button>
-
-        {/* Validation Lab */}
-        <button
-          type="button"
-          onClick={() => onNavigateSection?.('validation_lab')}
-          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-medium transition-colors cursor-pointer ${
-            activeSection === 'validation_lab'
-              ? 'bg-[#F4F4F5] text-[#0A0D14] font-bold'
-              : 'text-[#475569] hover:text-[#0A0D14] hover:bg-[#F4F4F5]'
-          }`}
-        >
-          <div className="flex items-center gap-2.5">
-            <FlaskConical size={16} className={activeSection === 'validation_lab' ? 'text-[#0A0D14]' : 'text-[#64748B]'} />
-            <span>Validation Lab</span>
           </div>
         </button>
       </nav>

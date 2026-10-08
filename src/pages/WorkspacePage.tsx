@@ -675,7 +675,7 @@ export const WorkspacePage: React.FC = () => {
                 >
                   <Menu size={15} />
                 </button>
-                <span className="text-xs font-bold text-[#0A0D14]">Probe Product Testing</span>
+                <span className="text-xs font-bold text-[#0A0D14]">Product Testing</span>
               </div>
             )}
             <div className="md:hidden p-2.5 px-4 border-b border-[#E5E7EB] bg-white flex items-center justify-between shrink-0">
@@ -687,7 +687,7 @@ export const WorkspacePage: React.FC = () => {
               >
                 <Menu size={15} />
               </button>
-              <span className="text-xs font-bold text-[#0A0D14]">Probe Product Testing</span>
+              <span className="text-xs font-bold text-[#0A0D14]">Product Testing</span>
             </div>
             <ProductTestingWorkspace
               onBackToInvestigations={() => handleNavigateSection('investigations')}

@@ -17,7 +17,9 @@ import { useVoice } from '../../contexts/VoiceContext';
 
 export const FloatingVoicePill: React.FC = () => {
   const location = useLocation();
+  const isAuth = location.pathname.startsWith('/signin') || location.pathname.startsWith('/auth');
   const isWorkspace = location.pathname.startsWith('/app') || location.pathname.startsWith('/r/');
+
   const {
     voiceState,
     isConnected,
@@ -54,13 +56,23 @@ export const FloatingVoicePill: React.FC = () => {
     }
   }, [userTranscript, currentAction, agentTranscript]);
 
+  // Completely remove mic from auth section
+  if (isAuth) {
+    return null;
+  }
+
+  // In workspace, voice control is seamlessly integrated directly in the chat input and header.
+  // Never render the floating pill over the workspace chat interface.
+  if (isWorkspace) {
+    return null;
+  }
+
   const handlePillClick = (e: React.MouseEvent) => {
     e.preventDefault();
     if (!isConnected) {
       startVoice();
       setIsExpanded(true);
     } else {
-      // Toggle card expansion when clicked while active
       setIsExpanded((prev) => !prev);
     }
   };
@@ -78,13 +90,6 @@ export const FloatingVoicePill: React.FC = () => {
       .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
       .join(' ');
   };
-
-  // When in workspace and voice is idle (not connected) with no error,
-  // do not render the floating pill over the workspace chat interface.
-  // The workspace already provides integrated voice buttons in the input and header.
-  if (isWorkspace && !isConnected && !errorMessage) {
-    return null;
-  }
 
   return (
     <div

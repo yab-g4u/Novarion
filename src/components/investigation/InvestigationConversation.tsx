@@ -469,7 +469,7 @@ Probe completed a multi-source investigation across Reddit, web discussions, and
                       <ProbeLogo className="w-3.5 h-3.5" inverted />
                     </div>
                     <span className="font-bold text-xs text-[#0A0D14] font-['Geist',sans-serif]">
-                      Probe Research Engine
+                      Probe
                     </span>
                     <span className="text-[10px] text-[#9CA3AF] font-mono">
                       • {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -611,16 +611,16 @@ Probe completed a multi-source investigation across Reddit, web discussions, and
                 }
               }}
               disabled={isSubmitting}
-              className="flex-1 bg-transparent py-2.5 px-2 text-xs sm:text-sm text-[#0A0D14] placeholder-[#9CA3AF] focus:outline-none min-w-0"
+              className="flex-1 bg-transparent py-2.5 px-3 text-xs sm:text-sm text-[#0A0D14] placeholder-[#9CA3AF] focus:outline-none min-w-0"
             />
 
-            <div className="shrink-0 flex items-center gap-1.5 pr-1">
+            <div className="shrink-0 flex items-center gap-2 pr-1.5 pl-1">
               <VoiceControlButton size="sm" />
               <button
                 type="button"
                 onClick={() => handleSendMessage()}
                 disabled={(!inputText.trim() && !attachedFile) || isSubmitting}
-                className="p-2 rounded-xl bg-[#0A0D14] hover:bg-[#1E293B] text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer shadow-2xs active:scale-95"
+                className="p-2 rounded-xl bg-[#0A0D14] hover:bg-[#1E293B] text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer shadow-2xs active:scale-95 shrink-0"
                 title="Send inquiry"
               >
                 <Send size={14} />

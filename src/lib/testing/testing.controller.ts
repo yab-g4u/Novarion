@@ -19,9 +19,10 @@ testingRouter.post('/session', async (req: Request, res: Response) => {
     const result = await testingService.createSession(parseResult.data);
     return res.status(201).json(result);
   } catch (err: any) {
-    return res.status(500).json({
+    console.error('[Probe Testing Controller Error]:', err);
+    return res.status(400).json({
       error: 'Failed to launch product testing session',
-      message: err.message
+      message: err?.message || 'Invalid product URL or testing request parameters'
     });
   }
 });

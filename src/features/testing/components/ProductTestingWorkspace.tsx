@@ -659,13 +659,30 @@ export const ProductTestingWorkspace: React.FC<ProductTestingWorkspaceProps> = (
 
         {/* Page Title & Subtitle */}
         <div className="space-y-1.5">
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#0A0D14]">
-            {isFinished 
-              ? `Test Report: ${detectedDomain}` 
-              : isTestingInProgress 
-              ? `Testing ${detectedDomain} in Real Chromium` 
-              : 'Test Any Live Product in Real World'}
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#0A0D14] flex flex-wrap items-baseline gap-2">
+            <span>{isFinished ? 'Test Report:' : isTestingInProgress ? 'Testing' : 'Test Any Live Product in Real World'}</span>
+            {(isFinished || isTestingInProgress) && (
+              <span className="text-[#0091FF] font-mono text-xl sm:text-2xl font-bold break-all">
+                {productUrl}
+              </span>
+            )}
           </h1>
+          {(isFinished || isTestingInProgress) && (
+            <div className="flex items-center gap-2 pt-1 flex-wrap">
+              <span className="text-xs font-mono font-medium text-[#64748B]">Specified Link:</span>
+              <a
+                href={productUrl.startsWith('http') ? productUrl : `https://${productUrl}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white border border-[#BFDBFE] text-xs font-mono font-semibold text-[#0091FF] hover:bg-[#EFF6FF] shadow-2xs transition-colors group"
+                title="Open user-specified link in new tab"
+              >
+                <Link2 size={13} className="text-[#0091FF] shrink-0" />
+                <span className="underline underline-offset-2 break-all">{productUrl}</span>
+                <ExternalLink size={12} className="text-[#60A5FA] group-hover:text-[#0091FF] shrink-0" />
+              </a>
+            </div>
+          )}
           <p className="text-xs sm:text-sm text-[#64748B] leading-relaxed max-w-3xl">
             {isFinished
               ? 'Empirical test results captured via isolated Playwright Chromium session with live user trace and UX friction analysis.'
@@ -920,8 +937,8 @@ export const ProductTestingWorkspace: React.FC<ProductTestingWorkspaceProps> = (
 
                 <div className="flex-1 max-w-xl mx-auto flex items-center bg-[#05070A] border border-[#222732] rounded-xl px-3 py-1 text-xs text-[#94A3B8] font-mono">
                   <Lock size={12} className="text-[#10B981] mr-2 shrink-0" />
-                  <span className="text-[#CBD5E1] truncate">
-                    {sessionData?.currentUrl || productUrl}
+                  <span className="text-[#CBD5E1] truncate font-mono" title={productUrl}>
+                    {productUrl}
                   </span>
                   <Loader2 size={12} className="animate-spin ml-auto text-[#0091FF] shrink-0" />
                 </div>
@@ -1017,8 +1034,18 @@ export const ProductTestingWorkspace: React.FC<ProductTestingWorkspaceProps> = (
                         · {verdictInfo.confidence}% Confidence
                       </span>
                     </div>
-                    <h2 className="text-lg sm:text-xl font-extrabold text-[#0A0D14] mt-1">
-                      {detectedDomain} Usability Verdict
+                    <h2 className="text-lg sm:text-xl font-extrabold text-[#0A0D14] mt-1 flex items-baseline gap-2 flex-wrap">
+                      <span>Usability Verdict:</span>
+                      <a
+                        href={productUrl.startsWith('http') ? productUrl : `https://${productUrl}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#0091FF] hover:underline font-mono text-base sm:text-lg break-all inline-flex items-center gap-1 font-bold"
+                        title="Open tested target link"
+                      >
+                        <span>{productUrl}</span>
+                        <ExternalLink size={13} className="shrink-0" />
+                      </a>
                     </h2>
                   </div>
                 </div>
@@ -1208,12 +1235,22 @@ export const ProductTestingWorkspace: React.FC<ProductTestingWorkspaceProps> = (
                 {/* Hero Viewport Capture */}
                 {latestScreenshot && (
                   <div className="rounded-3xl border border-[#E5E7EB] bg-white overflow-hidden shadow-xs">
-                    <div className="p-3.5 bg-[#F8FAFC] border-b border-[#E2E8F0] flex items-center justify-between text-xs font-mono">
-                      <div className="flex items-center gap-2">
-                        <Lock size={12} className="text-[#10B981]" />
-                        <span className="font-semibold text-[#0A0D14]">{sessionData.currentUrl}</span>
+                    <div className="p-3.5 bg-[#F8FAFC] border-b border-[#E2E8F0] flex items-center justify-between text-xs font-mono gap-2">
+                      <div className="flex items-center gap-2 truncate">
+                        <Lock size={12} className="text-[#10B981] shrink-0" />
+                        <span className="font-semibold text-[#0A0D14] truncate font-mono" title={productUrl}>
+                          {productUrl}
+                        </span>
                       </div>
-                      <span className="text-[#64748B] text-[11px]">Final Verified State Capture</span>
+                      <a
+                        href={productUrl.startsWith('http') ? productUrl : `https://${productUrl}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#0091FF] hover:underline text-[11px] flex items-center gap-1 font-mono shrink-0 font-medium"
+                      >
+                        <span>Open exact link</span>
+                        <ExternalLink size={11} />
+                      </a>
                     </div>
                     <div className="p-4 bg-[#0A0D14] flex items-center justify-center cursor-pointer" onClick={() => setInspectedScreenshot(latestScreenshot)}>
                       <img 
@@ -1235,7 +1272,18 @@ export const ProductTestingWorkspace: React.FC<ProductTestingWorkspaceProps> = (
                     <ul className="space-y-2 text-xs text-[#334155]">
                       <li className="flex items-start gap-2">
                         <Check size={14} className="text-[#059669] shrink-0 mt-0.5" />
-                        <span>Target domain: <strong>{detectedDomain}</strong></span>
+                        <span className="flex items-center gap-1.5 flex-wrap">
+                          <span>Target Link Tested:</span>
+                          <a
+                            href={productUrl.startsWith('http') ? productUrl : `https://${productUrl}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-mono font-semibold text-[#0091FF] underline inline-flex items-center gap-1 break-all"
+                          >
+                            <span>{productUrl}</span>
+                            <ExternalLink size={11} />
+                          </a>
+                        </span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check size={14} className="text-[#059669] shrink-0 mt-0.5" />

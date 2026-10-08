@@ -62,9 +62,16 @@ export class TestingService {
     }
 
     if (this.activeSessionCount >= this.MAX_CONCURRENT_SESSIONS) {
-      throw new Error(
-        'A Playwright browser session is currently active. Please wait a few seconds for it to finish before starting another test.'
+      console.log(
+        `[Probe Testing] Stopping prior active sessions before launching new test for ${validation.normalizedUrl}`
       );
+      for (const [, s] of this.sessions.entries()) {
+        const st = s.getStatus();
+        if (st === 'RUNNING' || st === 'STARTING' || st === 'QUEUED') {
+          s.finish('STOPPED').catch(() => {});
+        }
+      }
+      this.activeSessionCount = 0;
     }
 
     // Use a clean, short opaque sessionId (never embed encoded target URLs in the route path)
