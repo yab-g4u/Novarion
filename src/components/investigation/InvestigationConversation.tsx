@@ -16,7 +16,9 @@ import {
   Menu,
   Layers,
   Edit3,
-  Check
+  Check,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 import { ProbeLogo } from '../ProbeLogo';
 import { 
@@ -32,6 +34,7 @@ import { StructuredResponseRenderer } from './StructuredResponseRenderer';
 import { InvestigationThinkingMode } from './InvestigationThinkingMode';
 import { VoiceControlButton } from '../voice/VoiceControlButton';
 import { ResearchPipelineBar, PipelineStage } from './ResearchPipelineBar';
+import { BuildPackageModal } from '../build/BuildPackageModal';
 
 interface InvestigationConversationProps {
   investigation: InvestigationRecord;
@@ -83,9 +86,12 @@ export const InvestigationConversation: React.FC<InvestigationConversationProps>
   const [streamedTier, setStreamedTier] = useState<'fast' | 'retrieval' | 'strong' | 'complete' | undefined>(undefined);
   const [attachedFile, setAttachedFile] = useState<{ file: File; name: string; size: string } | null>(null);
   const [isExtractingDoc, setIsExtractingDoc] = useState(false);
+  const [attachedDocContext, setAttachedDocContext] = useState<ExtractedDocumentContext | null>(null);
+  const [extractError, setExtractError] = useState<string | null>(null);
   const [activePipelineStage, setActivePipelineStage] = useState<PipelineStage>('evidence');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(investigation.title);
+  const [isBuildPackageOpen, setIsBuildPackageOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -99,17 +105,22 @@ export const InvestigationConversation: React.FC<InvestigationConversationProps>
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setExtractError(null);
+    setAttachedDocContext(null);
+
     const sizeStr = `${(file.size / 1024).toFixed(1)} KB`;
     setAttachedFile({ file, name: file.name, size: sizeStr });
 
     setIsExtractingDoc(true);
     try {
       const extracted = await extractDocumentContext(file);
+      setAttachedDocContext(extracted);
       if (extracted.title && !inputText) {
         setInputText(`Investigate PRD: ${extracted.title}`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Document extraction error:', err);
+      setExtractError(err?.message || 'Failed to extract text from document.');
     } finally {
       setIsExtractingDoc(false);
     }
@@ -117,6 +128,8 @@ export const InvestigationConversation: React.FC<InvestigationConversationProps>
 
   const removeAttachedFile = () => {
     setAttachedFile(null);
+    setAttachedDocContext(null);
+    setExtractError(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -133,26 +146,46 @@ export const InvestigationConversation: React.FC<InvestigationConversationProps>
 
   const handleSendMessage = async (customPrompt?: string) => {
     const textToSend = (customPrompt || inputText).trim();
-    if ((!textToSend && !attachedFile) || isSubmitting) return;
+    if ((!textToSend && !attachedFile) || isSubmitting || extractError) return;
+
+    let effectiveDocContext = attachedDocContext || investigation.documentContext;
+    if (attachedFile && !effectiveDocContext && !extractError) {
+      try {
+        effectiveDocContext = await extractDocumentContext(attachedFile.file);
+      } catch (err: any) {
+        setExtractError(err?.message || 'Failed to parse attached document.');
+        return;
+      }
+    }
+
+    const messageContent =
+      textToSend ||
+      (attachedFile
+        ? `Uploaded document: ${attachedFile.name}${effectiveDocContext?.title ? ` (${effectiveDocContext.title})` : ''}`
+        : 'Inquiry');
 
     const userMessage: InvestigationMessage = {
       id: `msg_${Date.now()}_user`,
       role: 'user',
-      content: textToSend || `Uploaded document context for research: ${attachedFile?.name}`,
+      content: messageContent,
       timestamp: Date.now()
     };
 
     const updatedInvestigation: InvestigationRecord = {
       ...investigation,
       messages: [...investigation.messages, userMessage],
+      documentContext: effectiveDocContext || investigation.documentContext,
+      documentFileName: attachedFile?.name || investigation.documentFileName,
       updatedAt: Date.now()
     };
 
     onUpdateInvestigation(updatedInvestigation);
     setInputText('');
     setAttachedFile(null);
+    setAttachedDocContext(null);
+    setExtractError(null);
     setIsSubmitting(true);
-    setActiveThinkingQuery(textToSend);
+    setActiveThinkingQuery(textToSend || effectiveDocContext?.title || investigation.title);
 
     setStreamedSteps([]);
     setStreamedTier('fast');
@@ -166,10 +199,10 @@ export const InvestigationConversation: React.FC<InvestigationConversationProps>
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            query: textToSend,
-            documentContext: investigation.documentContext,
+            query: textToSend || effectiveDocContext?.synthesizedIdea || effectiveDocContext?.title || investigation.title,
+            documentContext: effectiveDocContext,
             previousMessages: investigation.messages,
-            existingRecord: investigation
+            existingRecord: updatedInvestigation
           })
         });
 
@@ -225,10 +258,10 @@ export const InvestigationConversation: React.FC<InvestigationConversationProps>
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            query: textToSend,
-            documentContext: investigation.documentContext,
+            query: textToSend || effectiveDocContext?.synthesizedIdea || effectiveDocContext?.title || investigation.title,
+            documentContext: effectiveDocContext,
             previousMessages: investigation.messages,
-            existingRecord: investigation
+            existingRecord: updatedInvestigation
           })
         });
         if (fallbackRes.ok) {
@@ -395,8 +428,19 @@ Probe completed a multi-source investigation across Reddit, web discussions, and
           />
         </div>
 
-        {/* Right: Actions (Toggle Evidence Panel, Share, Voice, New) */}
+        {/* Right: Actions (Build Package, Toggle Evidence Panel, Share, Voice, New) */}
         <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => setIsBuildPackageOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-semibold shadow-2xs transition-all cursor-pointer active:scale-98"
+            title="Open Build Package (PRD.md + DESIGN.md)"
+          >
+            <Sparkles size={13} className="text-[#10B981]" />
+            <span className="hidden sm:inline">Build Package</span>
+            <span className="sm:hidden">Build</span>
+          </button>
+
           {onToggleRightPanel && (
             <button
               type="button"
@@ -504,6 +548,7 @@ Probe completed a multi-source investigation across Reddit, web discussions, and
                       onLaunchExperiment={onLaunchExperiment}
                       onOpenTestingTab={onOpenTestingTab}
                       onSelectSource={onSelectSource}
+                      onOpenBuildPackage={() => setIsBuildPackageOpen(true)}
                     />
                   </div>
                 )}
@@ -535,8 +580,16 @@ Probe completed a multi-source investigation across Reddit, web discussions, and
         <div className="max-w-4xl mx-auto flex items-center gap-2 overflow-x-auto text-[11px] scrollbar-none">
           <span className="text-[10px] font-mono text-[#9CA3AF] uppercase font-bold shrink-0 flex items-center gap-1">
             <Sparkles size={11} className="text-[#0091FF]" />
-            <span>Continue Probing:</span>
+            <span>Actions & Probing:</span>
           </span>
+          <button
+            type="button"
+            onClick={() => setIsBuildPackageOpen(true)}
+            className="shrink-0 px-3 py-1 rounded-full bg-[#ECFDF5] border border-[#A7F3D0] text-[#059669] hover:bg-[#D1FAE5] transition-all cursor-pointer font-bold text-[11px] flex items-center gap-1"
+          >
+            <Sparkles size={11} className="text-[#10B981]" />
+            <span>Generate Build Package (PRD + Design)</span>
+          </button>
           {dynamicSuggestions.map((promptText, pIdx) => (
             <button
               key={pIdx}
@@ -554,25 +607,52 @@ Probe completed a multi-source investigation across Reddit, web discussions, and
       <div className="p-3 sm:p-4 bg-white border-t border-[#E5E7EB] shrink-0">
         <div className="max-w-4xl mx-auto">
           {attachedFile && (
-            <div className="mb-2 flex items-center justify-between p-2 rounded-xl bg-[#EFF6FF] border border-[#BFDBFE] text-xs">
-              <div className="flex items-center gap-2">
-                <FileText size={14} className="text-[#2563EB]" />
-                <span className="font-semibold text-[#1E40AF] truncate max-w-sm">
-                  {attachedFile.name}
-                </span>
-                <span className="text-[10px] text-[#3B82F6] font-mono">({attachedFile.size})</span>
-                {isExtractingDoc && (
-                  <span className="text-[10px] text-[#2563EB] animate-pulse">
-                    Extracting PRD context...
-                  </span>
+            <div className={`mb-2.5 flex items-center justify-between p-2.5 rounded-xl border text-xs transition-all ${
+              extractError
+                ? 'bg-[#FEF2F2] border-[#FECACA] text-[#991B1B]'
+                : isExtractingDoc
+                ? 'bg-[#EFF6FF] border-[#BFDBFE] text-[#1E40AF]'
+                : 'bg-[#F0FDF4] border-[#BBF7D0] text-[#166534]'
+            }`}>
+              <div className="flex items-center gap-2 min-w-0">
+                {extractError ? (
+                  <AlertCircle size={15} className="text-[#DC2626] shrink-0" />
+                ) : isExtractingDoc ? (
+                  <div className="w-3.5 h-3.5 border-2 border-[#2563EB] border-t-transparent rounded-full animate-spin shrink-0" />
+                ) : (
+                  <CheckCircle2 size={15} className="text-[#16A34A] shrink-0" />
                 )}
+
+                <div className="flex flex-col min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold truncate max-w-xs sm:max-w-md">
+                      {attachedFile.name}
+                    </span>
+                    <span className="text-[10px] opacity-70 font-mono">({attachedFile.size})</span>
+                  </div>
+
+                  <div className="text-[11px] truncate">
+                    {extractError ? (
+                      <span className="text-[#DC2626] font-medium">{extractError}</span>
+                    ) : isExtractingDoc ? (
+                      <span className="text-[#2563EB] animate-pulse">Reading document & parsing text structure…</span>
+                    ) : (
+                      <span className="text-[#15803D]">
+                        ✓ Indexed • {attachedDocContext?.pageCount ? `${attachedDocContext.pageCount} pages • ` : ''}
+                        {attachedDocContext?.charCount ? `${Math.round(attachedDocContext.charCount / 5)} words` : 'Ready'}
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
+
               <button
                 type="button"
                 onClick={removeAttachedFile}
-                className="text-[#9CA3AF] hover:text-[#DC2626] p-1 transition-colors cursor-pointer"
+                className="text-[#9CA3AF] hover:text-[#DC2626] p-1.5 rounded-lg hover:bg-black/5 transition-colors cursor-pointer shrink-0 ml-2"
+                title="Remove attached file"
               >
-                <X size={13} />
+                <X size={14} />
               </button>
             </div>
           )}

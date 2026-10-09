@@ -73,41 +73,42 @@ export function matchNonInvestigationCapability(
   const lower = text.toLowerCase().replace(/[.?!]+$/, '').trim();
 
   // 1. Direct route navigation commands ("Go to testing", "Open the research page", "Go back", etc.)
-  if (/^(?:go\s+back|navigate\s+back|take\s+me\s+back|back)$/i.test(lower)) {
+  // Supports English, Amharic (ወደ ኋላ ተመለስ, ወደ ምርመራ ሂድ, ወደ መሞከሪያ ሂድ, ወደ ማስረጃ ሂድ), and Afaan Oromo (gara duubatti deebi'i, gara qorannootti deemi, gara yaaliitti deemi)
+  if (/^(?:go\s+back|navigate\s+back|take\s+me\s+back|back|ተመለስ|ወደ\s*ኋላ|gara\s+duubatti\s+deebi'?i|duubatti)$/i.test(lower)) {
     return { name: 'navigate', args: { route: 'back' } };
   }
   if (
     /^(?:go\s+to|navigate\s+to|open|take\s+me\s+to|switch\s+to)\s+(?:the\s+)?(?:calendar|validation\s+calendar|schedule|timeline)(?:\s+page)?$/i.test(
       lower
-    )
+    ) || /ካሌንደር|ቀን\s*መቁጠሪያ|gara\s+kalandariitti/i.test(lower)
   ) {
     return { name: 'navigate', args: { route: '/app/calendar' } };
   }
   if (
     /^(?:go\s+to|navigate\s+to|open|take\s+me\s+to|switch\s+to)\s+(?:the\s+)?(?:sign\s*in|login|log\s*in|auth)(?:\s+page)?$/i.test(
       lower
-    )
+    ) || /ግባ|ሎጊን|gara\s+seensaatti|seeni/i.test(lower)
   ) {
     return { name: 'navigate', args: { route: '/signin' } };
   }
   if (
     /^(?:go\s+to|navigate\s+to|open|take\s+me\s+to|switch\s+to)\s+(?:the\s+)?(?:home|landing|main|start)(?:\s+page)?$/i.test(
       lower
-    )
+    ) || /ዋና\s*ገጽ|መነሻ|gara\s+fuula\s+duraatti|gara\s+manaa/i.test(lower)
   ) {
     return { name: 'navigate', args: { route: '/' } };
   }
   if (
     /^(?:go\s+to|navigate\s+to|open|take\s+me\s+to|switch\s+to)\s+(?:the\s+)?(?:research|research\s+workspace|research\s+page|workspace)(?:\s+page)?$/i.test(
       lower
-    )
+    ) || /ምርምር|ወደ\s*ምርምር|gara\s+qorannootti/i.test(lower)
   ) {
     return { name: 'navigate', args: { route: '/app/research' } };
   }
   if (
     /^(?:go\s+to|navigate\s+to|open|take\s+me\s+to|switch\s+to)\s+(?:the\s+)?(?:testing|product\s+testing|playwright|testing\s+workspace|testing\s+page)(?:\s+page)?$/i.test(
       lower
-    )
+    ) || /መሞከሪያ|ቴስቲንግ|ፈትን|gara\s+yaaliitti/i.test(lower)
   ) {
     return { name: 'navigate', args: { route: '/app/testing' } };
   }
@@ -128,11 +129,12 @@ export function matchNonInvestigationCapability(
     };
   }
 
-  // 3. Real Playwright Product Testing ("Test this product", "Test this website as a student", "Try to sign up", "See if a first-time user can complete the main task", "Test this product and look for friction")
+  // 3. Real Playwright Product Testing ("Test this product", "Test chatgpt.com", "chatgpt.com ፈትን", "links.et qori", etc.)
   if (
-    /(?:test\s+this\s+(?:product|website|site|app|url)|run\s+a?\s*product\s+test|start\s+a?\s*product\s+test|launch\s+playwright|try\s+to\s+sign\s*up|try\s+signing\s*up|see\s+if\s+a\s+first[\s-]time\s+user\s+can|test\s+https?:\/\/|test\s+[a-z0-9-]+\.(?:com|org|net|io|co|app|dev|ai|et))/i.test(
+    /(?:test\s+this\s+(?:product|website|site|app|url)|run\s+a?\s*product\s+test|start\s+a?\s*product\s+test|launch\s+playwright|try\s+to\s+sign\s*up|try\s+signing\s*up|see\s+if\s+a\s+first[\s-]time\s+user\s+can|test\s+https?:\/\/|test\s+[a-z0-9-]+\.(?:com|org|net|io|co|app|dev|ai|et)|ፈትን|ይህን\s*ፈትን|ዌብሳይት\s*ፈትን|qori|yaali|weebsaayitii\s*qori)/i.test(
       lower
-    )
+    ) ||
+    /([a-z0-9-]+\.(?:com|org|net|io|co|app|dev|ai|et))/i.test(text)
   ) {
     const extractedUrl = extractUrlFromText(text);
     const personaMatch = text.match(/\bas\s+an?\s+([a-z0-9\s-]+?)(?:\s+and\b|\s+to\b|[.?!]|$)/i);
@@ -251,7 +253,7 @@ export function matchNonInvestigationCapability(
     };
   }
 
-  // 8. Find / search real evidence ("Find evidence that challenges the idea", "Find Reddit discussions about cooking apps", "Find academic evidence about food-planning applications", "Find evidence about whether students would use this product")
+  // 8. Find / search real evidence ("Find evidence that challenges the idea", "Find Reddit discussions about the product", "Find academic evidence about software reliability", "Find evidence about whether users would pay for this product")
   if (
     /^(?:find|search\s+for|get|retrieve|look\s+for)\s+(?:me\s+)?(?:real\s+)?(?:reddit|academic|scholar|scholarxiv|x|twitter|linkedin|supporting|contradictory|challenging)?\s*(?:evidence|discussions|papers|studies|signals|posts)/i.test(
       lower

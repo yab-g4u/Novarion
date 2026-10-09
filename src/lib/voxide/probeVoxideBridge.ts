@@ -111,7 +111,7 @@ interface ProbeBridgeInternalState {
   evidenceGraphFilter: string;
 }
 
-const DEFAULT_IDEA = 'I want to build a cooking app';
+const DEFAULT_IDEA = 'AI tools will replace most productivity software';
 const DEFAULT_PRODUCT_URL = 'https://links.et';
 const DEFAULT_PRODUCT_TASK =
   'Verify transaction reference DHV0BHI2GG in the payment receipt input and inspect the result';

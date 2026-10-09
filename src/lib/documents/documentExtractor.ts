@@ -196,56 +196,91 @@ export function extractContextFromDocumentText(
 }
 
 /**
- * Extracts plain text from an uploaded file in the browser.
- * Supports .txt, .md, .markdown, .json, and text streams in PDFs.
+ * Safe chunked Base64 encoder that handles large multi-megabyte files without call stack exhaustion.
+ */
+export function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const len = bytes.byteLength;
+  const chunkSize = 0x8000; // 32KB chunks
+  for (let i = 0; i < len; i += chunkSize) {
+    const chunk = bytes.subarray(i, Math.min(i + chunkSize, len));
+    binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+  }
+  return btoa(binary);
+}
+
+/**
+ * Robust multi-encoding text decoder supporting UTF-8 (with/without BOM),
+ * UTF-16LE, UTF-16BE, Windows-1252, and ISO-8859-1.
+ */
+export function decodeTextBytes(buffer: ArrayBuffer | Uint8Array): string {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+
+  // 1. Detect UTF-8 BOM
+  if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+    return new TextDecoder('utf-8').decode(bytes.subarray(3));
+  }
+  // 2. Detect UTF-16 LE BOM
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
+    return new TextDecoder('utf-16le').decode(bytes.subarray(2));
+  }
+  // 3. Detect UTF-16 BE BOM
+  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
+    return new TextDecoder('utf-16be').decode(bytes.subarray(2));
+  }
+  // 4. Try strict UTF-8
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    // 5. Fallback to windows-1252 / latin-1
+    try {
+      return new TextDecoder('windows-1252').decode(bytes);
+    } catch {
+      return new TextDecoder('iso-8859-1').decode(bytes);
+    }
+  }
+}
+
+/**
+ * Extracts plain text or base64 payload from an uploaded file in the browser.
+ * Supports .pdf, .docx, .doc, .txt, .md, .markdown, .json.
  */
 export async function readUploadedFile(file: File): Promise<{
   text: string;
   base64?: string;
   mimeType: string;
-  fileType: 'pdf' | 'md' | 'txt' | 'prd';
+  fileType: 'pdf' | 'docx' | 'md' | 'txt' | 'prd';
 }> {
   const name = file.name.toLowerCase();
-  const mimeType = file.type || 'text/plain';
+  const mimeType = file.type || 'application/octet-stream';
 
-  if (name.endsWith('.pdf') || mimeType === 'application/pdf') {
-    // Read as Base64 for server-side multimodal Gemini extraction
+  const isPdf = name.endsWith('.pdf') || mimeType === 'application/pdf';
+  const isDocx =
+    name.endsWith('.docx') ||
+    name.endsWith('.doc') ||
+    mimeType.includes('wordprocessingml') ||
+    mimeType.includes('msword');
+
+  if (isPdf || isDocx) {
     const arrayBuffer = await file.arrayBuffer();
-    const bytes = new Uint8Array(arrayBuffer);
-    let binary = '';
-    const len = bytes.byteLength;
-    for (let i = 0; i < len; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    const base64 = btoa(binary);
-
-    // Also attempt basic ASCII text stream extraction for offline fallback
-    let extractedAscii = '';
-    try {
-      const latin1 = new TextDecoder('latin1').decode(arrayBuffer);
-      // Match text streams within PDF
-      const streamMatches = latin1.match(/\(([^()]{3,})\)[\s\S]*?T[jJ]/g);
-      if (streamMatches) {
-        extractedAscii = streamMatches
-          .map((m) => m.replace(/^.*\(/, '').replace(/\)[\s\S]*$/, ''))
-          .filter((t) => t.length > 2)
-          .join(' ');
-      }
-    } catch {
-      // fallback
-    }
+    const base64 = arrayBufferToBase64(arrayBuffer);
+    const fileType = isPdf ? 'pdf' : 'docx';
 
     return {
-      text: extractedAscii,
+      text: '',
       base64,
-      mimeType: 'application/pdf',
-      fileType: 'pdf'
+      mimeType: isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      fileType
     };
   }
 
-  // Text / Markdown / PRD files
-  const text = await file.text();
-  const fileType: 'pdf' | 'md' | 'txt' | 'prd' =
+  // Text, Markdown, PRD files
+  const arrayBuffer = await file.arrayBuffer();
+  const text = decodeTextBytes(arrayBuffer);
+  const base64 = arrayBufferToBase64(arrayBuffer);
+
+  const fileType: 'pdf' | 'docx' | 'md' | 'txt' | 'prd' =
     name.endsWith('.md') || name.endsWith('.markdown')
       ? 'md'
       : name.includes('prd') || name.includes('brief')
@@ -254,6 +289,7 @@ export async function readUploadedFile(file: File): Promise<{
 
   return {
     text,
+    base64,
     mimeType: 'text/plain',
     fileType
   };
@@ -261,7 +297,8 @@ export async function readUploadedFile(file: File): Promise<{
 
 /**
  * Main entry point: extracts structured document context from an uploaded file or text.
- * Calls backend `/api/documents/extract` if available, and gracefully falls back to deterministic extraction.
+ * Sends payload to backend `/api/documents/extract`.
+ * If extraction fails, surfaces a clear, actionable error instead of hallucinating missing text.
  */
 export async function extractDocumentContext(
   fileOrText: File | string,
@@ -271,8 +308,12 @@ export async function extractDocumentContext(
   let targetFileName = fileName;
 
   if (typeof fileOrText === 'string') {
+    const cleanStr = fileOrText.trim();
+    if (!cleanStr) {
+      throw new Error('Provided document text is empty.');
+    }
     fileData = {
-      text: fileOrText,
+      text: cleanStr,
       mimeType: 'text/plain',
       fileType: 'txt'
     };
@@ -281,7 +322,7 @@ export async function extractDocumentContext(
     fileData = await readUploadedFile(fileOrText);
   }
 
-  // Attempt server-side AI extraction via Gemini API proxy endpoint
+  // Call server-side extraction engine (uses pdf-parse, mammoth, or Gemini)
   try {
     const res = await fetch('/api/documents/extract', {
       method: 'POST',
@@ -303,16 +344,29 @@ export async function extractDocumentContext(
           sourceFileType: fileData.fileType as any
         };
       }
+    } else {
+      const errData = await res.json().catch(() => ({}));
+      const errorMsg =
+        errData?.message ||
+        errData?.error ||
+        `Document extraction failed (HTTP ${res.status})`;
+      throw new Error(errorMsg);
     }
-  } catch {
-    // Graceful fallback to client-side deterministic extraction
+  } catch (err: any) {
+    // If it is a network error and we have local plain text, fallback locally
+    if (fileData.text && (fileData.fileType === 'txt' || fileData.fileType === 'md' || fileData.fileType === 'prd')) {
+      const fallback = extractContextFromDocumentText(fileData.text, targetFileName);
+      return {
+        ...fallback,
+        fullText: fileData.text,
+        charCount: fileData.text.length,
+        sourceFileName: targetFileName,
+        sourceFileType: fileData.fileType as any
+      };
+    }
+    // For PDF / Word documents or explicit server rejections, rethrow clear error
+    throw new Error(err.message || `Failed to read and parse "${targetFileName}".`);
   }
 
-  // Deterministic local extraction fallback
-  const fallback = extractContextFromDocumentText(fileData.text || targetFileName || '', targetFileName);
-  return {
-    ...fallback,
-    sourceFileName: targetFileName,
-    sourceFileType: (fileData?.fileType as any) || 'txt'
-  };
+  throw new Error(`Unable to extract content from "${targetFileName}".`);
 }

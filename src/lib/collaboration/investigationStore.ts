@@ -177,12 +177,7 @@ export const buildInvestigationPayload = (params: {
   const cleanQuery = params.query.trim();
   const dynamic = generateDynamicInvestigation(cleanQuery);
   const qLower = cleanQuery.toLowerCase();
-  const isCooking =
-    qLower.includes('cook') ||
-    qLower.includes('recipe') ||
-    qLower.includes('meal') ||
-    qLower.includes('pantry') ||
-    qLower.includes('food');
+  const isCooking = /\b(cooking|recipe|recipes|meal\s+prep|pantry\s+meals?)\b/i.test(qLower);
   const isHousing =
     qLower.includes('student') ||
     qLower.includes('housing') ||

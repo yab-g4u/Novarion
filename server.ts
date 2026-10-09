@@ -6,6 +6,25 @@ import { createServer as createViteServer } from 'vite';
 import { createApiApp } from './src/lib/server/apiApp';
 import { setupVoiceBridge } from './src/server/voiceBridge';
 
+// Process-level protection for transient socket resets and WebSocket disconnects
+process.on('uncaughtException', (err: any) => {
+  const isSocketError =
+    err?.code === 'ECONNRESET' ||
+    err?.code === 'EPIPE' ||
+    err?.message?.includes('closed') ||
+    err?.message?.includes('socket') ||
+    err?.message?.includes('senderOnError');
+  if (isSocketError) {
+    console.warn('[Probe Server Socket Warning]:', err.message);
+    return;
+  }
+  console.error('[Probe Server Uncaught Exception]:', err);
+});
+
+process.on('unhandledRejection', (reason: any) => {
+  console.warn('[Probe Server Unhandled Rejection]:', reason?.message || reason);
+});
+
 async function main() {
   const app = createApiApp();
   const PORT = 3000;

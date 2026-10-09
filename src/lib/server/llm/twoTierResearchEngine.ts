@@ -275,7 +275,18 @@ Respond strictly with valid JSON.`;
 
     const prompt = `Analyze this startup concept:
 "${query}"
-${documentContext ? `\nDocument Context:\nTitle: ${documentContext.title}\nProblem: ${documentContext.problem}\nTarget Users: ${documentContext.targetUsers}` : ''}
+${documentContext ? `
+ATTACHED SPECIFICATION / PRD (${documentContext.sourceFileName || 'User Document'}${documentContext.pageCount ? `, ${documentContext.pageCount} pages` : ''}):
+Title: ${documentContext.title}
+Problem: ${documentContext.problem}
+Target Users: ${documentContext.targetUsers}
+Solution: ${documentContext.solution}
+Key Features: ${(documentContext.features || []).join(', ')}
+Key Assumptions: ${(documentContext.assumptions || []).join('; ')}
+Claims: ${(documentContext.importantClaims || []).join('; ')}
+Document Content Excerpt:
+${(documentContext.fullText || documentContext.rawTextExcerpt || '').slice(0, 5000)}
+` : ''}
 
 Output JSON with this exact structure:
 {
@@ -349,7 +360,7 @@ Output JSON with this exact structure:
     let competitors: Array<{ name: string; category: string; summary: string; weaknessOrFriction: string }> = [];
     const qLower = query.toLowerCase();
 
-    if (qLower.includes('meal') || qLower.includes('cook') || qLower.includes('food') || qLower.includes('student')) {
+    if (/\b(recipe|recipes|cooking|meal\s+prep|groceries|pantry\s+meals)\b/i.test(qLower)) {
       competitors = [
         { name: 'Too Good To Go', category: 'Surplus Food Marketplace', summary: 'Discounted surplus meals from restaurants', weaknessOrFriction: 'Unpredictable availability and fixed late pickup windows' },
         { name: 'Mealime', category: 'Recipe & Grocery App', summary: 'Simple customizable meal plans with grocery export', weaknessOrFriction: 'Does not solve cost optimization or campus dining access' },
@@ -669,14 +680,25 @@ Provide 4-5 bracketed Probe triggers:
         implication: e.implication
       })),
       documentContext: documentContext ? {
+        sourceFileName: documentContext.sourceFileName,
+        sourceFileType: documentContext.sourceFileType,
         title: documentContext.title,
         problem: documentContext.problem,
-        targetUsers: documentContext.targetUsers
+        targetUsers: documentContext.targetUsers,
+        solution: documentContext.solution,
+        features: documentContext.features,
+        assumptions: documentContext.assumptions,
+        importantClaims: documentContext.importantClaims,
+        competitors: documentContext.competitors,
+        pageCount: documentContext.pageCount,
+        charCount: documentContext.charCount,
+        documentExcerpt: (documentContext.fullText || documentContext.rawTextExcerpt || '').slice(0, 10000)
       } : null
     };
 
-    const prompt = `Synthesize a comprehensive research dossier for this concept:
+    const prompt = `Synthesize a comprehensive, authoritative research dossier for this concept:
 "${query}"
+${documentContext ? `\nCRITICAL USER ATTACHMENT: The user has attached a source specification document ("${documentContext.sourceFileName || 'User Document'}"${documentContext.pageCount ? `, ${documentContext.pageCount} pages` : ''}). Directly reference, validate, and evaluate its specific mechanisms, problem statement, and assumptions in the synthesis and PRD.\n` : ''}
 
 Empirical Ground Truth:
 ${JSON.stringify(contextPayload, null, 2)}`;

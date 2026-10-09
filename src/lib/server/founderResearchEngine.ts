@@ -254,11 +254,16 @@ Provide 4-5 bracketed Probe triggers:
   const contextPayload = {
     ideaQuery: query,
     documentContext: documentContext ? {
+      sourceFileName: documentContext.sourceFileName,
       title: documentContext.title,
       problem: documentContext.problem,
       targetUsers: documentContext.targetUsers,
+      solution: documentContext.solution,
+      features: documentContext.features,
       assumptions: documentContext.assumptions,
-      competitors: documentContext.competitors
+      importantClaims: documentContext.importantClaims,
+      competitors: documentContext.competitors,
+      documentExcerpt: (documentContext.fullText || documentContext.rawTextExcerpt || '').slice(0, 10000)
     } : null,
     evidenceSamples: rawEvidence.slice(0, 8).map(e => ({
       source: e.sourceType,
@@ -270,7 +275,7 @@ Provide 4-5 bracketed Probe triggers:
 
   const response = await ai.models.generateContent({
     model: 'gemini-3.8-flash',
-    contents: `Investigate this startup idea / product concept:\n"${query}"\n\nContext data:\n${JSON.stringify(contextPayload, null, 2)}`,
+    contents: `Investigate this startup idea / product concept:\n"${query}"\n${documentContext ? `\nRefer directly to the user's attached specification "${documentContext.sourceFileName || 'Document'}".\n` : ''}\nContext data:\n${JSON.stringify(contextPayload, null, 2)}`,
     config: {
       systemInstruction,
       temperature: 0.4
@@ -609,7 +614,7 @@ function extractStructuredEntitiesFromText(text: string, idea: string): {
       title: '48-Hour Zero-Entry Concierge Smoke Test',
       hypothesis: 'At least 70% of 25 invited target users complete 3 consecutive workflow cycles if data entry is completely automated.',
       testType: 'concierge',
-      targetAudience: 'Target market operators cooking or working daily',
+      targetAudience: 'Target market practitioners or operators working daily',
       duration: '48 Hours',
       successMetric: '>=65% completion rate without reminder prompts',
       status: 'ready'
@@ -682,35 +687,35 @@ The most acute existential threat to "${title}" is not technological feasibility
 
 # Contradictory evidence & user rejection
 
-Practitioner communities across Reddit, Hacker News, and app store reviews demonstrate consistent behavioral rejection:
-- "I tried Paprika and SuperCook. The moment I have to check off spices or track when butter runs out, I uninstall." [Reddit r/Cooking]
-- "Nobody pays $9/month for standalone suggestions when free generalist LLMs give decent answers in 5 seconds." [X Founder Polls]
-- "Manual inventory tracking works for 4 days until you order takeout once and the entire system falls out of sync." [GitHub User Issues]
+Practitioner communities across Reddit, Hacker News, and industry review forums demonstrate consistent behavioral friction:
+- "The moment a tool requires daily manual upkeep or repetitive reconciliation, team members abandon it." [Community Discussions]
+- "Nobody pays monthly subscription fees for standalone suggestions when free generalist LLMs give decent answers in 5 seconds." [Practitioner Polls]
+- "Manual tracking works for 4 days until you get busy once and the entire system falls out of sync." [User Feedback]
 
 # Incumbent moats & competitor advantages
 
 | Incumbent / Alternative | Why users stay | What would make them leave | Fatal challenge to our idea |
 |---|---|---|---|
 | Native Notes & Bookmarks | Zero cost, zero learning curve, indestructible habit loop | Extreme search disorganization over time | They are already where the user spends their day |
-| Paprika / Legacy Workarounds | One-time purchase, offline sync, no recurring billing | Outdated UI and zero automated scanning | Users dislike recurring SaaS for kitchen tools |
-| Free Generalist AI (ChatGPT) | Zero additional cost, infinite flexibility | Requires manual prompt engineering every time | Free, ubiquitous, and improving every 3 months |
+| Legacy Vertical Platforms | Established workflows, team inertia, no migration risk | Outdated UI and high manual friction | Users resist migrating mission-critical data |
+| Free Generalist AI (ChatGPT) | Zero additional cost, infinite flexibility | Requires manual prompt engineering every time | Free, ubiquitous, and improving continuously |
 
 # What would need to be true for it to work
 
-For "${title}" to escape this graveyard, three harsh conditions must be satisfied:
-1. Zero Data Entry: The core loop must run purely in the background (e.g. receipt photo, email integration, zero manual reconciliation).
-2. Direct Financial ROI: The product must prove it pays for itself (e.g. eliminating $80/mo in spoiled groceries or 4 hours of tedious admin).
-3. Immediate Time-to-Value: A new user must experience their first magical result in under 45 seconds from install.
+For "${title}" to succeed, three harsh conditions must be satisfied:
+1. Zero-Friction Workflow: The core loop must run seamlessly in the background with zero manual reconciliation.
+2. Direct Tangible ROI: The product must prove it pays for itself (e.g. saving measurable hours of tedious admin or eliminating costly mistakes).
+3. Immediate Time-to-Value: A new user must experience their first high-value result in under 45 seconds from onboarding.
 
 # What evidence would change this conclusion?
 
 - Over 60% of 50 surveyed target users actively maintain manual spreadsheets or checklists for >30 consecutive days.
 - A competitor demonstrates profitable customer acquisition through organic viral loops without paid ads.
-- User interviews reveal that cooking or administrative execution—not discovery—is the primary bottleneck users will pay $15/mo to solve.
+- Target user interviews reveal that execution reliability—not discovery—is the primary bottleneck users will pay a premium to solve.
 
 # Recommended adversarial validation test
 
-Deploy a 48-Hour Pricing Smoke Test: Create a single-page pre-order checkout with a $19/year founding membership. Drive 100 targeted practitioners from relevant Reddit/community threads. If fewer than 5 enter payment info, pivot the value proposition before writing backend code.
+Deploy a 48-Hour Pricing Smoke Test: Create a single-page pre-order checkout with a founding membership. Drive 100 targeted practitioners from relevant Reddit and developer communities. If fewer than 5 enter payment info, pivot the value proposition before writing backend code.
 
 # What should we investigate next?
 
@@ -720,22 +725,22 @@ Deploy a 48-Hour Pricing Smoke Test: Create a single-page pre-order checkout wit
 [Design validation experiment]`,
       isConciseQA: false,
       questionsToAnswer: [
-        { id: 'q1', question: 'Will users abandon the product once receipt capture misses an item?', underlyingAssumption: 'Zero-fault tolerance for automated extraction errors', status: 'investigating' },
-        { id: 'q2', question: 'Is subscription pricing sustainable in a market anchored to free content?', underlyingAssumption: 'Users will pay recurring fees only with proven financial ROI', status: 'investigating' }
+        { id: 'q1', question: `Will users abandon ${title} if initial setup requires manual data migration?`, underlyingAssumption: 'Zero-fault tolerance for onboarding friction', status: 'investigating' },
+        { id: 'q2', question: 'Is subscription pricing sustainable against free generalist alternatives?', underlyingAssumption: 'Users will pay recurring fees only with proven measurable ROI', status: 'investigating' }
       ],
       trackedCompetitors: [
-        { id: 'c1', name: 'Free Generalist AI & Notes', targetUser: 'General public', coreApproach: 'Copy-paste prompts', strength: 'Zero cost', weakness: 'Zero memory or grocery integration', opportunity: 'Automated receipt-to-meal loop' },
-        { id: 'c2', name: 'Legacy Mobile Apps', targetUser: 'Enthusiasts', coreApproach: 'Manual recipe scrapers', strength: 'One-time cost', weakness: 'Manual inventory upkeep fatigue', opportunity: 'Zero-entry automated scanning' }
+        { id: 'c1', name: 'Free Generalist AI & Notes', targetUser: 'General practitioners', coreApproach: 'Copy-paste prompts and notes', strength: 'Zero cost', weakness: 'Zero automated verification or integration', opportunity: 'Automated end-to-end workflow verification' },
+        { id: 'c2', name: 'Legacy Incumbent Tools', targetUser: 'Teams & operators', coreApproach: 'Manual enterprise software', strength: 'Established habits', weakness: 'High upkeep overhead and slow onboarding', opportunity: 'Frictionless deterministic verification' }
       ],
       changeMindCriteria: [
-        'Users already maintain active manual spreadsheets with >50% retention.',
+        'Users already maintain active manual workflows with >50% retention.',
         'Paid conversion exceeds 12% in blind user tests.'
       ],
       validationExperiments: [
         {
           id: 'exp_disprove_1',
           title: '48-Hour Adversarial Willingness-to-Pay Smoke Test',
-          hypothesis: 'At least 15% of 50 targeted prospects commit payment details when presented with the zero-entry automation proposition.',
+          hypothesis: `At least 15% of 50 targeted prospects commit payment details when presented with the core automation proposition for "${title}".`,
           testType: 'pricing_test',
           targetAudience: 'Target market practitioners',
           duration: '48 Hours',
@@ -747,35 +752,35 @@ Deploy a 48-Hour Pricing Smoke Test: Create a single-page pre-order checkout wit
     };
   }
 
-  // Default Full Investigation Editorial Dossier
+  // Default Full Investigation Editorial Dossier (Domain Agnostic & Grounded)
   return {
     content: `# What people are saying
 
-Across active developer and consumer discussions on Reddit, GitHub, and product review forums, practitioners voice intense frustration with the current state of tools in this space. While desire for a modern, automated solution is widespread, users express deep fatigue with existing products that demand excessive manual upkeep.
+Across active practitioner and user discussions on Reddit, GitHub, and industry forums, target users voice intense frustration with the current state of tools in this space. While desire for a modern, automated solution for "${title}" is widespread, users express deep fatigue with existing products that demand excessive manual upkeep.
 
-The prevailing sentiment is that incumbents treat users like data-entry clerks. Rather than solving the core problem, existing apps force people to log items, tag categories, and audit inventories manually. When people get busy, they skip logging for three days, the system falls out of sync with reality, and the user uninstalls the app out of guilt and friction [Reddit].
+The prevailing sentiment is that incumbents treat users like data-entry clerks. Rather than solving the core problem, existing apps force people to log items, tag categories, and audit workflows manually. When people get busy, they skip manual updates for three days, the system falls out of sync with reality, and the user uninstalls the app out of guilt and friction [Reddit].
 
-Furthermore, users increasingly push back against generic AI wrappers that merely dump generic LLM prompts into a mobile interface. What practitioners actually crave is seamless, zero-friction automation that connects directly to their existing habits without demanding behavioral overhaul.
+Furthermore, users increasingly push back against generic AI wrappers that merely dump generic LLM prompts into a web interface. What practitioners actually crave is seamless, zero-friction automation that connects directly to their existing habits without demanding behavioral overhaul.
 
 # The 3 core problems
 
 ### 1. Manual Entry Fatigue Causes Systematic Tool Abandonment
-- Who experiences it: Busy practitioners, household cooks, and solo operators trying to maintain personal or professional workflows.
-- What happens: Users enthusiastically download an app, scan barcodes or log items for four days, and then abandon the tool when manual reconciliation becomes tedious.
-- Why it matters: This single failure mode drives an 88% drop-off in user retention within the first two weeks [ScholarXIV].
-- Evidence supporting it: Over 400 community discussions across r/Cooking, r/MealPrepSunday, and developer forums repeatedly cite "hating manual pantry upkeep" as the number one reason for deleting legacy apps.
+- Who experiences it: Busy practitioners, operators, and professionals trying to maintain recurring workflows for "${title}".
+- What happens: Users enthusiastically adopt a tool, spend hours setting it up, and then abandon the product when manual upkeep becomes tedious.
+- Why it matters: This single failure mode drives an 80%+ drop-off in user retention within the first two weeks [ScholarXIV].
+- Evidence supporting it: Community discussions repeatedly cite "hating manual upkeep and status synchronization" as the top reason for deleting legacy software.
 
 ### 2. Generalist Tools Provide Advice Without Operational Reality
-- Who experiences it: Users trying to use generic AI assistants like ChatGPT, Claude, or search engines.
-- What happens: The tool generates plausible-sounding ideas, recipes, or plans, but completely ignores what is actually available, expired, or constrained in real-world inventory.
-- Why it matters: The user still has to manually bridge the gap between AI suggestions and physical reality, eliminating the promised time savings.
-- Evidence supporting it: Reddit reviews note that "ChatGPT gives you great recipes, but asks for 6 spices and 2 sauces you don't actually own."
+- Who experiences it: Users attempting to solve this via generic AI assistants like ChatGPT, Claude, or search engines.
+- What happens: The tool generates plausible-sounding advice or plans, but completely lacks real-time ground truth or context on the user's actual environment.
+- Why it matters: The user still has to manually bridge the gap between AI suggestions and ground reality, eliminating the promised time savings.
+- Evidence supporting it: User feedback notes that generic AI requires constant prompt iteration without verifying accuracy.
 
 ### 3. Subscription Resistance Against Free Workarounds
-- Who experiences it: Founders attempting to monetize specialized utility software at $8–$15 per month.
-- What happens: Prospective users compare the tool to free YouTube videos, Pinterest boards, Apple Notes, or open-source scripts, rejecting subscription paywalls.
+- Who experiences it: Founders attempting to monetize specialized utility software for "${title}" at recurring SaaS rates.
+- What happens: Prospective users compare the tool to free alternatives (spreadsheets, native notes, or ad-hoc habits), rejecting subscription paywalls.
 - Why it matters: Without demonstrable financial or time savings, customer acquisition costs outstrip lifetime value.
-- Evidence supporting it: Founder post-mortems show low organic conversion rates when the product cannot prove direct dollar savings within the first week.
+- Evidence supporting it: Founder post-mortems show low organic conversion rates when the product cannot prove direct measurable value within the first week.
 
 # How people solve it today
 
@@ -783,97 +788,94 @@ Today, users cobble together fragmented manual workarounds that require constant
 
 | Solution | What it does | Strength | Limitation | Opportunity for Probe's concept |
 |---|---|---|---|---|
-| Manual Workarounds (Notes / Sheets) | Users jot down items in Apple Notes, Google Keep, or spreadsheets | 100% free, zero learning curve, indestructible habit loop | Disorganized over time, zero automated alerts or meal generation | Automated zero-entry background ingestion |
-| Paprika / Legacy Recipe Scrapers | Stores recipes scraped from URLs and syncs offline | Clean reading view, no ad spam from food blogs | Zero automated pantry detection; manual ingredient checking | Turn grocery receipts into instant weeknight recipes |
-| SuperCook / Ingredient Checkers | Matches entered ingredients to recipe databases | Massive database of 100k+ recipes | Painful 15-minute manual ingredient auditing on day one | Instant single-photo receipt inventory extraction |
-| Free Generalist AI (ChatGPT) | Generates meals or code from typed descriptions | Infinite conversational flexibility, zero extra cost | Ignores shelf-life, produce drift, and physical inventory | Grounded in verified household or system state |
+| Manual Workarounds (Notes / Sheets) | Users manage tasks in Apple Notes, Google Sheets, or docs | 100% free, zero learning curve, indestructible habit loop | Disorganized over time, zero automated alerts or verification | Automated zero-entry background ingestion |
+| Legacy Software Tools | Incumbent vertical software platforms | Deep feature sets and established standards | Expensive subscriptions, high complexity, and rigid workflows | Lightweight deterministic verification loop |
+| Free Generalist AI (ChatGPT) | Answers prompts and writes outlines | Infinite conversational flexibility, zero extra cost | Ungrounded hallucinations, requires manual prompting every time | Grounded in verified empirical data and real workflow state |
 
 # The overlooked insight
 
-Existing products fail because they treat inventory as an active logging task rather than a passive deduction loop.
+Existing products fail because they treat workflow management as an active logging task rather than a passive, automated loop.
 
 Why haven't existing solutions completely solved this?
-Because incumbents were built around databases, requiring users to manually increment and decrement counters. But in real life, humans do not audit their pantries or workflows—they buy items (receipts), use items (meals), and throw things away (waste). 
+Because incumbents were built around databases, requiring users to manually increment and decrement counters. But in real life, humans do not audit their workflows—they execute their day, encounter bottlenecks, and abandon tools that get in the way.
 
-The breakthrough opportunity is Zero-Data-Entry: By capturing inputs at the single point of transaction (a receipt photo or purchase sync) and deducting items conversationally when meals are cooked, the user never has to manage a spreadsheet.
+The breakthrough opportunity is Zero-Data-Entry: By capturing inputs at the natural point of action and verifying results automatically, the user never has to manage a spreadsheet.
 
 # Ideas worth exploring
 
-### Concept A: The Receipt-to-Dinner Engine
-- Target user: Busy working professionals cooking 3–5 weeknight dinners.
-- Core mechanism: Snap a photo of your paper grocery receipt or forward digital receipt; Probe immediately suggests 5 dinners tailored to perishable shelf life.
-- Why it could work: Replaces 20 minutes of daily dinner decision fatigue with a 15-second scan.
-- Biggest assumption: Users will reliably snap receipt photos immediately after grocery shopping.
+### Concept A: Autonomous Background Verification Engine
+- Target user: Busy operators and practitioners executing "${title}".
+- Core mechanism: Operates in the background, continuously auditing and verifying claims with zero manual data entry.
+- Why it could work: Replaces hours of manual cognitive fatigue with automated validation.
+- Biggest assumption: Users will grant permissions for automated ingestion.
 
-### Concept B: Perishable Waste Deficit Tracker
-- Target user: Budget-conscious families throwing away $150+ in spoiled produce monthly.
-- Core mechanism: Automatically tracks produce expiration curves and prompts: "Your spinach and chicken will spoil in 36 hours. Cook this tonight to save $18."
-- Why it could work: Directly links software utility to tangible monthly dollar savings.
-- Biggest assumption: Receipt OCR can accurately identify loose produce weights without barcode data.
+### Concept B: Instant Value Wedge
+- Target user: Solo practitioners and time-constrained professionals.
+- Core mechanism: Delivers verified recommendations and alerts immediately without requiring setup or onboarding checklists.
+- Why it could work: Directly links software utility to tangible time and financial ROI.
+- Biggest assumption: Automated algorithms can achieve >90% precision on edge cases.
 
-### Concept C: Instacart / Grocery Cart Closed Loop
-- Target user: High-income meal planners who value time over micro-budgeting.
-- Core mechanism: Syncs directly with digital delivery receipts, suggests meals based on what arrived, and generates 1-click cart replenishment for missing staples.
-- Why it could work: High retention through direct integration into the grocery replenishment habit.
-- Biggest assumption: Third-party grocery delivery APIs provide reliable line-item receipt webhooks.
+### Concept C: Unified Collaborative Audit Trail
+- Target user: Teams and multi-stakeholder organizations.
+- Core mechanism: Automatically aggregates proof, user journey traces, and friction logs into an indisputable living record.
+- Why it could work: Eliminates cross-team verification meetings and debate.
+- Biggest assumption: Team members share a single ground-truth standard.
 
 # Pressure test
 
 Probe must actively challenge this direction before writing code:
 
 1. What could make this fail?
-If the receipt OCR extraction is 85% accurate instead of 98%, the user has to manually edit the detected ingredients. The moment manual correction is required, the "zero-entry" promise is broken and churn spikes.
+If the automated extraction or verification accuracy is 85% instead of 98%, the user has to manually verify results. The moment manual checking is required, the automation promise is broken and churn spikes.
 2. What evidence contradicts it?
-Academic studies on household inventory logging show that unpackaged deli items and loose produce suffer a 38% ambiguity rate in automated capture [ScholarXIV].
+Academic studies show that users often retain free manual workarounds if switching costs require learning new operational patterns.
 3. What existing competitor could kill this?
-If Apple or Google integrates receipt parsing directly into the system camera or Photos app with native AI meal generation, standalone utility value is commoditized.
+If major incumbents add native lightweight verification features, standalone utility value is compressed.
 4. What would make users NOT switch?
-If the user already has a routine where one partner shops and another cooks, a single-player app breaks down. Multi-user household coordination must be solved early.
+Entrenched team habits and compliance restrictions that slow down new software adoption.
 
 # Recommended direction
 
-The strongest direction is Concept A: The Receipt-to-Dinner Engine.
-It directly attacks the number one reason people delete existing apps—manual data entry fatigue—while anchoring value to everyday weeknight dinner decision relief.
+The strongest direction is Concept A: Autonomous Background Verification Engine.
+It directly attacks the number one reason people abandon existing apps—manual upkeep fatigue—while anchoring value to measurable workflow speed and certainty.
 
 | Today | Proposed solution |
 |---|---|
-| Manually typing barcodes or ingredients into an app | 5-second single photo receipt scan automatically extracts items |
-| Browsing 50 ad-bloated food blogs to figure out dinner | Instant recommendation of 3 complete meals using what will spoil first |
-| Feeling guilty when pantry trackers fall out of sync | Zero-guilt conversational prompts: "Do you have garlic and olive oil?" |
-| Paying $9/mo for generic advice available on ChatGPT | Measurable $60+/month reduction in spoiled groceries |
+| Manually typing notes and tracking statuses | Automated single-step ingestion and continuous verification |
+| Sifting through fragmented forums and unverified advice | Instant grounded evidence and empirical validation |
+| Feeling guilty when manual trackers fall out of sync | Zero-guilt automated background sync |
+| Paying recurring fees for generic suggestions | Measurable hours saved and provable reduction in costly errors |
 
 # Product Requirements
 
 ### Product Overview
-The Receipt-to-Dinner Engine is a zero-entry web and mobile platform that turns grocery receipt photos into tailored weeknight meal execution without manual pantry tracking.
+An autonomous verification and investigation engine for "${title}" that delivers instant validation without manual configuration or data entry fatigue.
 
 ### Target Users & Problem Statement
-- Target Users: Busy working professionals and parents cooking 3–5 nights per week.
-- Problem Statement: Home cooks waste 25 minutes every evening deciding what to cook, resulting in $150/month of spoiled food, because existing pantry apps require tedious manual logging.
+- Target Users: Practitioners, operators, and founders executing ${title}.
+- Problem Statement: Users waste hours on manual verification and ungrounded guesswork because existing tools demand continuous manual data entry.
 
 ### Core User Journey
-1. Ingestion: User snaps photo of paper grocery receipt or forwards digital order.
-2. Ingestion Feedback: System confirms detected fresh items in 5 seconds without asking for manual barcode confirmations.
-3. Decision: At 5:30 PM, user receives a quiet notification: "Tonight's fastest dinner: Garlic butter chicken and green beans (ready in 20 min). Cook this?"
-4. Execution: 1-tap recipe mode with clean, step-by-step instructions and automatic timer.
-5. Deduction: Finishing the meal silently deducts the used items from inventory.
+1. Ingestion: User submits target URL, document, or idea hypothesis.
+2. Background Verification: System executes automated analysis in seconds without requiring manual configuration.
+3. Decision: User receives clear verdict with empirical evidence signals and friction points.
+4. Action: 1-click export of structured brief or validation experiment.
 
 ### MVP Scope & Key Features
-- High-fidelity receipt OCR parsing with loose produce normalization.
-- Perishable shelf-life decay estimation algorithm.
-- 15-second meal generation grounded strictly in confirmed receipt items.
-- Conversational staple deduction (assumes salt, oil, and pepper exist unless flagged).
+- High-fidelity automated extraction without manual data mapping.
+- Empirical verification against peer-reviewed and real-world signals.
+- Instant, actionable recommendations grounded in real user behavior.
 
 ### UX Principles & Success Criteria
-- Zero Data Entry: Never require the user to complete an onboarding pantry checklist.
-- Speed-to-Value: Under 45 seconds from receipt upload to complete dinner recipe.
-- Success Metric: >=65% of beta users cook 2+ meals from their scanned receipts within 7 days.
+- Zero Data Entry: Never require onboarding checklists or manual schema mapping.
+- Speed-to-Value: Under 45 seconds from input to actionable verdict.
+- Success Metric: >=70% of users complete their primary goal on first run.
 
 # What would change this conclusion?
 
-1. Target users demonstrate in interviews that deciding what to cook is enjoyable, and the real friction is grocery shopping logistics.
-2. Testing reveals receipt scan OCR accuracy on loose produce is under 80%, forcing user manual intervention.
-3. Competitor teardowns prove that one-time purchase apps retain users better than recurring SaaS models in this vertical.
+1. Target users demonstrate in interviews that manual workflows are preferred and switching friction is prohibitive.
+2. Automated verification precision fails to exceed 90% in real-world testing.
+3. Incumbents release free native verification tools directly inside operating systems.
 
 # What should we investigate next?
 
@@ -885,39 +887,39 @@ The Receipt-to-Dinner Engine is a zero-entry web and mobile platform that turns 
 [Explore evidence]`,
     isConciseQA: false,
     questionsToAnswer: [
-      { id: 'q1', question: 'Will users consistently snap grocery receipts immediately after shopping?', underlyingAssumption: 'Users possess sufficient post-shopping motivation to upload receipts', status: 'investigating' },
-      { id: 'q2', question: 'Can loose produce shelf life be estimated without user manual input?', underlyingAssumption: 'Standard decay curves are accurate enough to prevent food waste', status: 'investigating' },
-      { id: 'q3', question: 'Will users pay $49/year when free AI prompt wrappers exist?', underlyingAssumption: 'Direct time-savings and food waste reduction justify paid subscription', status: 'investigating' }
+      { id: 'q1', question: `Will users trust automated verification for "${title}" without manual cross-checking?`, underlyingAssumption: 'High initial trust in automated findings', status: 'investigating' },
+      { id: 'q2', question: 'Can the core loop deliver immediate value in under 60 seconds?', underlyingAssumption: 'Zero-configuration onboarding is technically viable', status: 'investigating' },
+      { id: 'q3', question: 'Will practitioners pay for specialized automation over free generalist AI?', underlyingAssumption: 'Domain ground truth justifies premium pricing', status: 'investigating' }
     ],
     trackedCompetitors: [
-      { id: 'c1', name: 'Paprika Recipe Manager', targetUser: 'Enthusiast home cooks', coreApproach: 'Offline manual recipe scraper', strength: 'Reliable cloud sync', weakness: 'Zero automated pantry detection', opportunity: 'Automated receipt-to-meal loop' },
-      { id: 'c2', name: 'SuperCook', targetUser: 'Budget cooks', coreApproach: 'Pantry checklist ingredient matcher', strength: 'Large recipe database', weakness: 'Tedious 15-minute manual ingredient auditing', opportunity: 'Instant single-scan receipt inventory' },
-      { id: 'c3', name: 'Mealime', targetUser: 'Busy professionals', coreApproach: 'Curated meal plan + grocery delivery', strength: 'Fast 30-minute meals', weakness: 'Rigid pre-set plans that ignore food already in fridge', opportunity: 'Adaptive dinner ideas based on perishable shelf-life' }
+      { id: 'c1', name: 'Incumbent Manual Workaround', targetUser: 'Existing practitioners', coreApproach: 'Manual spreadsheets and notes', strength: 'Zero cost and familiar habit', weakness: 'High upkeep overhead causes systematic drop-off', opportunity: 'Automated background execution' },
+      { id: 'c2', name: 'Legacy Software Suites', targetUser: 'Enterprise teams', coreApproach: 'Heavyweight vertical tools', strength: 'Feature complete', weakness: 'Slow onboarding and expensive configuration', opportunity: 'Instant time-to-first-value' },
+      { id: 'c3', name: 'Generalist AI (ChatGPT / Claude)', targetUser: 'General public', coreApproach: 'Prompt-based conversational chat', strength: 'Ubiquitous and free', weakness: 'Hallucinations and lack of empirical workflow grounding', opportunity: 'Rigorous empirical verification loop' }
     ],
     changeMindCriteria: [
       'Evidence shows target users already maintain manual workflows with >50% 30-day retention.',
-      'User interviews show grocery shopping logistics—not dinner decision fatigue—is the real bottleneck.',
-      'Receipt scan OCR accuracy on non-barcode items fails to exceed 80% in real-world testing.'
+      'User interviews show manual execution is preferred over automated assistance.',
+      'Core accuracy fails to exceed 90% in empirical testing.'
     ],
     validationExperiments: [
       {
         id: `exp_${Date.now()}_1`,
-        title: '48-Hour Zero-Entry Receipt Smoke Test',
-        hypothesis: 'At least 70% of 25 invited target users complete 3 consecutive meal cycles if inventory entry is completely automated via receipt photo.',
+        title: `48-Hour Zero-Friction Validation Test for "${title}"`,
+        hypothesis: `At least 60% of target practitioners complete the core workflow when onboarding requires zero manual data entry.`,
         testType: 'concierge',
-        targetAudience: 'Busy working professionals cooking 3-5 nights/week',
+        targetAudience: 'Target market practitioners',
         duration: '48 Hours',
-        successMetric: '>=65% upload rate across 25 participants',
+        successMetric: '>=60% completion rate across 20 participants',
         status: 'ready'
       },
       {
         id: `exp_${Date.now()}_2`,
         title: 'Pricing & WTP Smoke Test Landing Page',
-        hypothesis: 'Target home cooks convert on a $39/year deposit when guaranteed $100+/mo reduction in spoiled groceries.',
+        hypothesis: 'Target customers commit to a pre-order deposit when guaranteed verifiable time savings.',
         testType: 'pricing_test',
-        targetAudience: 'Qualified home cooks from r/Cooking and community channels',
+        targetAudience: 'Qualified practitioners from Reddit and community channels',
         duration: '72 Hours',
-        successMetric: '>=8% payment checkout intent rate',
+        successMetric: '>=8% payment intent rate',
         status: 'ready'
       }
     ],
@@ -933,7 +935,7 @@ The Receipt-to-Dinner Engine is a zero-entry web and mobile platform that turns 
       lastResearchedAt: Date.now(),
       newCompetitorsCount: 3,
       newDiscussionsCount: 6,
-      latestInsight: 'Zero-data-entry via receipt extraction is the only verified vector to overcome 88% 14-day pantry app churn.'
+      latestInsight: `Frictionless automated verification is the critical vector to overcome manual tool abandonment for ${title}.`
     }
   };
 }

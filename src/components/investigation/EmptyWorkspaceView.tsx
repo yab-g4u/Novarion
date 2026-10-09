@@ -12,7 +12,9 @@ import {
   ShieldAlert,
   Search,
   Target,
-  GraduationCap
+  GraduationCap,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 import { ProbeLogo } from '../ProbeLogo';
 import { ScholarXivLogo } from '../ScholarXivLogo';
@@ -50,6 +52,8 @@ export const EmptyWorkspaceView: React.FC<EmptyWorkspaceViewProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [attachedFile, setAttachedFile] = useState<{ file: File; name: string; size: string } | null>(null);
   const [isExtractingDoc, setIsExtractingDoc] = useState(false);
+  const [extractedDocContext, setExtractedDocContext] = useState<ExtractedDocumentContext | null>(null);
+  const [extractError, setExtractError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 4 Core Starting Actions required by Probe research workspace
@@ -96,17 +100,22 @@ export const EmptyWorkspaceView: React.FC<EmptyWorkspaceViewProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setExtractError(null);
+    setExtractedDocContext(null);
+
     const sizeStr = `${(file.size / 1024).toFixed(1)} KB`;
     setAttachedFile({ file, name: file.name, size: sizeStr });
 
     setIsExtractingDoc(true);
     try {
       const extracted = await extractDocumentContext(file);
+      setExtractedDocContext(extracted);
       if (extracted.title && !query) {
         setQuery(extracted.title);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Document extraction error:', err);
+      setExtractError(err?.message || 'Failed to extract text from document.');
     } finally {
       setIsExtractingDoc(false);
     }
@@ -114,29 +123,33 @@ export const EmptyWorkspaceView: React.FC<EmptyWorkspaceViewProps> = ({
 
   const removeAttachedFile = () => {
     setAttachedFile(null);
+    setExtractedDocContext(null);
+    setExtractError(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleSubmit = async (customQuery?: string) => {
     const finalQuery = (customQuery || query).trim();
     if (!finalQuery && !attachedFile) return;
+    if (extractError) return; // Do not submit if file failed extraction
 
     setIsSubmitting(true);
     try {
-      let docContext: ExtractedDocumentContext | undefined;
-      let docFileName: string | undefined;
+      let docContext: ExtractedDocumentContext | undefined = extractedDocContext || undefined;
+      let docFileName: string | undefined = attachedFile?.name;
 
-      if (attachedFile) {
-        docFileName = attachedFile.name;
+      // If document was attached but extraction hasn't completed yet, wait for it
+      if (attachedFile && !docContext && !extractError) {
         try {
           docContext = await extractDocumentContext(attachedFile.file);
-        } catch (err) {
-          console.error('Failed to parse doc:', err);
+        } catch (err: any) {
+          setExtractError(err?.message || 'Failed to parse document.');
+          return;
         }
       }
 
       await onCreateInvestigation({
-        query: finalQuery || `Investigate PRD: ${attachedFile?.name}`,
+        query: finalQuery || docContext?.title || `Investigate PRD: ${attachedFile?.name}`,
         documentContext: docContext,
         documentFileName: docFileName
       });
@@ -188,25 +201,52 @@ export const EmptyWorkspaceView: React.FC<EmptyWorkspaceViewProps> = ({
           {/* Large Clean Research Input Box */}
           <div className="bg-white border border-[#E5E7EB] rounded-2xl p-3.5 sm:p-4 shadow-xs text-left focus-within:border-[#0A0D14] focus-within:ring-2 focus-within:ring-[#0A0D14]/10 transition-all">
             {attachedFile && (
-              <div className="mb-2.5 flex items-center justify-between p-2 rounded-xl bg-[#EFF6FF] border border-[#BFDBFE] text-xs">
-                <div className="flex items-center gap-2">
-                  <FileText size={14} className="text-[#2563EB]" />
-                  <span className="font-semibold text-[#1E40AF] truncate max-w-sm">
-                    {attachedFile.name}
-                  </span>
-                  <span className="text-[10px] text-[#3B82F6] font-mono">({attachedFile.size})</span>
-                  {isExtractingDoc && (
-                    <span className="text-[10px] text-[#2563EB] animate-pulse">
-                      Extracting PRD context...
-                    </span>
+              <div className={`mb-2.5 flex items-center justify-between p-2.5 rounded-xl border text-xs transition-all ${
+                extractError
+                  ? 'bg-[#FEF2F2] border-[#FECACA] text-[#991B1B]'
+                  : isExtractingDoc
+                  ? 'bg-[#EFF6FF] border-[#BFDBFE] text-[#1E40AF]'
+                  : 'bg-[#F0FDF4] border-[#BBF7D0] text-[#166534]'
+              }`}>
+                <div className="flex items-center gap-2 min-w-0">
+                  {extractError ? (
+                    <AlertCircle size={15} className="text-[#DC2626] shrink-0" />
+                  ) : isExtractingDoc ? (
+                    <div className="w-3.5 h-3.5 border-2 border-[#2563EB] border-t-transparent rounded-full animate-spin shrink-0" />
+                  ) : (
+                    <CheckCircle2 size={15} className="text-[#16A34A] shrink-0" />
                   )}
+
+                  <div className="flex flex-col min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold truncate max-w-xs sm:max-w-md">
+                        {attachedFile.name}
+                      </span>
+                      <span className="text-[10px] opacity-70 font-mono">({attachedFile.size})</span>
+                    </div>
+
+                    <div className="text-[11px] truncate">
+                      {extractError ? (
+                        <span className="text-[#DC2626] font-medium">{extractError}</span>
+                      ) : isExtractingDoc ? (
+                        <span className="text-[#2563EB] animate-pulse">Reading pages, extracting tables & structuring context…</span>
+                      ) : (
+                        <span className="text-[#15803D]">
+                          ✓ Ready for research • {extractedDocContext?.pageCount ? `${extractedDocContext.pageCount} pages • ` : ''}
+                          {extractedDocContext?.charCount ? `${Math.round(extractedDocContext.charCount / 5)} words indexed` : 'Document indexed'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
+
                 <button
                   type="button"
                   onClick={removeAttachedFile}
-                  className="text-[#9CA3AF] hover:text-[#DC2626] p-1 transition-colors cursor-pointer"
+                  className="text-[#9CA3AF] hover:text-[#DC2626] p-1.5 rounded-lg hover:bg-black/5 transition-colors cursor-pointer shrink-0 ml-2"
+                  title="Remove attached file"
                 >
-                  <X size={13} />
+                  <X size={14} />
                 </button>
               </div>
             )}

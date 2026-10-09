@@ -154,15 +154,34 @@ const SYSTEM_INSTRUCTION = `You are Probe Voice — the real-time voice intellig
 Probe is an empirical investigation platform for founders to stress-test ideas before building.
 Your role:
 1. You directly CONTROL and OPERATE the Probe web application using your available tools.
-2. When the user asks you to research an idea, check academic papers, find contradictions, create experiments, or start a product test, YOU MUST CALL THE CORRESPONDING TOOL.
+2. When the user asks you to research an idea, check academic papers, find contradictions, create experiments, navigate views, or start a product test, YOU MUST CALL THE CORRESPONDING TOOL IMMEDIATELY.
 3. Keep spoken responses concise, punchy, confident, and natural (1-3 sentences maximum). Avoid markdown, bullet points, or visual formatting in spoken speech.
 4. Voice context awareness:
    - When the user says "Create an experiment for that" or "Create an experiment for it", refer to the currently selected or strongest contradiction or assumption from the active investigation.
    - When the user asks to check academic research, call search_academic_research.
    - When the user asks to start a product test, call start_product_test with appropriate product URL and task.
    - When the user asks to see contradictions, call show_strongest_contradiction.
-5. You operate in continuous hands-free dialogue. The user can speak anytime, interrupt you, or give follow-up commands without touching the keyboard.
-6. Safety: Normal actions (research, filtering, experiments, navigation) execute immediately. If the user asks for destructive operations like deleting all data, ask for confirmation first.`;
+5. Multilingual voice control (English, Amharic, Afaan Oromo):
+   - You fully comprehend and speak English, Amharic (አማርኛ), and Afaan Oromo (Oromic / Oromiffa).
+   - If the user speaks or commands you in Amharic (e.g. "ይህን ምርምር ጀምር", "ማስረጃዎችን አሳየኝ", "ሙከራ ፍጠር", "ወደ ኋላ ተመለስ"), identify the intent, trigger the corresponding tool, and respond naturally in Amharic.
+   - If the user speaks or commands you in Afaan Oromo (e.g. "Qorannoo kana eegali", "Ragaalee na agarsiisi", "Yaalii uumi", "Gara duubaatti deebi'i"), execute the appropriate tool and respond naturally in Afaan Oromo.
+   - If the user speaks in English, execute the tool and reply in English.
+6. Continuous hands-free dialogue: The user can speak anytime, interrupt you, or give follow-up commands hands-free without touching the keyboard.
+7. Safety: Normal actions (research, filtering, experiments, navigation) execute immediately. If the user asks for destructive operations like deleting all data, ask for confirmation first.`;
+
+function safeSend(ws: WebSocket | null, payload: any) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try {
+      ws.send(typeof payload === 'string' ? payload : JSON.stringify(payload), (err) => {
+        if (err) {
+          // Socket write failed, ignore transient disconnect
+        }
+      });
+    } catch {
+      // Socket closing or closed
+    }
+  }
+}
 
 export function setupVoiceBridge(server: HttpServer) {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -184,12 +203,17 @@ export function setupVoiceBridge(server: HttpServer) {
   wss.on('connection', async (clientWs: WebSocket) => {
     console.log('[Probe Voice Bridge] Client connected to live voice socket');
 
+    // Add immediate error listener on clientWs to prevent unhandled senderOnError
+    clientWs.on('error', (err: any) => {
+      console.warn('[Probe Voice Bridge] Client socket error caught:', err?.message || err);
+    });
+
     if (!apiKey) {
-      clientWs.send(JSON.stringify({
+      safeSend(clientWs, {
         type: 'error',
         message: 'GEMINI_API_KEY is not configured on the server. Please check your environment variables.'
-      }));
-      clientWs.close();
+      });
+      try { clientWs.close(); } catch {}
       return;
     }
 
@@ -227,9 +251,7 @@ export function setupVoiceBridge(server: HttpServer) {
           onopen: () => {
             console.log('[Probe Voice Bridge] Connected to Gemini Live API');
             isConnectedToGemini = true;
-            if (clientWs.readyState === WebSocket.OPEN) {
-              clientWs.send(JSON.stringify({ type: 'ready' }));
-            }
+            safeSend(clientWs, { type: 'ready' });
           },
           onmessage: (message: LiveServerMessage) => {
             if (clientWs.readyState !== WebSocket.OPEN) return;
@@ -238,80 +260,74 @@ export function setupVoiceBridge(server: HttpServer) {
             const parts = message.serverContent?.modelTurn?.parts || [];
             for (const part of parts) {
               if (part.inlineData?.data) {
-                clientWs.send(JSON.stringify({
+                safeSend(clientWs, {
                   type: 'audio',
                   audio: part.inlineData.data
-                }));
+                });
               }
               if (part.text) {
-                clientWs.send(JSON.stringify({
+                safeSend(clientWs, {
                   type: 'agent_text',
                   text: part.text
-                }));
+                });
               }
             }
 
             // 2. Interruption / Barge-in
             if (message.serverContent?.interrupted) {
-              clientWs.send(JSON.stringify({ type: 'interrupted' }));
+              safeSend(clientWs, { type: 'interrupted' });
             }
 
             // 3. Live User Input Transcription
             if (message.serverContent?.inputTranscription?.text) {
-              clientWs.send(JSON.stringify({
+              safeSend(clientWs, {
                 type: 'user_transcript',
                 text: message.serverContent.inputTranscription.text
-              }));
+              });
             }
 
             // 4. Live Model Output Spoken Transcription
             if (message.serverContent?.outputTranscription?.text) {
-              clientWs.send(JSON.stringify({
+              safeSend(clientWs, {
                 type: 'agent_transcript',
                 text: message.serverContent.outputTranscription.text
-              }));
+              });
             }
 
             // 5. Turn Complete
             if (message.serverContent?.turnComplete) {
-              clientWs.send(JSON.stringify({ type: 'turn_complete' }));
+              safeSend(clientWs, { type: 'turn_complete' });
             }
 
             // 6. Tool Calls: Expose real Probe actions to the client UI
             if (message.toolCall?.functionCalls && message.toolCall.functionCalls.length > 0) {
               console.log('[Probe Voice Bridge] Model requested tool call:', message.toolCall.functionCalls);
-              clientWs.send(JSON.stringify({
+              safeSend(clientWs, {
                 type: 'tool_call',
                 functionCalls: message.toolCall.functionCalls
-              }));
+              });
             }
           },
           onerror: (err: any) => {
             console.error('[Probe Voice Bridge] Gemini Live error:', err);
-            if (clientWs.readyState === WebSocket.OPEN) {
-              clientWs.send(JSON.stringify({
-                type: 'error',
-                message: err?.message || 'Gemini Live session encountered an error'
-              }));
-            }
+            safeSend(clientWs, {
+              type: 'error',
+              message: err?.message || 'Gemini Live session encountered an error'
+            });
           },
           onclose: (e: any) => {
             console.log('[Probe Voice Bridge] Gemini Live connection closed:', e?.reason || e);
             isConnectedToGemini = false;
-            if (clientWs.readyState === WebSocket.OPEN) {
-              clientWs.send(JSON.stringify({ type: 'session_closed' }));
-            }
+            safeSend(clientWs, { type: 'session_closed' });
           }
         }
       });
     } catch (err: any) {
       console.error('[Probe Voice Bridge] Failed to connect to Gemini Live API:', err);
-      if (clientWs.readyState === WebSocket.OPEN) {
-        clientWs.send(JSON.stringify({
-          type: 'error',
-          message: err?.message || 'Failed to initialize Gemini Live session'
-        }));
-      }
+      safeSend(clientWs, {
+        type: 'error',
+        message: err?.message || 'Failed to initialize Gemini Live session'
+      });
       return;
     }
 
@@ -322,20 +338,25 @@ export function setupVoiceBridge(server: HttpServer) {
         // A. Real-time audio chunks from microphone (16kHz PCM little-endian base64)
         if (msg.type === 'audio' && msg.audio) {
           if (liveSession && isConnectedToGemini) {
-            liveSession.sendRealtimeInput({
-              audio: {
-                data: msg.audio,
-                mimeType: 'audio/pcm;rate=16000'
-              }
-            });
+            try {
+              liveSession.sendRealtimeInput({
+                audio: {
+                  data: msg.audio,
+                  mimeType: 'audio/pcm;rate=16000'
+                }
+              });
+            } catch (liveErr) {
+              console.warn('[Probe Voice Bridge] Error sending audio chunk to Gemini Live:', liveErr);
+            }
           }
         }
 
         // B. Context update from client UI
         else if (msg.type === 'context_update' && msg.context) {
           if (liveSession && isConnectedToGemini) {
-            const ctx = msg.context;
-            const contextText = `[PROBE UI CONTEXT UPDATE]
+            try {
+              const ctx = msg.context;
+              const contextText = `[PROBE UI CONTEXT UPDATE]
 - Active Idea: "${ctx.currentIdea || 'none'}"
 - Current Section: ${ctx.activeTab || 'research'}
 - Extracted Assumptions: ${JSON.stringify(ctx.assumptions || [])}
@@ -343,40 +364,51 @@ export function setupVoiceBridge(server: HttpServer) {
 - Selected Item: "${ctx.selectedItem || 'none'}"
 - Verified Evidence Count: ${ctx.evidenceCount || 0}`;
 
-            liveSession.sendClientContent({
-              turns: [
-                {
-                  role: 'user',
-                  parts: [{ text: contextText }]
-                }
-              ],
-              turnComplete: false
-            });
+              liveSession.sendClientContent({
+                turns: [
+                  {
+                    role: 'user',
+                    parts: [{ text: contextText }]
+                  }
+                ],
+                turnComplete: false
+              });
+            } catch (ctxErr) {
+              console.warn('[Probe Voice Bridge] Error updating context in Gemini Live:', ctxErr);
+            }
           }
         }
 
         // C. Tool execution response from client UI
         else if (msg.type === 'tool_response' && msg.functionResponses) {
           if (liveSession && isConnectedToGemini) {
-            console.log('[Probe Voice Bridge] Sending tool response back to Gemini:', msg.functionResponses);
-            liveSession.sendToolResponse({
-              functionResponses: msg.functionResponses
-            });
+            try {
+              console.log('[Probe Voice Bridge] Sending tool response back to Gemini:', msg.functionResponses);
+              liveSession.sendToolResponse({
+                functionResponses: msg.functionResponses
+              });
+            } catch (respErr) {
+              console.warn('[Probe Voice Bridge] Error sending tool response to Gemini:', respErr);
+            }
           }
         }
 
         // D. Text prompt fallback / text injection
         else if (msg.type === 'text_input' && msg.text) {
           if (liveSession && isConnectedToGemini) {
-            liveSession.sendClientContent({
-              turns: [
-                {
-                  role: 'user',
-                  parts: [{ text: msg.text }]
-                }
-              ],
-              turnComplete: true
-            });
+            try {
+              liveSession.sendClientContent({
+                turns: [
+                  {
+                    role: 'user',
+                    parts: [{ text: msg.text }]
+                  }
+                ],
+                turnComplete: true
+              });
+            } catch (textErr) {
+              console.warn('[Probe Voice Bridge] Error sending text to Gemini Live:', textErr);
+            }
           }
         }
 
@@ -398,10 +430,6 @@ export function setupVoiceBridge(server: HttpServer) {
           // ignore
         }
       }
-    });
-
-    clientWs.on('error', (err) => {
-      console.error('[Probe Voice Bridge] Client socket error:', err);
     });
   });
 

@@ -31,6 +31,7 @@ export const NewInvestigationModal: React.FC<NewInvestigationModalProps> = ({
   const [ideaText, setIdeaText] = useState('');
   const [uploadedFile, setUploadedFile] = useState<{ file: File; name: string; size: string } | null>(null);
   const [extractedContext, setExtractedContext] = useState<ExtractedDocumentContext | null>(null);
+  const [extractError, setExtractError] = useState<string | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -39,6 +40,8 @@ export const NewInvestigationModal: React.FC<NewInvestigationModalProps> = ({
   if (!isOpen) return null;
 
   const handleProcessFile = async (file: File) => {
+    setExtractError(null);
+    setExtractedContext(null);
     const sizeStr = `${(file.size / 1024).toFixed(1)} KB`;
     setUploadedFile({ file, name: file.name, size: sizeStr });
     setIsExtracting(true);
@@ -49,8 +52,9 @@ export const NewInvestigationModal: React.FC<NewInvestigationModalProps> = ({
       if (extracted.title && !ideaText) {
         setIdeaText(extracted.title);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error processing uploaded document:', err);
+      setExtractError(err?.message || 'Failed to extract text from document.');
     } finally {
       setIsExtracting(false);
     }
@@ -67,6 +71,7 @@ export const NewInvestigationModal: React.FC<NewInvestigationModalProps> = ({
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (extractError || isExtracting) return;
     const clean = ideaText.trim() || extractedContext?.title;
     if (!clean && !uploadedFile) return;
 
@@ -147,8 +152,9 @@ export const NewInvestigationModal: React.FC<NewInvestigationModalProps> = ({
                   onClick={() => {
                     setUploadedFile(null);
                     setExtractedContext(null);
+                    setExtractError(null);
                   }}
-                  className="text-[11px] text-[#DC2626] hover:underline"
+                  className="text-[11px] text-[#DC2626] hover:underline cursor-pointer"
                 >
                   Remove file
                 </button>
@@ -156,21 +162,48 @@ export const NewInvestigationModal: React.FC<NewInvestigationModalProps> = ({
             </div>
 
             {uploadedFile ? (
-              <div className="p-3 rounded-xl bg-[#EFF6FF] border border-[#BFDBFE] flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2.5">
-                  <FileText size={18} className="text-[#2563EB]" />
-                  <div>
-                    <p className="font-semibold text-[#1E40AF] truncate max-w-xs">
+              <div className={`p-3 rounded-xl border flex items-center justify-between text-xs transition-all ${
+                extractError
+                  ? 'bg-[#FEF2F2] border-[#FECACA] text-[#991B1B]'
+                  : isExtracting
+                  ? 'bg-[#EFF6FF] border-[#BFDBFE] text-[#1E40AF]'
+                  : 'bg-[#F0FDF4] border-[#BBF7D0] text-[#166534]'
+              }`}>
+                <div className="flex items-center gap-2.5 min-w-0">
+                  {extractError ? (
+                    <AlertCircle size={18} className="text-[#DC2626] shrink-0" />
+                  ) : isExtracting ? (
+                    <div className="w-4 h-4 border-2 border-[#2563EB] border-t-transparent rounded-full animate-spin shrink-0" />
+                  ) : (
+                    <FileText size={18} className="text-[#16A34A] shrink-0" />
+                  )}
+
+                  <div className="min-w-0">
+                    <p className="font-semibold truncate max-w-xs sm:max-w-sm">
                       {uploadedFile.name}
                     </p>
-                    <p className="text-[10px] text-[#3B82F6] font-mono">
-                      {uploadedFile.size} • {isExtracting ? 'Extracting PRD context...' : 'Context Ready'}
+                    <p className="text-[10px] font-mono mt-0.5">
+                      {uploadedFile.size} • {
+                        extractError ? (
+                          <span className="text-[#DC2626] font-medium">{extractError}</span>
+                        ) : isExtracting ? (
+                          <span className="text-[#2563EB] animate-pulse">Extracting full text and structure…</span>
+                        ) : (
+                          <span className="text-[#15803D]">
+                            ✓ Ready • {extractedContext?.pageCount ? `${extractedContext.pageCount} pages • ` : ''}
+                            {extractedContext?.charCount ? `${Math.round(extractedContext.charCount / 5)} words` : 'Indexed'}
+                          </span>
+                        )
+                      }
                     </p>
                   </div>
                 </div>
-                <div className="w-5 h-5 rounded-full bg-[#2563EB] text-white flex items-center justify-center">
-                  <Check size={12} />
-                </div>
+
+                {!extractError && !isExtracting && (
+                  <div className="w-5 h-5 rounded-full bg-[#16A34A] text-white flex items-center justify-center shrink-0 ml-2">
+                    <Check size={12} />
+                  </div>
+                )}
               </div>
             ) : (
               <div

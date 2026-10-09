@@ -16,7 +16,6 @@ import {
   RadialEvidenceItem 
 } from '../../lib/research/dynamicInvestigationResolver';
 import { BuildBriefPanel } from '../buildBrief/BuildBriefPanel';
-import { VoiceControlButton } from '../voice/VoiceControlButton';
 import { InvestigationThinkingMode } from '../investigation/InvestigationThinkingMode';
 
 interface LiveInvestigationExperienceProps {
@@ -131,7 +130,6 @@ export const LiveInvestigationExperience: React.FC<LiveInvestigationExperiencePr
             className="text-sm sm:text-base font-medium text-[#0A0D14] placeholder:text-[#94A3B8] flex-1 bg-transparent outline-none pr-3"
           />
           <div className="flex items-center gap-1.5 shrink-0">
-            <VoiceControlButton size="md" />
             <button
               type="submit"
               disabled={isScanning}

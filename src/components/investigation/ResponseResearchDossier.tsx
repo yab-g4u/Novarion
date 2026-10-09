@@ -32,6 +32,7 @@ interface ResponseResearchDossierProps {
   onLaunchExperiment?: (experiment: ValidationExperiment) => void;
   onOpenTestingTab?: () => void;
   onSelectSource?: (source: any) => void;
+  onOpenBuildPackage?: () => void;
 }
 
 export const ResponseResearchDossier: React.FC<ResponseResearchDossierProps> = ({
@@ -41,6 +42,7 @@ export const ResponseResearchDossier: React.FC<ResponseResearchDossierProps> = (
   onLaunchExperiment,
   onOpenTestingTab,
   onSelectSource,
+  onOpenBuildPackage,
 }) => {
   const [isDossierExpanded, setIsDossierExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<'graph' | 'assumptions' | 'contradictions' | 'academic' | 'experiments'>('graph');
@@ -62,6 +64,38 @@ export const ResponseResearchDossier: React.FC<ResponseResearchDossierProps> = (
 
   return (
     <div className="w-full mt-5 space-y-4">
+      {/* 0. READY TO BUILD BANNER (Minimal friction bridge from Research to Build Package) */}
+      {onOpenBuildPackage && (
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-white border border-[#E5E7EB] hover:border-[#CBD5E1] shadow-2xs transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-[#0A0D14] text-white flex items-center justify-center shrink-0 shadow-xs">
+              <Sparkles size={15} className="text-[#10B981]" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-bold text-[#0A0D14]">Your idea is ready to build.</h4>
+                <span className="px-2 py-0.2 rounded-full text-[10px] font-mono font-semibold bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]">
+                  PRD + DESIGN
+                </span>
+              </div>
+              <p className="text-xs text-[#525866] mt-0.5">
+                Generate developer-ready PRD.md & adapted DesignMD system from your evidence.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onOpenBuildPackage}
+            className="px-3.5 py-1.5 rounded-xl bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-98 shrink-0"
+            title="Open Build Package"
+          >
+            <span>Generate Build Package</span>
+            <ArrowRight size={13} className="text-[#10B981]" />
+          </button>
+        </div>
+      )}
+
       {/* 1. INTERACTIVE NODE GRAPH (MATCHES image.png) */}
       <div className="p-3 sm:p-5 rounded-2xl bg-[#FAFAFA] border border-[#E5E7EB] shadow-2xs">
         <div className="flex items-center justify-between mb-3 px-1">

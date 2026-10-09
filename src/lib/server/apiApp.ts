@@ -365,12 +365,10 @@ export function createApiApp() {
         context,
       });
     } catch (err: any) {
-      console.info('[API /api/documents/extract] Falling back to deterministic document extractor.');
-      const { extractContextFromDocumentText } = await import('../documents/documentExtractor');
-      const context = extractContextFromDocumentText(parseResult.data.text || '', parseResult.data.fileName);
-      return res.status(200).json({
-        status: 'ok',
-        context,
+      console.warn('[API /api/documents/extract Error]:', err.message);
+      return res.status(422).json({
+        error: 'Document extraction failed',
+        message: err.message || 'Unable to parse document'
       });
     }
   });
@@ -645,6 +643,124 @@ export function createApiApp() {
     });
   });
 
+  // REST API: POST /api/build-package/generate (Generates PRD.md & DESIGN.md using DesignMD integration)
+  app.post('/api/build-package/generate', geminiApiRateLimiter.middleware, async (req: Request, res: Response) => {
+    try {
+      const { investigation, query, preferredStyleSlug } = req.body || {};
+      if (!investigation && !query) {
+        return res.status(400).json({ error: 'Investigation record or query is required' });
+      }
+
+      // If investigation was passed as an ID or partial, build effective record
+      const effectiveInvestigation = investigation || {
+        id: `inv_${Date.now()}`,
+        title: query,
+        query: query,
+        status: 'completed',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        messages: [],
+        assumptions: [],
+        contradictions: [],
+        experiments: [],
+        evidence: []
+      };
+
+      const { buildPackageService } = await import('./buildPackageService');
+      const result = await buildPackageService.generatePackage({
+        investigation: effectiveInvestigation,
+        query,
+        preferredStyleSlug
+      });
+
+      return res.status(200).json(result);
+    } catch (err: any) {
+      console.error('[API /api/build-package/generate Error]:', err);
+      return res.status(500).json({
+        error: 'Build package generation failed',
+        message: err.message || 'Internal server error'
+      });
+    }
+  });
+
+  // DesignMD API: GET /api/styles (List all DESIGN.md styles with pagination and filtering)
+  app.get('/api/styles', async (req: Request, res: Response) => {
+    try {
+      const page = req.query.page ? parseInt(String(req.query.page), 10) : 1;
+      const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 20;
+      const type = req.query.type ? String(req.query.type) : undefined;
+
+      const { designMDService } = await import('./designmdService');
+      const result = await designMDService.listStyles({ page, limit, type });
+      return res.status(200).json(result);
+    } catch (err: any) {
+      console.error('[API /api/styles Error]:', err);
+      return res.status(500).json({ error: 'Failed to list styles', message: err.message });
+    }
+  });
+
+  // DesignMD API: GET /api/styles/:slug/token (Get only YAML design tokens)
+  app.get('/api/styles/:slug/token', async (req: Request, res: Response) => {
+    try {
+      const slug = String(req.params.slug || '').trim();
+      const { designMDService } = await import('./designmdService');
+      const tokenYaml = await designMDService.getStyleToken(slug);
+      res.setHeader('Content-Type', 'text/yaml; charset=utf-8');
+      return res.status(200).send(tokenYaml);
+    } catch (err: any) {
+      console.error('[API /api/styles/:slug/token Error]:', err);
+      return res.status(404).json({ error: 'Tokens not found', message: err.message });
+    }
+  });
+
+  // DesignMD API: GET /api/styles/:slug/content (Get only markdown content)
+  app.get('/api/styles/:slug/content', async (req: Request, res: Response) => {
+    try {
+      const slug = String(req.params.slug || '').trim();
+      const { designMDService } = await import('./designmdService');
+      const contentMd = await designMDService.getStyleContent(slug);
+      res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+      return res.status(200).send(contentMd);
+    } catch (err: any) {
+      console.error('[API /api/styles/:slug/content Error]:', err);
+      return res.status(404).json({ error: 'Content not found', message: err.message });
+    }
+  });
+
+  // DesignMD API: GET /api/styles/:slug (Get full DESIGN.md metadata for a specific style)
+  app.get('/api/styles/:slug', async (req: Request, res: Response) => {
+    try {
+      const slug = String(req.params.slug || '').trim();
+      const { designMDService } = await import('./designmdService');
+      const style = await designMDService.getStyleBySlug(slug);
+      if (!style) {
+        return res.status(404).json({ error: `Style "${slug}" not found` });
+      }
+      return res.status(200).json(style);
+    } catch (err: any) {
+      console.error('[API /api/styles/:slug Error]:', err);
+      return res.status(500).json({ error: 'Failed to get style', message: err.message });
+    }
+  });
+
+  // DesignMD API: GET /api/search & GET /api/styles-search (Full-text search across all DESIGN.md files)
+  const handleDesignSearch = async (req: Request, res: Response) => {
+    try {
+      const q = String(req.query.q || req.query.query || '').trim();
+      if (!q) {
+        return res.status(200).json({ data: [] });
+      }
+      const { designMDService } = await import('./designmdService');
+      const results = await designMDService.searchStyles(q);
+      return res.status(200).json({ data: results });
+    } catch (err: any) {
+      console.error('[API GET /api/search Error]:', err);
+      return res.status(500).json({ error: 'Search failed', message: err.message });
+    }
+  };
+  app.get('/api/search', handleDesignSearch);
+  app.get('/api/styles-search', handleDesignSearch);
+
   // Voxide SDK HTTP relay for preview environments (*.run.app) whose ephemeral origin is not in the production domain lock
   app.all(['/api/sdk/:endpoint', '/api/voxide/sdk/:endpoint'], async (req: Request, res: Response) => {
     const endpoint = String(req.params.endpoint || '').trim();
@@ -653,9 +769,9 @@ export function createApiApp() {
     }
 
     try {
-      const targetUrl = `https://voxide.onrender.com/api/sdk/${endpoint}`;
+      const targetUrl = `https://voxide.app/api/sdk/${endpoint}`;
       const headers: Record<string, string> = {
-        Origin: 'https://novarion.ethiodeploy.com',
+        Origin: 'http://localhost:3000',
       };
       if (req.headers.authorization) {
         headers.Authorization = String(req.headers.authorization);

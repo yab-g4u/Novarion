@@ -48,12 +48,16 @@ const hasConfiguredVoxideKey = Boolean(
   ENV_VOXIDE_PUBLIC_KEY && ENV_VOXIDE_PUBLIC_KEY.startsWith("vox_pub_")
 );
 
+const FALLBACK_VOXIDE_PUBLIC_KEY =
+  "vox_pub_44e83d3dbe9c6c9eee78c93f203dbadf1a8d144e8c9546d4";
+
 const VOXIDE_PUBLIC_KEY = hasConfiguredVoxideKey
   ? ENV_VOXIDE_PUBLIC_KEY
-  : "vox_pub_unconfigured_set_vite_voxide_key_in_env";
+  : FALLBACK_VOXIDE_PUBLIC_KEY;
 
+const isBrowser = typeof window !== "undefined";
 const isEphemeralPreviewOrigin =
-  typeof window !== "undefined" && window.location.hostname.endsWith(".run.app");
+  isBrowser && (window.location.hostname.endsWith(".run.app") || window.location.port === "3000");
 
 export const ai = new VoxideClient({
   publicKey: VOXIDE_PUBLIC_KEY,

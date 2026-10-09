@@ -262,19 +262,24 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
     }
 
+    // Prime initial context into manager before connecting
+    const currentIdea = typeof window !== 'undefined' ? localStorage.getItem('probe_active_idea') || '' : '';
+    managerRef.current.updateContext({
+      currentIdea,
+      activeTab: location.pathname.includes('/testing') ? 'testing' : location.pathname.includes('/evidence') ? 'evidence' : 'research',
+      ...latestContextRef.current
+    });
+
+    // Optimistically wake up UI immediately on user click
+    setIsConnected(true);
+    setVoiceState('listening');
+
     try {
       await managerRef.current.connect();
       setIsConnected(true);
       setIsMuted(false);
-
-      // Send initial context
-      const currentIdea = localStorage.getItem('probe_active_idea') || '';
-      managerRef.current.updateContext({
-        currentIdea,
-        activeTab: location.pathname.includes('/testing') ? 'testing' : location.pathname.includes('/evidence') ? 'evidence' : 'research',
-        ...latestContextRef.current
-      });
     } catch (e: any) {
+      console.warn('[VoiceContext] Error connecting to voice service:', e);
       setIsConnected(false);
       setVoiceState('idle');
     }
