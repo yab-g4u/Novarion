@@ -5,6 +5,12 @@
 
 Probe is a cross-source research search engine and validation system. It challenges product assumptions by retrieving semantically relevant, source-backed discussions from **Reddit**, **X**, **LinkedIn**, and academic papers from **ScholarXIV**, alongside authentic user testing sessions on real products like **[links.et](https://links.et/)**.
 
+## Demo
+
+[![Watch Probe Demo](https://img.youtube.com/vi/Kd4aaC-Hlsw/maxresdefault.jpg)](https://youtu.be/Kd4aaC-Hlsw)
+
+*Click the preview above to watch Probe in action.*
+
 ---
 
 ## Architecture Overview
@@ -94,12 +100,17 @@ npm run build
 
 ## Core Capabilities
 
-1. **Cross-Source Retrieval Pipeline**:
-   - Searches Reddit, X, LinkedIn, and ScholarXIV in parallel.
-   - Normalizes citations, handles rate limits gracefully, and prevents AI hallucination.
-2. **Living Evidence Graph**:
-   - Memoized `@xyflow/react` node layout with dynamic ELK hierarchy.
-   - Categorizes evidence into Supporting, Contradicting, and Unknown blind spots.
-3. **Real Product Usability Testing**:
-   - Test live products (e.g. `https://links.et/`) against concrete tasks.
-   - Captures genuine user friction and generates agentic graphic diagnostic reports.
+1. **Cross-Source Retrieval Pipeline**
+
+   * Searches Reddit, X, LinkedIn, and ScholarXIV in parallel.
+   * Normalizes citations, handles rate limits gracefully, and prevents AI hallucination.
+
+2. **Living Evidence Graph**
+
+   * Memoized `@xyflow/react` node layout with dynamic ELK hierarchy.
+   * Categorizes evidence into Supporting, Contradicting, and Unknown blind spots.
+
+3. **Real Product Usability Testing**
+
+   * Test live products (e.g. `https://links.et/`) against concrete tasks.
+   * Captures genuine user friction and generates agentic graphic diagnostic reports.
