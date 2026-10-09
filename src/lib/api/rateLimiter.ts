@@ -181,10 +181,25 @@ export class GeminiUsageLimiter {
   private recentCalls: number[] = [];
   private readonly maxRpm: number;
   private readonly maxConcurrentTotal: number;
+  private circuitOpenUntil = 0;
 
   constructor() {
     this.maxRpm = parseInt(process.env.GEMINI_RPM_LIMIT || '60', 10);
     this.maxConcurrentTotal = parseInt(process.env.GEMINI_MAX_CONCURRENT || '6', 10);
+  }
+
+  /**
+   * Returns true if circuit breaker is currently open (AI quota exhausted)
+   */
+  public isCircuitOpen(): boolean {
+    return Date.now() < this.circuitOpenUntil;
+  }
+
+  /**
+   * Opens circuit breaker for a cooldown period (default 60 seconds)
+   */
+  public tripCircuitBreaker(durationMs = 60000): void {
+    this.circuitOpenUntil = Math.max(this.circuitOpenUntil, Date.now() + durationMs);
   }
 
   /**
@@ -210,6 +225,8 @@ export class GeminiUsageLimiter {
       inFlightStrong: this.inFlightStrongCount,
       inFlightTotal: this.inFlightFastCount + this.inFlightStrongCount,
       maxConcurrentTotal: this.maxConcurrentTotal,
+      circuitOpen: this.isCircuitOpen(),
+      circuitOpenRemainingSeconds: Math.max(0, Math.ceil((this.circuitOpenUntil - now) / 1000))
     };
   }
 
@@ -219,8 +236,12 @@ export class GeminiUsageLimiter {
   public async executeWithRateLimit<T>(
     task: () => Promise<T>,
     tier: 'fast' | 'strong' = 'fast',
-    maxRetries = 2
+    maxRetries = 1
   ): Promise<T> {
+    if (this.isCircuitOpen()) {
+      throw new Error('Gemini API quota currently exhausted (circuit breaker active)');
+    }
+
     const now = Date.now();
     this.pruneOldCalls(now);
 
@@ -246,20 +267,27 @@ export class GeminiUsageLimiter {
         try {
           return await task();
         } catch (err: any) {
+          const isQuota = isGeminiQuotaError(err);
           const errMsg = String(err?.message || err);
-          const isRateLimit = errMsg.includes('429') || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('Quota exceeded');
+
+          if (isQuota) {
+            this.tripCircuitBreaker(60000);
+            throw new Error('Gemini API quota exceeded');
+          }
+
+          const isRateLimit = errMsg.includes('429') || errMsg.includes('RESOURCE_EXHAUSTED');
 
           if (isRateLimit && attempt < maxRetries) {
             attempt++;
-            const backoffMs = Math.min(5000, Math.pow(2, attempt) * 1000 + Math.random() * 500);
-            console.warn(`[GeminiUsageLimiter] Hit rate limit on ${tier} tier. Retrying in ${Math.round(backoffMs)}ms (attempt ${attempt}/${maxRetries})...`);
+            const backoffMs = Math.min(3000, Math.pow(2, attempt) * 1000 + Math.random() * 400);
+            console.info(`[GeminiUsageLimiter] Pacing ${tier} tier request (${Math.round(backoffMs)}ms delay)...`);
             await new Promise((resolve) => setTimeout(resolve, backoffMs));
             continue;
           }
           throw err;
         }
       }
-      throw new Error(`Gemini rate limit exceeded after ${maxRetries} retries`);
+      throw new Error(`Gemini request limit exceeded`);
     } finally {
       if (tier === 'fast') {
         this.inFlightFastCount = Math.max(0, this.inFlightFastCount - 1);
@@ -268,6 +296,25 @@ export class GeminiUsageLimiter {
       }
     }
   }
+}
+
+/**
+ * Helper to identify whether an error is a Google GenAI rate limit or quota exhaustion
+ */
+export function isGeminiQuotaError(err: any): boolean {
+  if (!err) return false;
+  const msg = String(err?.message || err?.error || err);
+  const status = err?.status || err?.code || err?.statusCode;
+  return (
+    status === 429 ||
+    status === 'RESOURCE_EXHAUSTED' ||
+    msg.includes('429') ||
+    msg.includes('RESOURCE_EXHAUSTED') ||
+    msg.includes('Quota exceeded') ||
+    msg.includes('RATE_LIMIT_EXCEEDED') ||
+    msg.includes('quota_limit_value') ||
+    msg.includes('circuit breaker active')
+  );
 }
 
 // Singleton instances configured for Probe research cycles

@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type } from '@google/genai';
 import { ExtractedDocumentContext } from '../../types/document';
 import { extractContextFromDocumentText } from '../documents/documentExtractor';
+import { geminiUsageLimiter, isGeminiQuotaError } from '../api/rateLimiter';
 
 export async function extractDocumentWithGemini(params: {
   text?: string;
@@ -11,7 +12,7 @@ export async function extractDocumentWithGemini(params: {
   const { text = '', fileBase64, mimeType, fileName } = params;
   const apiKey = process.env.GEMINI_API_KEY;
 
-  if (!apiKey) {
+  if (!apiKey || geminiUsageLimiter.isCircuitOpen()) {
     return extractContextFromDocumentText(text, fileName);
   }
 
@@ -126,8 +127,13 @@ Extract and structure the following elements:
         extractedAt: new Date().toISOString()
       };
     }
-  } catch (err) {
-    console.error('[Document Extraction AI error]:', err);
+  } catch (err: any) {
+    if (isGeminiQuotaError(err)) {
+      geminiUsageLimiter.tripCircuitBreaker(60000);
+      console.info('[DocumentService] Gemini API quota reached; using deterministic document extractor.');
+    } else {
+      console.info('[DocumentService] AI extraction unavailable, using deterministic extractor.');
+    }
   }
 
   // Fallback to deterministic parser

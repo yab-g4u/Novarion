@@ -1,4 +1,5 @@
 import { GoogleGenAI, Type } from '@google/genai';
+import { geminiUsageLimiter, isGeminiQuotaError } from '../../api/rateLimiter';
 
 export type AcademicStance = 'SUPPORTS' | 'CHALLENGES' | 'CONTEXT' | 'INCONCLUSIVE';
 
@@ -301,7 +302,7 @@ export class ScholarXIVService {
     const geminiKey = process.env.GEMINI_API_KEY;
 
     // Optional fast selective batch evaluation via Gemini 3.8 Flash (single prompt for all papers)
-    if (geminiKey && geminiKey.trim().length > 0) {
+    if (geminiKey && geminiKey.trim().length > 0 && !geminiUsageLimiter.isCircuitOpen()) {
       try {
         const ai = new GoogleGenAI({
           apiKey: geminiKey.trim(),
@@ -381,7 +382,12 @@ ${papers.map((p, idx) => `[Paper ${idx + 1}] ID: ${p.id}\nTitle: ${p.title}\nAut
           });
         }
       } catch (err: any) {
-        console.warn(`[ScholarXIVService] Gemini analysis notice: ${err?.message || err}`);
+        if (isGeminiQuotaError(err)) {
+          geminiUsageLimiter.tripCircuitBreaker(60000);
+          console.info('[ScholarXIVService] Gemini quota reached; using deterministic stance classification.');
+        } else {
+          console.info('[ScholarXIVService] Gemini analysis unavailable, using deterministic stance classification.');
+        }
       }
     }
 

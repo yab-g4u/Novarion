@@ -15,6 +15,7 @@ import { SearxngProvider } from '../../search/providers/searxng';
 import { extractAssumptionsDeterministic } from '../../research/assumption-extractor';
 import { classifyEvidenceStance, evaluateHardRelevance, detectDomain } from '../../research/scoring-classifier';
 import { buildClientPressureTestFallback } from '../../research/dynamicInvestigationResolver';
+import { isGeminiQuotaError } from '../../api/rateLimiter';
 import { 
   ValidationExperiment, 
   ResearchContradiction, 
@@ -75,7 +76,11 @@ export class TwoTierResearchEngine {
       classification = await this.runFastClassification(cleanQuery, documentContext);
       fastCallsCount += 1;
     } catch (err: any) {
-      console.warn('[TwoTierResearchEngine] Fast classification error, using deterministic fallback:', err.message || err);
+      if (isGeminiQuotaError(err)) {
+        console.info('[TwoTierResearchEngine] AI classification quota reached; using deterministic classification.');
+      } else {
+        console.info('[TwoTierResearchEngine] Fast classification unavailable; using deterministic classification.');
+      }
       classification = this.runDeterministicClassification(cleanQuery, documentContext);
     }
 
@@ -130,7 +135,11 @@ export class TwoTierResearchEngine {
       );
       fastCallsCount += 1;
     } catch (err: any) {
-      console.warn('[TwoTierResearchEngine] Fast categorization error, using heuristic classifier:', err.message || err);
+      if (isGeminiQuotaError(err)) {
+        console.info('[TwoTierResearchEngine] AI categorization quota reached; using heuristic classifier.');
+      } else {
+        console.info('[TwoTierResearchEngine] Fast categorization unavailable; using heuristic classifier.');
+      }
       categorizedSignals = this.runHeuristicCategorization(
         cleanQuery,
         classification.assumptions,
@@ -180,7 +189,11 @@ export class TwoTierResearchEngine {
       synthesizedReport = await Promise.race([synthesisPromise, timeoutPromise]);
       strongCallsCount += 1;
     } catch (err: any) {
-      console.warn('[TwoTierResearchEngine] Strong synthesis error or timeout, using editorial fallback:', err.message || err);
+      if (isGeminiQuotaError(err)) {
+        console.info('[TwoTierResearchEngine] AI synthesis quota reached; using editorial fallback report.');
+      } else {
+        console.info('[TwoTierResearchEngine] Strong synthesis timeout or unavailable; using editorial fallback report.');
+      }
       synthesizedReport = this.buildEditorialFallbackReport({
         query: cleanQuery,
         assumptions: classification.assumptions,

@@ -9,8 +9,11 @@ export interface ExtractedDocumentContext {
   competitors?: string[];
   userComplaints?: string[];
   sourceFileName?: string;
-  sourceFileType?: 'pdf' | 'prd' | 'markdown' | 'txt' | 'pasted';
+  sourceFileType?: 'pdf' | 'prd' | 'markdown' | 'txt' | 'docx' | 'pasted';
   fileSize?: number;
+  fullText?: string;
+  pageCount?: number;
+  charCount?: number;
   synthesizedIdea: string;
   rawTextExcerpt?: string;
   extractedAt?: string;
@@ -19,7 +22,7 @@ export interface ExtractedDocumentContext {
 export interface DocumentUploadState {
   file: File | null;
   fileName: string | null;
-  fileType: 'pdf' | 'md' | 'txt' | 'pasted' | null;
+  fileType: 'pdf' | 'md' | 'txt' | 'docx' | 'pasted' | null;
   isExtracting: boolean;
   error: string | null;
   context: ExtractedDocumentContext | null;

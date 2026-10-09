@@ -495,19 +495,20 @@ export function generatePrdFromInvestigation(inv: InvestigationRecord): PrdDocum
   // Normalize Evidence
   const normalizedEvidence = evidence.map((ev, i) => {
     const id = `EVID-${String(i + 1).padStart(3, '0')}`;
-    const strength = ev.qualityScore || 80;
+    const strength = (ev as any).qualityScore ?? ev.sourceQualityScore ?? 80;
     const confidence: 'High' | 'Medium' | 'Low' = strength >= 75 ? 'High' : strength >= 55 ? 'Medium' : 'Low';
+    const rel = (ev as any).relationship || (ev.stance === 'SUPPORTS' ? 'Supports' : ev.stance === 'CHALLENGES' ? 'Challenges' : 'Context');
     const classification: RequirementClassification = 
-      ev.relationship === 'Supports' ? 'Evidence-backed' :
-      ev.relationship === 'Challenges' ? 'Validated' : 'Inferred';
+      rel === 'Supports' ? 'Evidence-backed' :
+      rel === 'Challenges' ? 'Validated' : 'Inferred';
 
     return {
       id,
-      source: ev.sourceName || 'Community Benchmark',
+      source: (ev as any).sourceName || ev.provider || ev.title || 'Community Benchmark',
       url: ev.url,
       excerpt: ev.excerpt || 'Verified observation from field research.',
-      stance: ev.relationship === 'Supports' ? 'SUPPORTS' as const :
-              ev.relationship === 'Challenges' ? 'CHALLENGES' as const : 'CONTEXT' as const,
+      stance: rel === 'Supports' ? 'SUPPORTS' as const :
+              rel === 'Challenges' ? 'CHALLENGES' as const : 'CONTEXT' as const,
       strength,
       confidence,
       classification

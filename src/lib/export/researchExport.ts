@@ -52,9 +52,9 @@ export function generateResearchFindingsMarkdown(investigation: InvestigationRec
     md += `| \`A-001\` | Initial product viability and user demand | **[EARLY SIGNAL]** | Moderate | Web Synthesis |\n`;
   } else {
     for (const a of assumptions) {
-      const statusBadge = `**[${a.status}]**`;
-      const strength = a.strengthScore ? `${a.strengthScore}/100` : 'Evaluated';
-      const source = a.sources && a.sources[0] ? a.sources[0].replace(/[|\n]/g, ' ') : 'Multi-source consensus';
+      const statusBadge = `**[${a.status || 'EVALUATED'}]**`;
+      const strength = (a as any).strengthScore ? `${(a as any).strengthScore}/100` : a.testability ? `${a.testability}/100` : 'Evaluated';
+      const source = (a as any).sources?.[0] ? (a as any).sources[0].replace(/[|\n]/g, ' ') : a.querySeeds?.[0] ? a.querySeeds[0].replace(/[|\n]/g, ' ') : 'Multi-source consensus';
       md += `| \`${a.id}\` | ${a.text.replace(/[|\n]/g, ' ')} | ${statusBadge} | ${strength} | ${source} |\n`;
     }
   }
@@ -66,14 +66,20 @@ export function generateResearchFindingsMarkdown(investigation: InvestigationRec
     md += `*No external evidence items linked yet.*\n\n`;
   } else {
     evidence.forEach((ev, idx) => {
-      md += `### EVID-${String(idx + 1).padStart(3, '0')}: ${ev.sourceName} (${ev.relationship})\n`;
-      md += `- **Source Domain:** \`${ev.domain || 'External Evidence'}\`\n`;
+      const sourceName = (ev as any).sourceName || ev.provider || ev.title;
+      const relationship = (ev as any).relationship || (ev.stance === 'SUPPORTS' ? 'Supports' : ev.stance === 'CHALLENGES' ? 'Challenges' : 'Context');
+      const domain = (ev as any).domain || ev.sourceType || 'External Evidence';
+      const quality = (ev as any).qualityScore ?? ev.sourceQualityScore ?? 80;
+      const explanation = (ev as any).explanation || ev.whyItMatters || ev.implication;
+
+      md += `### EVID-${String(idx + 1).padStart(3, '0')}: ${sourceName} (${relationship})\n`;
+      md += `- **Source Domain:** \`${domain}\`\n`;
       if (ev.url) md += `- **Link:** [${ev.url}](${ev.url})\n`;
-      md += `- **Relevance Score:** ${ev.relevanceScore}/100 | **Quality:** ${ev.qualityScore}/100\n`;
+      md += `- **Relevance Score:** ${ev.relevanceScore}/100 | **Quality:** ${quality}/100\n`;
       md += `- **Verbatim Excerpt:**\n`;
       md += `  > "${ev.excerpt.replace(/\n+/g, ' ')}"\n`;
-      if (ev.explanation) {
-        md += `- **Analysis:** ${ev.explanation}\n`;
+      if (explanation) {
+        md += `- **Analysis:** ${explanation}\n`;
       }
       md += `\n`;
     });

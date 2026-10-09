@@ -9,6 +9,7 @@ import {
 } from '../../types/investigation';
 import { ExtractedDocumentContext } from '../../types/document';
 import { Assumption, EvidenceItem } from '../research/types';
+import { geminiUsageLimiter, isGeminiQuotaError } from '../api/rateLimiter';
 
 export interface ResearchSynthesisResult {
   content: string;
@@ -127,8 +128,8 @@ export async function synthesizeFounderResearch(params: {
   const intent = params.actionType || detectResearchIntent(query, previousMessages);
   const apiKey = process.env.GEMINI_API_KEY;
 
-  // Try calling Gemini first if key is present
-  if (apiKey) {
+  // Try calling Gemini first if key is present and circuit is not open
+  if (apiKey && !geminiUsageLimiter.isCircuitOpen()) {
     try {
       const ai = new GoogleGenAI({
         apiKey,
@@ -147,7 +148,12 @@ export async function synthesizeFounderResearch(params: {
         return await generateFullInvestigationResponse(ai, query, documentContext, rawEvidence, assumptions, previousMessages);
       }
     } catch (err: any) {
-      console.warn('[FounderResearchEngine] Gemini call failed, falling back to deterministic synthesis:', err.message || err);
+      if (isGeminiQuotaError(err)) {
+        geminiUsageLimiter.tripCircuitBreaker(60000);
+        console.info('[FounderResearchEngine] Gemini quota reached; using deterministic synthesis engine.');
+      } else {
+        console.info('[FounderResearchEngine] AI call unavailable; using deterministic synthesis engine.');
+      }
     }
   }
 

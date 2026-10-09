@@ -1,6 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { LLMProvider, GenerateOptions } from './types';
-import { geminiUsageLimiter } from '../../api/rateLimiter';
+import { geminiUsageLimiter, isGeminiQuotaError } from '../../api/rateLimiter';
 
 export class GeminiLLMProvider implements LLMProvider {
   public readonly name = 'gemini';
@@ -47,6 +47,10 @@ export class GeminiLLMProvider implements LLMProvider {
    * Fast Model call (cheap, low-latency, used for classification, query extraction, categorization)
    */
   async callFastModel(prompt: string, options: GenerateOptions = {}): Promise<string> {
+    if (geminiUsageLimiter.isCircuitOpen()) {
+      throw new Error('Gemini API quota currently exhausted (circuit breaker active)');
+    }
+
     return geminiUsageLimiter.executeWithRateLimit(async () => {
       const ai = this.ensureClient();
       try {
@@ -64,21 +68,35 @@ export class GeminiLLMProvider implements LLMProvider {
 
         return response.text?.trim() || '';
       } catch (err: any) {
-        // If the fast model hits a transient error (e.g. model not found), fallback to standard flash
+        if (isGeminiQuotaError(err)) {
+          geminiUsageLimiter.tripCircuitBreaker(60000);
+          console.info('[GeminiLLMProvider] Gemini quota reached; fast tier tripped circuit breaker.');
+          throw new Error('Gemini API quota exceeded');
+        }
+
+        // If the fast model hits a transient non-quota error (e.g. model not found), fallback to standard flash
         if (this.fastModelName !== 'gemini-3.8-flash') {
-          console.warn(`[GeminiLLMProvider] Fast model ${this.fastModelName} failed, falling back to gemini-3.8-flash:`, err.message || err);
-          const fallbackRes = await ai.models.generateContent({
-            model: 'gemini-3.8-flash',
-            contents: prompt,
-            config: {
-              systemInstruction: options.systemInstruction,
-              temperature: options.temperature ?? 0.2,
-              responseMimeType: options.responseMimeType,
-              responseSchema: options.responseSchema,
-              maxOutputTokens: options.maxOutputTokens ?? 2048,
+          console.info(`[GeminiLLMProvider] Fast model ${this.fastModelName} unavailable, falling back to gemini-3.8-flash.`);
+          try {
+            const fallbackRes = await ai.models.generateContent({
+              model: 'gemini-3.8-flash',
+              contents: prompt,
+              config: {
+                systemInstruction: options.systemInstruction,
+                temperature: options.temperature ?? 0.2,
+                responseMimeType: options.responseMimeType,
+                responseSchema: options.responseSchema,
+                maxOutputTokens: options.maxOutputTokens ?? 2048,
+              }
+            });
+            return fallbackRes.text?.trim() || '';
+          } catch (fallbackErr: any) {
+            if (isGeminiQuotaError(fallbackErr)) {
+              geminiUsageLimiter.tripCircuitBreaker(60000);
+              throw new Error('Gemini API quota exceeded');
             }
-          });
-          return fallbackRes.text?.trim() || '';
+            throw fallbackErr;
+          }
         }
         throw err;
       }
@@ -89,21 +107,34 @@ export class GeminiLLMProvider implements LLMProvider {
    * Strong Model call (high reasoning, deep synthesis, used for PRD and pressure testing)
    */
   async callStrongModel(prompt: string, options: GenerateOptions = {}): Promise<string> {
+    if (geminiUsageLimiter.isCircuitOpen()) {
+      throw new Error('Gemini API quota currently exhausted (circuit breaker active)');
+    }
+
     return geminiUsageLimiter.executeWithRateLimit(async () => {
       const ai = this.ensureClient();
-      const response = await ai.models.generateContent({
-        model: this.strongModelName,
-        contents: prompt,
-        config: {
-          systemInstruction: options.systemInstruction,
-          temperature: options.temperature ?? 0.4,
-          responseMimeType: options.responseMimeType,
-          responseSchema: options.responseSchema,
-          maxOutputTokens: options.maxOutputTokens ?? 4096,
-        }
-      });
+      try {
+        const response = await ai.models.generateContent({
+          model: this.strongModelName,
+          contents: prompt,
+          config: {
+            systemInstruction: options.systemInstruction,
+            temperature: options.temperature ?? 0.4,
+            responseMimeType: options.responseMimeType,
+            responseSchema: options.responseSchema,
+            maxOutputTokens: options.maxOutputTokens ?? 4096,
+          }
+        });
 
-      return response.text?.trim() || '';
+        return response.text?.trim() || '';
+      } catch (err: any) {
+        if (isGeminiQuotaError(err)) {
+          geminiUsageLimiter.tripCircuitBreaker(60000);
+          console.info('[GeminiLLMProvider] Gemini quota reached; strong tier tripped circuit breaker.');
+          throw new Error('Gemini API quota exceeded');
+        }
+        throw err;
+      }
     }, 'strong');
   }
 
@@ -115,31 +146,44 @@ export class GeminiLLMProvider implements LLMProvider {
     options: GenerateOptions = {},
     onChunk?: (chunk: string) => void
   ): Promise<string> {
+    if (geminiUsageLimiter.isCircuitOpen()) {
+      throw new Error('Gemini API quota currently exhausted (circuit breaker active)');
+    }
+
     return geminiUsageLimiter.executeWithRateLimit(async () => {
       const ai = this.ensureClient();
-      const responseStream = await ai.models.generateContentStream({
-        model: this.strongModelName,
-        contents: prompt,
-        config: {
-          systemInstruction: options.systemInstruction,
-          temperature: options.temperature ?? 0.4,
-          responseMimeType: options.responseMimeType,
-          maxOutputTokens: options.maxOutputTokens ?? 4096,
-        }
-      });
+      try {
+        const responseStream = await ai.models.generateContentStream({
+          model: this.strongModelName,
+          contents: prompt,
+          config: {
+            systemInstruction: options.systemInstruction,
+            temperature: options.temperature ?? 0.4,
+            responseMimeType: options.responseMimeType,
+            maxOutputTokens: options.maxOutputTokens ?? 4096,
+          }
+        });
 
-      let fullText = '';
-      for await (const chunk of responseStream) {
-        const text = chunk.text || '';
-        if (text) {
-          fullText += text;
-          if (onChunk) {
-            onChunk(text);
+        let fullText = '';
+        for await (const chunk of responseStream) {
+          const text = chunk.text || '';
+          if (text) {
+            fullText += text;
+            if (onChunk) {
+              onChunk(text);
+            }
           }
         }
-      }
 
-      return fullText.trim();
+        return fullText.trim();
+      } catch (err: any) {
+        if (isGeminiQuotaError(err)) {
+          geminiUsageLimiter.tripCircuitBreaker(60000);
+          console.info('[GeminiLLMProvider] Gemini quota reached; stream tier tripped circuit breaker.');
+          throw new Error('Gemini API quota exceeded');
+        }
+        throw err;
+      }
     }, 'strong');
   }
 }
