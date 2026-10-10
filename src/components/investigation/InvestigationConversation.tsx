@@ -101,6 +101,15 @@ export const InvestigationConversation: React.FC<InvestigationConversationProps>
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [investigation.messages, isSubmitting]);
 
+  // Global event listener to trigger Build Package modal
+  useEffect(() => {
+    const handleOpenPackageEvent = () => {
+      setIsBuildPackageOpen(true);
+    };
+    window.addEventListener('probe:open-build-package', handleOpenPackageEvent);
+    return () => window.removeEventListener('probe:open-build-package', handleOpenPackageEvent);
+  }, []);
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -709,6 +718,14 @@ Probe completed a multi-source investigation across Reddit, web discussions, and
           </div>
         </div>
       </div>
+
+      {/* 5. BUILD PACKAGE MODAL (PRD.md + DESIGN.md) */}
+      <BuildPackageModal
+        isOpen={isBuildPackageOpen}
+        onClose={() => setIsBuildPackageOpen(false)}
+        investigation={investigation}
+        query={investigation.query || investigation.title}
+      />
     </div>
   );
 };

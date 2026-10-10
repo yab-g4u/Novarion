@@ -706,7 +706,7 @@ export function createPendingInvestigationRecord(params: {
     attachedFile: documentFileName ? { name: documentFileName, type: 'document' } : undefined
   };
 
-  const record: InvestigationRecord = {
+  const baseRecord: InvestigationRecord = {
     id,
     title,
     query: cleanQuery,
@@ -726,10 +726,7 @@ export function createPendingInvestigationRecord(params: {
     tags: documentContext ? ['Document', 'PRD', 'Deep Research'] : ['Idea', 'Research']
   };
 
-  const existing = getSavedInvestigations(userId);
-  persistInvestigations([record, ...existing], userId);
-  setActiveInvestigationId(id, userId);
-
+  const record = assembleFinalInvestigationRecord(baseRecord, undefined, userId);
   return record;
 }
 
@@ -745,20 +742,22 @@ export function assembleFinalInvestigationRecord(
   const cleanQuery = baseRecord.query;
 
   const fallback = buildClientPressureTestFallback(cleanQuery, baseRecord.documentContext);
-  const finalAssumptions = Array.isArray(synData?.assumptions) && synData.assumptions.length > 0
-    ? synData.assumptions
+  const rawSyn = synData?.synthesis || synData?.result || synData;
+
+  const finalAssumptions = Array.isArray(rawSyn?.assumptions) && rawSyn.assumptions.length > 0
+    ? rawSyn.assumptions
     : fallback.assumptions;
 
-  const finalEvidence = Array.isArray(synData?.evidence) && synData.evidence.length > 0
-    ? synData.evidence
+  const finalEvidence = Array.isArray(rawSyn?.evidence) && rawSyn.evidence.length > 0
+    ? rawSyn.evidence
     : fallback.allEvidence;
 
-  const finalContradictions = Array.isArray(synData?.contradictions) && synData.contradictions.length > 0
-    ? synData.contradictions
-    : [];
+  const finalContradictions = Array.isArray(rawSyn?.contradictions) && rawSyn.contradictions.length > 0
+    ? rawSyn.contradictions
+    : (Array.isArray(fallback.allEvidence) ? fallback.allEvidence.filter((e: any) => e.stance === 'CHALLENGES') : []);
 
-  const finalExperiments = Array.isArray(synData?.experiments) && synData.experiments.length > 0
-    ? synData.experiments
+  const finalExperiments = Array.isArray(rawSyn?.experiments) && rawSyn.experiments.length > 0
+    ? rawSyn.experiments
     : [
         {
           id: `exp_${id}_1`,

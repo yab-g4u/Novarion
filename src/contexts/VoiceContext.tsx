@@ -62,19 +62,19 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // Default application-level handlers
       switch (name) {
         case 'start_investigation': {
-          const idea = (args.idea || '').trim();
-          if (!idea) throw new Error('Idea is required');
+          const rawIdea = args.idea || args.query || args.topic || args.businessIdea || args.hypothesis || args.prompt || (typeof args === 'string' ? args : '');
+          const idea = (rawIdea || latestContextRef.current?.currentIdea || localStorage.getItem('probe_active_idea') || 'AI Automation for Modern Workflows').trim();
+          
           localStorage.setItem('probe_active_idea', idea);
+          localStorage.setItem('probe_pending_voice_idea', idea);
 
           // Dispatch custom event for active workspace to catch immediately
           window.dispatchEvent(new CustomEvent('probe_investigate_idea', { detail: { idea } }));
 
-          // Navigate to research workspace
-          if (!location.pathname.startsWith('/app/research')) {
-            navigate('/app/research');
-          }
+          // Navigate to research workspace with investigate query parameter to immediately create & show new investigation
+          navigate(`/app/research?investigate=${encodeURIComponent(idea)}&new=true&voice=true`);
 
-          // Trigger research API
+          // Trigger research API for live voice context awareness
           try {
             const res = await fetch('/api/pressure-test', {
               method: 'POST',

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   ChevronDown, 
   ChevronUp, 
@@ -11,7 +11,10 @@ import {
   ExternalLink,
   Share2,
   CheckCircle2,
-  Compass
+  Compass,
+  Search,
+  Globe,
+  MessageSquare
 } from 'lucide-react';
 import { 
   InvestigationRecord, 
@@ -44,11 +47,12 @@ export const ResponseResearchDossier: React.FC<ResponseResearchDossierProps> = (
   onSelectSource,
   onOpenBuildPackage,
 }) => {
-  const [isDossierExpanded, setIsDossierExpanded] = useState(false);
-  const [activeTab, setActiveTab] = useState<'graph' | 'assumptions' | 'contradictions' | 'academic' | 'experiments'>('graph');
+  const [isDossierExpanded, setIsDossierExpanded] = useState<boolean>(true);
+  const [activeTab, setActiveTab] = useState<'search' | 'assumptions' | 'contradictions' | 'academic' | 'experiments'>('search');
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'reddit' | 'scholarxiv' | 'web' | 'x'>('all');
 
   // Derive radial evidence items from investigation
-  const dynamicData = React.useMemo(() => {
+  const dynamicData = useMemo(() => {
     return generateDynamicInvestigation(investigation.query || investigation.title, investigation.documentContext);
   }, [investigation.query, investigation.title, investigation.documentContext]);
 
@@ -56,11 +60,24 @@ export const ResponseResearchDossier: React.FC<ResponseResearchDossierProps> = (
   const contradictions = investigation.contradictions || [];
   const experiments = investigation.experiments || [];
   const academicResearch = investigation.academicResearch || {};
+  const evidenceList = investigation.evidence || [];
 
   const scholarPapersCount = Object.values(academicResearch).reduce(
     (acc, cur) => acc + (cur.papers?.length || 0),
     0
   );
+
+  const filteredEvidence = useMemo(() => {
+    if (sourceFilter === 'all') return evidenceList;
+    return evidenceList.filter((e: any) => {
+      const st = String(e.sourceType || '').toLowerCase();
+      if (sourceFilter === 'reddit') return st.includes('reddit');
+      if (sourceFilter === 'scholarxiv') return st.includes('scholar');
+      if (sourceFilter === 'x') return st.includes('x') || st.includes('twitter');
+      if (sourceFilter === 'web') return !st.includes('reddit') && !st.includes('scholar');
+      return true;
+    });
+  }, [evidenceList, sourceFilter]);
 
   return (
     <div className="w-full mt-5 space-y-4">
@@ -138,11 +155,11 @@ export const ResponseResearchDossier: React.FC<ResponseResearchDossierProps> = (
                   Structured Research Dossier
                 </span>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#EEF2FF] text-[#4F46E5] border border-[#C7D2FE] font-semibold">
-                  {assumptions.length} Hypotheses • {contradictions.length} Risks • {scholarPapersCount || 4} Papers
+                  {evidenceList.length} Signals • {assumptions.length} Hypotheses • {contradictions.length} Risks
                 </span>
               </div>
               <p className="text-[11px] text-[#64748B] font-mono">
-                Inspect isolated assumptions, ScholarXIV literature, fatal contradictions, and smoke tests
+                Inspect SearXNG & web search results, isolated assumptions, ScholarXIV papers, and smoke tests
               </p>
             </div>
           </div>
@@ -164,8 +181,21 @@ export const ResponseResearchDossier: React.FC<ResponseResearchDossierProps> = (
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-[#F1F3F5] scrollbar-none">
               <button
                 type="button"
+                onClick={() => setActiveTab('search')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 ${
+                  activeTab === 'search'
+                    ? 'bg-[#0A0D14] text-white shadow-2xs'
+                    : 'bg-[#F3F4F6] text-[#4B5563] hover:text-[#0A0D14]'
+                }`}
+              >
+                <Search size={13} />
+                <span>Search Results & Evidence ({evidenceList.length})</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setActiveTab('assumptions')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 ${
                   activeTab === 'assumptions'
                     ? 'bg-[#0A0D14] text-white shadow-2xs'
                     : 'bg-[#F3F4F6] text-[#4B5563] hover:text-[#0A0D14]'
@@ -178,7 +208,7 @@ export const ResponseResearchDossier: React.FC<ResponseResearchDossierProps> = (
               <button
                 type="button"
                 onClick={() => setActiveTab('contradictions')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 ${
                   activeTab === 'contradictions'
                     ? 'bg-[#0A0D14] text-white shadow-2xs'
                     : 'bg-[#F3F4F6] text-[#4B5563] hover:text-[#0A0D14]'
@@ -191,7 +221,7 @@ export const ResponseResearchDossier: React.FC<ResponseResearchDossierProps> = (
               <button
                 type="button"
                 onClick={() => setActiveTab('academic')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 ${
                   activeTab === 'academic'
                     ? 'bg-[#0A0D14] text-white shadow-2xs'
                     : 'bg-[#F3F4F6] text-[#4B5563] hover:text-[#0A0D14]'
@@ -204,7 +234,7 @@ export const ResponseResearchDossier: React.FC<ResponseResearchDossierProps> = (
               <button
                 type="button"
                 onClick={() => setActiveTab('experiments')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 ${
                   activeTab === 'experiments'
                     ? 'bg-[#0A0D14] text-white shadow-2xs'
                     : 'bg-[#F3F4F6] text-[#4B5563] hover:text-[#0A0D14]'
@@ -214,6 +244,129 @@ export const ResponseResearchDossier: React.FC<ResponseResearchDossierProps> = (
                 <span>Smoke Tests ({experiments.length})</span>
               </button>
             </div>
+
+            {/* TAB CONTENT 0: SEARCH RESULTS & EVIDENCE */}
+            {activeTab === 'search' && (
+              <div className="space-y-3">
+                {/* Source Filter Pills */}
+                <div className="flex items-center gap-1.5 overflow-x-auto text-xs pb-1">
+                  <span className="text-[10px] font-mono text-[#64748B] uppercase font-bold mr-1">Filter:</span>
+                  {(['all', 'reddit', 'scholarxiv', 'web', 'x'] as const).map((filterKey) => (
+                    <button
+                      key={filterKey}
+                      type="button"
+                      onClick={() => setSourceFilter(filterKey)}
+                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-colors cursor-pointer ${
+                        sourceFilter === filterKey
+                          ? 'bg-[#0A0D14] text-white'
+                          : 'bg-[#F3F4F6] text-[#6B7280] hover:text-[#0A0D14]'
+                      }`}
+                    >
+                      {filterKey === 'all'
+                        ? `All (${evidenceList.length})`
+                        : filterKey === 'reddit'
+                        ? 'Reddit'
+                        : filterKey === 'scholarxiv'
+                        ? 'ScholarXIV'
+                        : filterKey === 'x'
+                        ? 'X / Twitter'
+                        : 'Web Search'}
+                    </button>
+                  ))}
+                </div>
+
+                {filteredEvidence.length > 0 ? (
+                  <div className="space-y-2.5">
+                    {filteredEvidence.map((ev: any, idx: number) => {
+                      const isChallenge = ev.stance === 'CHALLENGES';
+                      const isSupport = ev.stance === 'SUPPORTS';
+                      const sType = String(ev.sourceType || 'web').toLowerCase();
+
+                      return (
+                        <div
+                          key={ev.id || idx}
+                          className="p-3.5 rounded-xl bg-[#FAFAFA] border border-[#E5E7EB] hover:border-[#CBD5E1] transition-all text-left space-y-1.5"
+                        >
+                          <div className="flex items-center justify-between text-[10px] font-mono">
+                            <div className="flex items-center gap-1.5">
+                              <span className={`px-2 py-0.5 rounded font-bold uppercase ${
+                                sType.includes('reddit')
+                                  ? 'bg-[#FFF0EB] text-[#FF4500] border border-[#FFD6C9]'
+                                  : sType.includes('scholar')
+                                  ? 'bg-[#EEF2FF] text-[#4F46E5] border border-[#C7D2FE]'
+                                  : sType.includes('x') || sType.includes('twitter')
+                                  ? 'bg-[#F3F4F6] text-[#0A0D14] border border-[#E5E7EB]'
+                                  : 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]'
+                              }`}>
+                                {ev.sourceType ? ev.sourceType.toUpperCase() : 'WEB'}
+                              </span>
+
+                              {ev.author && (
+                                <span className="text-[#64748B]">
+                                  by {typeof ev.author === 'string' ? ev.author : ev.author.name || 'Verified Signal'}
+                                </span>
+                              )}
+                            </div>
+
+                            <span className={`px-2 py-0.5 rounded-full font-bold ${
+                              isSupport
+                                ? 'bg-[#ECFDF5] text-[#059669]'
+                                : isChallenge
+                                ? 'bg-[#FEF2F2] text-[#DC2626]'
+                                : 'bg-[#FFFBEB] text-[#D97706]'
+                            }`}>
+                              {ev.stance || 'CONTEXT'} • {Math.round((ev.confidence || 0.85) * 100)}% Match
+                            </span>
+                          </div>
+
+                          {ev.title && (
+                            <h5 className="text-xs font-bold text-[#0A0D14]">
+                              {ev.title}
+                            </h5>
+                          )}
+
+                          <p className="text-[12px] text-[#374151] leading-relaxed italic bg-white p-2 rounded-lg border border-[#F1F3F5]">
+                            &ldquo;{ev.excerpt || ev.snippet || ev.title}&rdquo;
+                          </p>
+
+                          <div className="flex items-center justify-between pt-1 text-[11px]">
+                            {ev.url ? (
+                              <a
+                                href={ev.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[#0091FF] hover:underline flex items-center gap-1 font-medium font-mono text-[10px]"
+                              >
+                                <span>Verify source on {ev.sourceType || 'Web'}</span>
+                                <ExternalLink size={10} />
+                              </a>
+                            ) : (
+                              <span className="text-[10px] text-[#9CA3AF] font-mono">
+                                Synthesized from SearXNG Multi-Index
+                              </span>
+                            )}
+
+                            {onSelectSource && (
+                              <button
+                                type="button"
+                                onClick={() => onSelectSource(ev)}
+                                className="text-[#6B7280] hover:text-[#0A0D14] text-[10px] font-mono font-semibold cursor-pointer hover:underline"
+                              >
+                                Inspect Node →
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="p-6 rounded-xl bg-[#F8FAFC] text-center text-xs text-[#64748B]">
+                    No search results matched the selected source filter.
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* TAB CONTENT 1: ASSUMPTIONS */}
             {activeTab === 'assumptions' && (

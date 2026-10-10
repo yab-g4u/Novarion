@@ -21,15 +21,21 @@ export interface TaskPlan {
     inputUrl?: string;
     referenceCode?: string;
     searchQuery?: string;
+    customValue?: string;
+    targetItem?: string;
+    intent?: 'verify' | 'search' | 'submit' | 'navigate' | 'legitimacy_check' | 'explore';
   };
+  isAmbiguous?: boolean;
+  ambiguityReason?: string;
   milestones: TaskMilestone[];
 }
 
 export class TaskPlanner {
   public plan(task: string, _initialUrl: string): TaskPlan {
-    const lower = task.toLowerCase();
+    const rawTask = (task || '').trim();
+    const lower = rawTask.toLowerCase();
 
-    // 1. Check if task explicitly involves Google/Gmail authentication or sign-in
+    // 1. Google / Gmail authentication flow
     if (
       lower.includes('g4uforlife@gmail.com') ||
       lower.includes('google auth') ||
@@ -38,7 +44,7 @@ export class TaskPlanner {
       (lower.includes('sign in') && lower.includes('google'))
     ) {
       return {
-        originalTask: task,
+        originalTask: rawTask,
         inferredGoal: 'AUTHENTICATE_GOOGLE',
         milestones: [
           {
@@ -66,22 +72,63 @@ export class TaskPlanner {
       };
     }
 
-    // 2. Check if task is receipt / transaction verification (e.g., links.et DHV0BHI2GG)
-    if (
-      lower.includes('verify') &&
-      (lower.includes('receipt') || lower.includes('payment') || lower.includes('transaction') || lower.includes('reference') || /[A-Z0-9]{8,14}/.test(task))
-    ) {
-      const refMatch = task.match(/\b([A-Z0-9]{8,15})\b/);
-      const referenceCode = refMatch ? refMatch[1] : 'DHV0BHI2GG';
+    // 2. Receipt / Payment / Code Verification & Legitimacy Check
+    // Example: "Check whether DJ54GQAQ6K on links.et is legitimate or fake"
+    // Example: "Verify transaction reference DHV0BHI2GG in payment verification input"
+    const backtickOrQuoted = rawTask.match(/[`"']([A-Za-z0-9_-]{5,24})[`"']/);
+    const tokens = rawTask.match(/\b[A-Za-z0-9_-]{5,20}\b/g) || [];
+    const alphanumericToken = tokens.find(
+      (tok) => /\d/.test(tok) && /[a-zA-Z]/.test(tok) && !['links', 'verify'].includes(tok.toLowerCase())
+    ) || tokens.find(
+      (tok) => /^[A-Z0-9]{6,16}$/.test(tok) && !['VERIFY', 'PAYMENT', 'RECEIPT'].includes(tok)
+    );
+    const detectedCode = backtickOrQuoted?.[1] || alphanumericToken;
+
+    const isVerificationIntent =
+      lower.includes('receipt') ||
+      lower.includes('payment') ||
+      lower.includes('transaction') ||
+      lower.includes('voucher') ||
+      lower.includes('legitimate') ||
+      lower.includes('fake') ||
+      Boolean(detectedCode && (lower.includes('verify') || lower.includes('check')));
+
+    if (isVerificationIntent) {
+      // If the user asked a verification query without providing any code or item to verify, handle ambiguity
+      if (!detectedCode && (lower.includes('check whether') || lower.includes('is legitimate') || lower.includes('verify receipt') || lower.includes('receipt is'))) {
+        return {
+          originalTask: rawTask,
+          inferredGoal: 'VERIFY_RECEIPT',
+          isAmbiguous: true,
+          ambiguityReason: 'Task requested legitimacy verification, but no reference code, receipt number, or identifier was specified. Please provide the reference code to verify.',
+          milestones: [
+            {
+              id: 'm1',
+              description: 'Request clarification for missing reference code or receipt number',
+              expectedKeywords: ['clarification', 'reference', 'code'],
+              actionType: 'VERIFY_RESULT',
+              completed: false
+            }
+          ]
+        };
+      }
+
+      const referenceCode = detectedCode || 'DHV0BHI2GG';
 
       return {
-        originalTask: task,
+        originalTask: rawTask,
         inferredGoal: 'VERIFY_RECEIPT',
-        extractedData: { referenceCode, inputUrl: referenceCode },
+        extractedData: {
+          referenceCode,
+          inputUrl: referenceCode,
+          targetItem: referenceCode,
+          customValue: referenceCode,
+          intent: 'legitimacy_check'
+        },
         milestones: [
           {
             id: 'm1',
-            description: 'Locate payment reference or receipt URL input field on page',
+            description: 'Locate payment reference or receipt verification input field on page',
             expectedKeywords: ['receipt', 'reference', 'url', 'verify', 'input'],
             actionType: 'LOCATE_INPUT',
             completed: false
@@ -102,8 +149,8 @@ export class TaskPlanner {
           },
           {
             id: 'm4',
-            description: 'Inspect verification response or error feedback on page',
-            expectedKeywords: ['verified', 'receipt', 'error', 'result', 'status'],
+            description: 'Inspect verification response, transaction state, or error feedback on page',
+            expectedKeywords: ['verified', 'receipt', 'error', 'result', 'status', 'payer', 'completed'],
             actionType: 'VERIFY_RESULT',
             completed: false
           }
@@ -111,25 +158,29 @@ export class TaskPlanner {
       };
     }
 
-    // 3. Check if task is URL shortener / link input
+    // 3. URL shortener / link generation
     if (
       lower.includes('short link') ||
       lower.includes('shorten') ||
       lower.includes('create a link') ||
       lower.includes('short url')
     ) {
-      const urlMatch = task.match(/https?:\/\/[^\s"',]+/i);
+      const urlMatch = rawTask.match(/https?:\/\/[^\s"',]+/i);
       const targetUrl = urlMatch ? urlMatch[0].replace(/[.,;]+$/, '') : 'https://example.com';
 
       return {
-        originalTask: task,
+        originalTask: rawTask,
         inferredGoal: 'CREATE_SHORT_LINK',
-        extractedData: { inputUrl: targetUrl },
+        extractedData: {
+          inputUrl: targetUrl,
+          customValue: targetUrl,
+          intent: 'submit'
+        },
         milestones: [
           {
             id: 'm1',
             description: 'Locate URL or primary text input field on page',
-            expectedKeywords: ['url', 'link', 'paste', 'http', 'shorten', 'receipt'],
+            expectedKeywords: ['url', 'link', 'paste', 'http', 'shorten'],
             actionType: 'LOCATE_INPUT',
             completed: false
           },
@@ -158,44 +209,39 @@ export class TaskPlanner {
       };
     }
 
-    // 4. Check if task is general surfing / exploratory UX evaluation
-    if (
-      lower.includes('surf') ||
-      lower.includes('explore') ||
-      lower.includes('browse') ||
-      lower.includes('landing') ||
-      lower.includes('evaluat') ||
-      lower.includes('navigate')
-    ) {
+    // 4. Search / Item lookup
+    if (lower.includes('search') || lower.includes('look up') || lower.includes('find item')) {
+      const quoted = rawTask.match(/[`"']([^`"']+)`"'/);
+      const searchWordMatch = rawTask.match(/search\s+(?:for\s+)?([a-zA-Z0-9\s_-]{2,30})/i);
+      const query = quoted?.[1] || searchWordMatch?.[1]?.trim() || 'overview';
+
       return {
-        originalTask: task,
-        inferredGoal: 'EXPLORE_FEATURE',
+        originalTask: rawTask,
+        inferredGoal: 'SEARCH_ITEM',
+        extractedData: {
+          searchQuery: query,
+          customValue: query,
+          intent: 'search'
+        },
         milestones: [
           {
             id: 'm1',
-            description: 'Open specified product URL in real Playwright Chromium browser',
-            expectedKeywords: ['page', 'loaded', 'url', 'opened'],
-            actionType: 'NAVIGATE',
-            completed: true
-          },
-          {
-            id: 'm2',
-            description: 'Scroll viewport to inspect layout and content hierarchy',
-            expectedKeywords: ['scroll', 'hero', 'layout'],
+            description: `Locate search input box on page`,
+            expectedKeywords: ['search', 'find', 'query', 'input'],
             actionType: 'LOCATE_INPUT',
             completed: false
           },
           {
-            id: 'm3',
-            description: 'Interact with relevant navigation link or call-to-action',
-            expectedKeywords: ['click', 'nav', 'features', 'pricing', 'more information'],
-            actionType: 'SUBMIT',
+            id: 'm2',
+            description: `Enter query "${query}" and submit search`,
+            expectedKeywords: ['search', 'submit', 'enter'],
+            actionType: 'TYPE_DATA',
             completed: false
           },
           {
-            id: 'm4',
-            description: 'Measure responsiveness, console/network errors, and user friction',
-            expectedKeywords: ['response', 'interactivity', 'time', 'metrics'],
+            id: 'm3',
+            description: 'Verify search results and match confidence',
+            expectedKeywords: ['results', 'items', 'found'],
             actionType: 'VERIFY_RESULT',
             completed: false
           }
@@ -203,10 +249,10 @@ export class TaskPlanner {
       };
     }
 
-    // 5. Check if task is e-commerce / add to cart
+    // 5. E-commerce / Add to cart
     if (lower.includes('cart') || lower.includes('add to cart') || lower.includes('buy')) {
       return {
-        originalTask: task,
+        originalTask: rawTask,
         inferredGoal: 'ADD_TO_CART',
         milestones: [
           {
@@ -241,31 +287,85 @@ export class TaskPlanner {
       };
     }
 
-    // 6. General task planning fallback
-    const urlMatch = task.match(/https?:\/\/[^\s"',]+/i);
+    // 6. Exploratory UX evaluation / surfing
+    if (
+      lower.includes('surf') ||
+      lower.includes('explore') ||
+      lower.includes('browse') ||
+      lower.includes('landing') ||
+      lower.includes('evaluat') ||
+      lower.includes('navigate')
+    ) {
+      return {
+        originalTask: rawTask,
+        inferredGoal: 'EXPLORE_FEATURE',
+        milestones: [
+          {
+            id: 'm1',
+            description: 'Open specified product URL in real Playwright Chromium browser',
+            expectedKeywords: ['page', 'loaded', 'url', 'opened'],
+            actionType: 'NAVIGATE',
+            completed: true
+          },
+          {
+            id: 'm2',
+            description: 'Scroll viewport to inspect layout and content hierarchy',
+            expectedKeywords: ['scroll', 'hero', 'layout'],
+            actionType: 'LOCATE_INPUT',
+            completed: false
+          },
+          {
+            id: 'm3',
+            description: 'Interact with relevant navigation link or call-to-action',
+            expectedKeywords: ['click', 'nav', 'features', 'pricing', 'more information'],
+            actionType: 'SUBMIT',
+            completed: false
+          },
+          {
+            id: 'm4',
+            description: 'Measure responsiveness, console/network errors, and user friction',
+            expectedKeywords: ['response', 'interactivity', 'time', 'metrics'],
+            actionType: 'VERIFY_RESULT',
+            completed: false
+          }
+        ]
+      };
+    }
+
+    // 7. General adaptive task planning
+    const urlMatch = rawTask.match(/https?:\/\/[^\s"',]+/i);
+    const tokenMatch = rawTask.match(/\b([A-Z0-9]{6,16})\b/);
+    const quotedMatch = rawTask.match(/[`"']([^`"']+)`"'/);
+
+    const customValue = quotedMatch?.[1] || tokenMatch?.[1] || (urlMatch ? urlMatch[0].replace(/[.,;]+$/, '') : undefined);
+
     return {
-      originalTask: task,
+      originalTask: rawTask,
       inferredGoal: 'GENERAL_TASK',
-      extractedData: urlMatch ? { inputUrl: urlMatch[0].replace(/[.,;]+$/, '') } : undefined,
+      extractedData: {
+        inputUrl: urlMatch ? urlMatch[0].replace(/[.,;]+$/, '') : undefined,
+        customValue,
+        referenceCode: tokenMatch?.[1]
+      },
       milestones: [
         {
           id: 'm1',
           description: 'Identify primary interactive element matching task objective',
-          expectedKeywords: ['start', 'try', 'explore', 'get started', 'submit'],
+          expectedKeywords: ['start', 'try', 'explore', 'get started', 'submit', 'input'],
           actionType: 'LOCATE_INPUT',
           completed: false
         },
         {
           id: 'm2',
           description: 'Execute requested task interaction on live DOM',
-          expectedKeywords: ['action', 'submit', 'click'],
+          expectedKeywords: ['action', 'submit', 'click', 'enter'],
           actionType: 'SUBMIT',
           completed: false
         },
         {
           id: 'm3',
           description: 'Observe and verify resulting page state',
-          expectedKeywords: ['success', 'done', 'result'],
+          expectedKeywords: ['success', 'done', 'result', 'status'],
           actionType: 'VERIFY_RESULT',
           completed: false
         }

@@ -190,8 +190,15 @@ export function setupVoiceBridge(server: HttpServer) {
   }
 
   const wss = new WebSocketServer({ noServer: true });
+  wss.on('error', (err: any) => {
+    console.warn('[Probe Voice Bridge] WebSocketServer error:', err?.message || err);
+  });
 
   server.on('upgrade', (request, socket, head) => {
+    socket.on('error', (err: any) => {
+      console.warn('[Probe Voice Bridge] Upgrade socket error:', err?.message || err);
+    });
+
     const pathname = request.url?.split('?')[0];
     if (pathname === '/api/voice/live') {
       wss.handleUpgrade(request, socket, head, (ws) => {

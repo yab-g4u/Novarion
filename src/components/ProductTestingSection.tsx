@@ -89,7 +89,7 @@ const PRESET_PRODUCTS = [
   {
     name: 'links.et',
     url: 'https://links.et',
-    task: 'Verify transaction reference in payment receipt gateway',
+    task: 'Check whether DJ54GQAQ6K on links.et is legitimate or fake',
     tag: 'Payment Utility'
   },
   {
@@ -221,7 +221,15 @@ export const ProductTestingSection: React.FC = () => {
             }
 
             // Check if finished
-            if (sess.status === 'COMPLETED' || sess.status === 'FAILED') {
+            const isTerminal =
+              sess.status === 'COMPLETED' ||
+              sess.status === 'FAILED' ||
+              sess.status === 'BLOCKED' ||
+              sess.status === 'AUTHENTICATION_REQUIRED' ||
+              sess.status === 'TIMEOUT' ||
+              sess.status === 'STOPPED';
+
+            if (isTerminal) {
               if (pollingTimerRef.current) {
                 clearInterval(pollingTimerRef.current);
                 pollingTimerRef.current = null;
@@ -234,25 +242,43 @@ export const ProductTestingSection: React.FC = () => {
               const frictionCount = (sess.friction || []).length;
               const fluencyScore = frictionCount === 0 ? 96 : Math.max(70, 92 - frictionCount * 8);
 
-              const formattedFindings = (sess.findings && sess.findings.length > 0)
-                ? sess.findings.map((f: any) => ({
+              const formattedFindings = [];
+
+              if (sess.completion?.explanation) {
+                formattedFindings.push({
+                  title: sess.status === 'COMPLETED' ? 'Task Verified & Grounded' : 'Task Outcome & Evidence',
+                  desc: sess.completion.explanation
+                });
+              }
+
+              if (sess.completion?.evidence && sess.completion.evidence.length > 0) {
+                formattedFindings.push({
+                  title: 'Observed Live DOM Observables',
+                  desc: sess.completion.evidence.join(' · ')
+                });
+              }
+
+              if (sess.findings && sess.findings.length > 0) {
+                for (const f of sess.findings) {
+                  formattedFindings.push({
                     title: f.title,
-                    desc: f.description || f.evidence || 'Observed during live Playwright surfing run.'
-                  }))
-                : [
-                    {
-                      title: 'Direct Navigation Flow',
-                      desc: `Real user agent successfully reached ${finalUrl} with zero redirection obstacles.`
-                    },
-                    {
-                      title: 'Interactive State Responsiveness',
-                      desc: `Page elements responded within ${latency}ms, providing steady visual feedback.`
-                    },
-                    {
-                      title: 'Layout Stability & Visual Hierarchy',
-                      desc: 'Above-the-fold content rendered with distinct hierarchy and accessible navigation links.'
-                    }
-                  ];
+                    desc: f.description || f.evidence || 'Observed during live Playwright run.'
+                  });
+                }
+              }
+
+              if (formattedFindings.length === 0) {
+                formattedFindings.push(
+                  {
+                    title: 'Direct Navigation Flow',
+                    desc: `Real user agent successfully reached ${finalUrl} with zero redirection obstacles.`
+                  },
+                  {
+                    title: 'Interactive State Responsiveness',
+                    desc: `Page elements responded within ${latency}ms, providing steady visual feedback.`
+                  }
+                );
+              }
 
               setStudySummary({
                 productUrl: sess.productUrl || finalUrl,

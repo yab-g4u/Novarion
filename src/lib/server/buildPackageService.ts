@@ -44,17 +44,22 @@ export class BuildPackageService {
 
     const rawIdea =
       customQuery ||
-      investigation.query ||
-      investigation.title ||
+      investigation?.query ||
+      investigation?.title ||
       'Product Innovation';
 
+    const rawTitle = investigation?.title || investigation?.query || '';
+    const cleanedTitle = typeof rawTitle === 'string'
+      ? rawTitle.replace(/^Investigate\s+(PRD:\s*)?/i, '').trim()
+      : '';
+
     const productName =
-      investigation.documentContext?.title ||
-      investigation.title.replace(/^Investigate\s+(PRD:\s*)?/i, '').trim() ||
+      investigation?.documentContext?.title ||
+      cleanedTitle ||
       'Probe Innovation';
 
     const targetUsers =
-      investigation.documentContext?.targetUsers ||
+      investigation?.documentContext?.targetUsers ||
       'Target segment practitioners and modern operators';
 
     // 1. Find best-matching DesignMD style
@@ -65,11 +70,11 @@ export class BuildPackageService {
       preferredStyleSlug
     });
 
-    // 2. Synthesize PRD.md strictly from empirical research
-    const prdContent = await this.generatePrdMarkdown(investigation, productName, rawIdea);
-
-    // 3. Adapt the selected DesignMD foundation into DESIGN.md
-    const designContent = await this.generateDesignMarkdown(investigation, productName, rawIdea, matchedDesign);
+    // 2 & 3. Synthesize PRD.md & adapted DESIGN.md in parallel for fast response
+    const [prdContent, designContent] = await Promise.all([
+      this.generatePrdMarkdown(investigation, productName, rawIdea),
+      this.generateDesignMarkdown(investigation, productName, rawIdea, matchedDesign)
+    ]);
 
     const prdWords = prdContent.split(/\s+/).filter(Boolean).length;
     const designWords = designContent.split(/\s+/).filter(Boolean).length;
@@ -170,13 +175,18 @@ REQUIRED PRD STRUCTURE (Markdown headers):
 
 Produce the complete document in crisp, professional Markdown. No fluff, no marketing hype.`;
 
-        const response = await ai.models.generateContent({
+        const generatePromise = ai.models.generateContent({
           model: 'gemini-3.8-flash',
           contents: prompt,
           config: {
             temperature: 0.2
           }
         });
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('LLM PRD generation timed out (28s)')), 28000)
+        );
+
+        const response = await Promise.race([generatePromise, timeoutPromise]);
 
         const output = response.text?.trim();
         if (output && output.length > 800) {
@@ -269,13 +279,18 @@ REQUIREMENTS:
 
 Make the specification rigorous, tokenized, and immediately executable by an AI coding agent or frontend engineer.`;
 
-        const response = await ai.models.generateContent({
+        const generatePromise = ai.models.generateContent({
           model: 'gemini-3.8-flash',
           contents: prompt,
           config: {
             temperature: 0.2
           }
         });
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('LLM Design generation timed out (28s)')), 28000)
+        );
+
+        const response = await Promise.race([generatePromise, timeoutPromise]);
 
         const output = response.text?.trim();
         if (output && output.length > 800) {

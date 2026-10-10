@@ -100,7 +100,11 @@ export class TestingAgent {
           session.setCompletion(finalEval);
           await this.finalizeSessionAnalysis(
             session,
-            finalEval.status === 'FAILED' ? 'FAILED' : 'COMPLETED'
+            finalEval.status === 'COMPLETED'
+              ? 'COMPLETED'
+              : finalEval.status === 'BLOCKED'
+              ? 'BLOCKED'
+              : 'FAILED'
           );
           return;
         }
@@ -156,7 +160,11 @@ export class TestingAgent {
           session.setCompletion(evalResult);
           await this.finalizeSessionAnalysis(
             session,
-            evalResult.status === 'COMPLETED' ? 'COMPLETED' : 'FAILED'
+            evalResult.status === 'COMPLETED'
+              ? 'COMPLETED'
+              : evalResult.status === 'BLOCKED'
+              ? 'BLOCKED'
+              : 'FAILED'
           );
         } else {
           await this.finalizeSessionAnalysis(session, 'FAILED');

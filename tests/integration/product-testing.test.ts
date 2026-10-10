@@ -88,6 +88,19 @@ export async function runProductTestingTests() {
   assert(planVerify.inferredGoal === 'VERIFY_RECEIPT', 'Infers VERIFY_RECEIPT goal from payment verification task');
   assert(planVerify.extractedData?.referenceCode === 'DHV0BHI2GG', 'Extracts DHV0BHI2GG reference from task');
 
+  const planLegitimacy = planner.plan(
+    'Check whether DJ54GQAQ6K on links.et is legitimate or fake',
+    'https://links.et/'
+  );
+  assert(planLegitimacy.inferredGoal === 'VERIFY_RECEIPT', 'Infers verification goal from legitimacy check query');
+  assert(planLegitimacy.extractedData?.referenceCode === 'DJ54GQAQ6K', 'Extracts DJ54GQAQ6K reference code from natural-language task');
+
+  const planAmbiguous = planner.plan(
+    'Check whether this receipt is legitimate or fake',
+    'https://links.et/'
+  );
+  assert(planAmbiguous.isAmbiguous === true, 'Gracefully flags ambiguous task without reference code');
+
   // 3. FRICTION DETECTION TESTS
   console.log('--- Subsystem Test 3: Friction Detection ---');
   const frictionDetector = new FrictionDetector();
@@ -145,6 +158,56 @@ export async function runProductTestingTests() {
 
   const compEval = completionDetector.evaluate(planVerify, mockObsWithError, 2, [typeEvent, submitEvent]);
   assert(compEval.status === 'COMPLETED', 'Completion detector verifies real input and submit actions');
+
+  const mockVerifiedObs: PageObservation = {
+    url: 'https://links.et/',
+    title: 'links.et',
+    visibleText: 'Verified Telebirr Reference DJ54GQAQ6K Status Completed Amount 836.67 Birr ETB Payer Yeabsera Sisay Tadesse Credited Ethiopian Electric Utility Prepaid When 05-10-2026 22:30:17',
+    elements: [],
+    forms: [],
+    visibleErrors: [],
+    resultFeedback: {
+      isVerified: true,
+      statusText: 'Verified · Completed',
+      details: {
+        Reference: 'DJ54GQAQ6K',
+        Status: 'Completed',
+        Amount: '836.67 Birr ETB',
+        Payer: 'Yeabsera Sisay Tadesse'
+      }
+    },
+    isLoading: false,
+    timestamp: new Date().toISOString()
+  };
+
+  const compLegitEval = completionDetector.evaluate(planLegitimacy, mockVerifiedObs, 2, [
+    { ...typeEvent, value: 'DJ54GQAQ6K' },
+    submitEvent
+  ]);
+  assert(compLegitEval.status === 'COMPLETED', 'Completion detector verifies legitimacy when confirmed on page');
+  assert(compLegitEval.explanation.includes('DJ54GQAQ6K'), 'Legitimacy report specifically references DJ54GQAQ6K');
+  assert(compLegitEval.explanation.includes('Completed'), 'Legitimacy report includes actual completed status from page');
+
+  const mockFailedValidationObs: PageObservation = {
+    url: 'https://links.et/',
+    title: 'links.et',
+    visibleText: 'parsed but failed validation (missing receiptNo / payerName / transactionStatus)',
+    elements: [],
+    forms: [],
+    visibleErrors: [],
+    resultFeedback: {
+      isFailed: true,
+      statusText: 'parsed but failed validation'
+    },
+    isLoading: false,
+    timestamp: new Date().toISOString()
+  };
+  const compFailedEval = completionDetector.evaluate(planLegitimacy, mockFailedValidationObs, 2, [
+    { ...typeEvent, value: 'DJ54GQAQ6K' },
+    submitEvent
+  ]);
+  assert(compFailedEval.status === 'COMPLETED', 'Evaluates failed validation without inventing legitimacy');
+  assert(compFailedEval.explanation.includes('failed verification'), 'Accurately reports failed verification');
 
   // 5. SESSION & UX ANALYZER TESTS
   console.log('--- Subsystem Test 5: Session & UX Analysis ---');

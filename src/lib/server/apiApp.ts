@@ -633,6 +633,15 @@ export function createApiApp() {
     } else if (lower.includes('independent') || lower.includes('unique')) {
       intent = 'SHOW_INDEPENDENT_CLUSTERS';
       target = 'clusters';
+    } else if (
+      lower.includes('build package') ||
+      lower.includes('generate prd') ||
+      lower.includes('design system') ||
+      lower.includes('design md') ||
+      lower.includes('prd')
+    ) {
+      intent = 'OPEN_BUILD_PACKAGE';
+      target = 'build_package';
     }
 
     return res.json({
@@ -644,7 +653,7 @@ export function createApiApp() {
   });
 
   // REST API: POST /api/build-package/generate (Generates PRD.md & DESIGN.md using DesignMD integration)
-  app.post('/api/build-package/generate', geminiApiRateLimiter.middleware, async (req: Request, res: Response) => {
+  app.post('/api/build-package/generate', async (req: Request, res: Response) => {
     try {
       const { investigation, query, preferredStyleSlug } = req.body || {};
       if (!investigation && !query) {

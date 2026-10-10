@@ -100,7 +100,7 @@ const PRESET_QUICK_TARGETS = [
   { name: 'Example Domain', url: 'https://example.com', task: 'Explore the landing page, click More information link, and verify navigation timing.' },
   { name: 'Hacker News', url: 'https://news.ycombinator.com', task: 'Browse the front page, inspect the top story discussions, and test page load speed.' },
   { name: 'Linear', url: 'https://linear.app', task: 'Explore product features, evaluate pricing clarity, and inspect primary call-to-action.' },
-  { name: 'links.et', url: 'https://links.et/', task: 'Verify transaction reference DHV0BHI2GG in payment verification input.' }
+  { name: 'links.et', url: 'https://links.et/', task: 'Check whether DJ54GQAQ6K on links.et is legitimate or fake' }
 ];
 
 const isTerminalStatus = (status?: SessionStatus) =>
@@ -1258,6 +1258,62 @@ export const ProductTestingWorkspace: React.FC<ProductTestingWorkspaceProps> = (
                         alt="Final screen capture" 
                         className="max-h-[380px] w-auto object-contain rounded-xl shadow-lg border border-white/10" 
                       />
+                    </div>
+                  </div>
+                )}
+
+                {/* Live Verification State & Empirical Evidence Card */}
+                {sessionData.completion?.evidence && sessionData.completion.evidence.length > 0 && (
+                  <div className="p-4 sm:p-5 rounded-3xl bg-white border border-[#E5E7EB] shadow-xs space-y-3.5">
+                    <div className="flex items-center justify-between pb-2 border-b border-[#F1F3F5] text-xs font-mono">
+                      <div className="flex items-center gap-2 text-[#0A0D14] font-bold uppercase tracking-wider">
+                        <CheckCircle2 size={15} className="text-[#059669]" />
+                        <span>Live Verification State & Empirical Grounding</span>
+                      </div>
+                      <span className="text-[11px] px-2 py-0.5 rounded-full font-bold bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]">
+                        Evidence-Grounded
+                      </span>
+                    </div>
+
+                    {/* Structured Result Details if present on page */}
+                    {sessionData.pages?.some((p) => p.resultFeedback?.details) && (() => {
+                      const feedback = sessionData.pages.find((p) => p.resultFeedback?.details)?.resultFeedback;
+                      const details = feedback?.details || {};
+                      return (
+                        <div className="p-3.5 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono text-[10px] uppercase font-bold text-[#64748B]">
+                              Observed Gateway Receipt Details
+                            </span>
+                            <span className="text-xs font-bold px-2 py-0.5 rounded bg-[#DCFCE7] text-[#15803D]">
+                              {feedback?.statusText || 'Verified'}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                            {Object.entries(details).map(([k, v]) => (
+                              <div key={k} className="p-2 rounded-xl bg-white border border-[#E2E8F0]">
+                                <span className="text-[10px] text-[#94A3B8] font-mono block uppercase">{k}</span>
+                                <span className="font-semibold text-[#0A0D14] font-mono break-all">{v}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Evidence Points */}
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] font-mono uppercase font-bold text-[#64748B] block">
+                        Verified Observables from Live Playwright DOM
+                      </span>
+                      <ul className="space-y-1 text-xs text-[#334155]">
+                        {sessionData.completion.evidence.map((ev, i) => (
+                          <li key={i} className="flex items-start gap-2 p-1.5 rounded-lg bg-[#FAFAFA] border border-[#F1F3F5]">
+                            <Check size={14} className="text-[#059669] shrink-0 mt-0.5" />
+                            <span className="font-mono text-[11px] text-[#1E293B]">{ev}</span>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   </div>
                 )}

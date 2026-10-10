@@ -35,6 +35,7 @@ export interface InteractiveElement {
   placeholder?: string;
   href?: string;
   label?: string;
+  value?: string;
   selector: string;
   visible: boolean;
   enabled: boolean;
@@ -105,6 +106,13 @@ export interface PageObservation {
   visibleErrors: string[];
   authDetection?: AuthDetection;
   navigationTiming?: NavigationTimingMetrics;
+  resultFeedback?: {
+    isVerified?: boolean;
+    isFailed?: boolean;
+    statusText?: string;
+    details?: Record<string, string>;
+    rawSnippet?: string;
+  };
   isLoading: boolean;
   timestamp: string;
 }

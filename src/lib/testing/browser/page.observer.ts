@@ -68,7 +68,7 @@ export class PageObserver {
 
         for (const el of candidates) {
           if (!isVisible(el)) continue;
-          if (elements.length >= 65) break;
+          if (elements.length >= 75) break;
 
           const tag = el.tagName.toLowerCase();
           const role =
@@ -78,6 +78,7 @@ export class PageObserver {
           const name = el.getAttribute('name') || undefined;
           let placeholder = el.getAttribute('placeholder') || undefined;
           const href = el.getAttribute('href') || undefined;
+          const value = (tag === 'input' || tag === 'textarea') ? el.value : undefined;
 
           let label = el.getAttribute('aria-label') || '';
           if (!label && el.id) {
@@ -116,6 +117,7 @@ export class PageObserver {
             placeholder,
             href,
             label: label ? label.slice(0, 80) : undefined,
+            value: value ? String(value).slice(0, 150) : undefined,
             selector: buildSelector(el, index),
             visible: true,
             enabled: !el.disabled,
@@ -133,7 +135,7 @@ export class PageObserver {
           id: f.id || undefined,
           action: f.getAttribute('action') || undefined,
           inputs: Array.from(f.querySelectorAll('input, textarea, select')).map(
-            (i) => i.getAttribute('name') || i.getAttribute('placeholder') || i.getAttribute('type') || i.tagName.toLowerCase()
+            (i) => i.getAttribute('name') || i.getAttribute('placeholder') || i.getAttribute('aria-label') || i.getAttribute('type') || i.tagName.toLowerCase()
           )
         }));
 
@@ -151,7 +153,62 @@ export class PageObserver {
         const bodyText = (document.body ? document.body.innerText : '')
           .replace(/\\s+/g, ' ')
           .trim()
-          .slice(0, 3000);
+          .slice(0, 3500);
+
+        // Verification / Result Feedback detection on live DOM
+        const bodyLower = bodyText.toLowerCase();
+        let resultFeedback = undefined;
+
+        const isVerifiedText =
+          bodyLower.includes('verified') ||
+          bodyLower.includes('status completed') ||
+          bodyLower.includes('status: completed') ||
+          bodyLower.includes('payment verified') ||
+          bodyLower.includes('transaction completed');
+
+        const isFailedValidation =
+          bodyLower.includes('failed validation') ||
+          bodyLower.includes('parsed but failed') ||
+          bodyLower.includes('invalid receipt') ||
+          bodyLower.includes('receipt not found') ||
+          bodyLower.includes('not found') ||
+          bodyLower.includes('invalid reference');
+
+        if (isVerifiedText || isFailedValidation || bodyLower.includes('telebirr') || bodyLower.includes('cbe birr')) {
+          const details = {};
+          
+          // Extract key verification fields if present on page
+          const refMatch = bodyText.match(/Reference\\s*[:\\s]?\\s*([A-Za-z0-9_-]+)/i);
+          if (refMatch) details['Reference'] = refMatch[1];
+
+          const statusMatch = bodyText.match(/Status\\s*[:\\s]?\\s*([A-Za-z]+)/i);
+          if (statusMatch) details['Status'] = statusMatch[1];
+
+          const amountMatch = bodyText.match(/Amount\\s*[:\\s]?\\s*([0-9.,]+\\s*[A-Za-z]+(?:\\s*[A-Za-z]+)?)/i);
+          if (amountMatch) details['Amount'] = amountMatch[1];
+
+          const payerMatch = bodyText.match(/Payer\\s*[:\\s]?\\s*([A-Za-z\\s]+?)(?:Credited|When|Amount|Status|$)/i);
+          if (payerMatch) details['Payer'] = payerMatch[1].trim();
+
+          const creditedMatch = bodyText.match(/Credited\\s*[:\\s]?\\s*([A-Za-z\\s]+?)(?:When|Amount|Status|Payer|$)/i);
+          if (creditedMatch) details['Credited'] = creditedMatch[1].trim();
+
+          const whenMatch = bodyText.match(/When\\s*[:\\s]?\\s*([0-9\\-:\\s]+)/i);
+          if (whenMatch) details['When'] = whenMatch[1].trim();
+
+          let statusText = isVerifiedText ? 'Verified · Completed' : isFailedValidation ? 'Failed Validation' : 'Observed';
+          if (bodyLower.includes('parsed but failed validation')) {
+            statusText = 'Parsed but failed validation';
+          }
+
+          resultFeedback = {
+            isVerified: isVerifiedText && !isFailedValidation,
+            isFailed: isFailedValidation,
+            statusText,
+            details: Object.keys(details).length > 0 ? details : undefined,
+            rawSnippet: bodyText.slice(0, 500)
+          };
+        }
 
         // Auth detection heuristics on live DOM
         const hasPasswordInput = elements.some(
@@ -192,7 +249,6 @@ export class PageObserver {
         });
 
         const urlLower = window.location.href.toLowerCase();
-        const bodyLower = bodyText.toLowerCase();
         const isGoogleHost = urlLower.includes('accounts.google.com');
         const isAuthUrl =
           isGoogleHost ||
@@ -242,6 +298,7 @@ export class PageObserver {
           forms,
           visibleErrors,
           visibleText: bodyText,
+          resultFeedback,
           authDetection: {
             authRequired,
             hasPasswordInput,
@@ -259,6 +316,13 @@ export class PageObserver {
         forms: { id?: string; action?: string; inputs: string[] }[];
         visibleErrors: string[];
         visibleText: string;
+        resultFeedback?: {
+          isVerified?: boolean;
+          isFailed?: boolean;
+          statusText?: string;
+          details?: Record<string, string>;
+          rawSnippet?: string;
+        };
         authDetection: AuthDetection;
         navigationTiming?: NavigationTimingMetrics;
       };
@@ -270,6 +334,7 @@ export class PageObserver {
         visibleText: extracted.visibleText,
         forms: extracted.forms,
         visibleErrors: extracted.visibleErrors,
+        resultFeedback: extracted.resultFeedback,
         authDetection: extracted.authDetection,
         navigationTiming: extracted.navigationTiming,
         isLoading: false,
