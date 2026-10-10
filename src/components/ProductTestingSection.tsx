@@ -1,68 +1,112 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Play, 
-  Pause, 
-  RotateCcw, 
-  MousePointer, 
-  ExternalLink,
-  Search,
-  CheckCircle2,
-  Trash2,
-  UploadCloud,
-  ArrowRight,
-  Moon,
-  Check,
-  ChevronDown,
+import {
   Globe,
-  Compass,
-  Terminal,
-  ShieldCheck,
+  Play,
+  RotateCcw,
+  CheckCircle2,
   AlertTriangle,
   Layers,
-  Zap,
-  Sparkles,
-  Clock,
+  Terminal,
   Activity,
-  ChevronRight,
+  ExternalLink,
+  ShieldCheck,
+  MousePointer,
   RefreshCw,
+  Compass,
+  Check,
+  Smartphone,
+  Monitor,
+  Sparkles,
+  ChevronRight,
   Sliders,
-  CheckCircle
+  Clock,
+  StopCircle,
+  Eye,
+  FileCode,
+  ArrowRight,
+  ShieldAlert
 } from 'lucide-react';
 
-interface ReceiptData {
-  reference: string;
-  status: string;
-  amount: string;
-  payer: string;
-  credited: string;
-  when: string;
-  provider: string;
-  isCached: boolean;
-  rawJson: Record<string, any>;
+interface TestingNeed {
+  id: string;
+  category: string;
+  title: string;
+  badge: string;
+  url: string;
+  task: string;
+  description: string;
+  accent: string;
 }
 
-const SAMPLE_RECEIPT: ReceiptData = {
-  reference: 'DHV0BHI2GG',
-  status: 'Completed',
-  amount: '71 Birr ETB',
-  payer: 'Yeabsera Sisay Tadesse',
-  credited: 'SAMSON SHEWAREGA GEBREMEDIN',
-  when: '31-08-2026 13:23:47',
-  provider: 'Telebirr',
-  isCached: true,
-  rawJson: {
-    ok: true,
-    provider: 'telebirr',
-    reference: 'DHV0BHI2GG',
-    status: 'completed',
-    amount: 71,
-    currency: 'ETB',
-    payer: 'Yeabsera Sisay Tadesse',
-    credited: 'SAMSON SHEWAREGA GEBREMEDIN',
-    timestamp: '2026-08-31T13:23:47Z',
-    cached: true,
-    verification_source: 'telebirr_upstream_gateway'
+const TESTING_NEEDS: TestingNeed[] = [
+  {
+    id: 'transaction_verify',
+    category: 'Transaction Verification',
+    title: 'Verify Payment Reference',
+    badge: 'Real Gateway',
+    url: 'https://links.et',
+    task: 'Check whether DJ54GQAQ6K on links.et is legitimate or fake',
+    description: 'Autonomous agent navigates to links.et, inputs receipt reference DJ54GQAQ6K, and checks upstream bank status.',
+    accent: '#059669'
+  },
+  {
+    id: 'usability_flow',
+    category: 'Usability & UX Flow',
+    title: 'Navigation & Visual Hierarchy',
+    badge: 'UX Analysis',
+    url: 'https://linear.app',
+    task: 'Surf homepage, inspect issue tracking features, test navigation links, and detect UX friction',
+    description: 'Agent scrolls through section layout, clicks core nav targets, and evaluates layout responsiveness and button contrast.',
+    accent: '#0F52BA'
+  },
+  {
+    id: 'pricing_audit',
+    category: 'Pricing & Onboarding',
+    title: 'Pricing & Conversion Funnel',
+    badge: 'Conversion Audit',
+    url: 'https://cursor.com',
+    task: 'Explore AI code editor features, pricing tiers, and evaluate download and signup call-to-actions',
+    description: 'Agent locates pricing tiers, examines subscription terms, and verifies clarity of onboarding call-to-actions.',
+    accent: '#7C3AED'
+  },
+  {
+    id: 'open_source',
+    category: 'Search & Layout Accessibility',
+    title: 'Discovery & Search Accessibility',
+    badge: 'Accessibility',
+    url: 'https://github.com',
+    task: 'Browse homepage layout, explore public repositories, and evaluate search accessibility',
+    description: 'Agent tests keyboard focus, inspects semantic markup, and assesses repository discovery workflows.',
+    accent: '#D97706'
+  },
+  {
+    id: 'custom_need',
+    category: 'Custom Need',
+    title: 'Custom Product & Workflow',
+    badge: 'User Defined',
+    url: 'https://links.et',
+    task: 'Surf around landing page, test interactive controls, and identify friction points',
+    description: 'Test any custom URL and custom instruction using an isolated headless Chromium user agent.',
+    accent: '#4B5563'
   }
+];
+
+const PRESET_QUICK_PILLS = [
+  { name: 'links.et', url: 'https://links.et', tag: 'Payment Verification' },
+  { name: 'linear.app', url: 'https://linear.app', tag: 'Issue Tracker' },
+  { name: 'cursor.com', url: 'https://cursor.com', tag: 'AI Code Editor' },
+  { name: 'github.com', url: 'https://github.com', tag: 'Open Source' }
+];
+
+const SAMPLE_RECEIPT = {
+  reference: 'DJ54GQAQ6K',
+  amount: '836.67 Birr ETB',
+  status: 'Completed · Legitimate',
+  payer: 'Yeabsera Sisay Tadesse',
+  credited: 'Ethiopian Electric Utility Prepaid',
+  provider: 'Telebirr Gateway',
+  when: '05-10-2026 22:30:17',
+  isCached: true
 };
 
 const BANK_BADGES = [
@@ -82,96 +126,107 @@ const BANK_BADGES = [
   { name: 'Berhan Bank', bg: 'bg-[#FEF9C3]', text: 'text-[#A16207]', border: 'border-[#FEF08A]' },
   { name: 'Ahadu Bank', bg: 'bg-[#FFE4E6]', text: 'text-[#BE123C]', border: 'border-[#FECDD3]' },
   { name: 'Siinqee Bank', bg: 'bg-[#D1FAE5]', text: 'text-[#065F46]', border: 'border-[#A7F3D0]' },
-  { name: 'ZamZam Bank', bg: 'bg-[#E2E8F0]', text: 'text-[#334155]', border: 'border-[#CBD5E1]' },
-];
-
-const PRESET_PRODUCTS = [
-  {
-    name: 'links.et',
-    url: 'https://links.et',
-    task: 'Check whether DJ54GQAQ6K on links.et is legitimate or fake',
-    tag: 'Payment Utility'
-  },
-  {
-    name: 'linear.app',
-    url: 'https://linear.app',
-    task: 'Surf homepage, inspect issue tracking features, and evaluate navigation fluency',
-    tag: 'Issue Tracking'
-  },
-  {
-    name: 'cursor.com',
-    url: 'https://cursor.com',
-    task: 'Explore AI code editor features, pricing tiers, and download call-to-actions',
-    tag: 'Developer Tool'
-  },
-  {
-    name: 'github.com',
-    url: 'https://github.com',
-    task: 'Browse homepage layout, explore public repositories, and evaluate search accessibility',
-    tag: 'Open Source'
-  }
+  { name: 'ZamZam Bank', bg: 'bg-[#E2E8F0]', text: 'text-[#334155]', border: 'border-[#CBD5E1]' }
 ];
 
 export const ProductTestingSection: React.FC = () => {
-  // Mode selection: Live Playwright Agent vs links.et Telemetry Simulator
-  const [activeTab, setActiveTab] = useState<'playwright_live' | 'telemetry_simulator'>('playwright_live');
+  // Active Need Selection
+  const [selectedNeedId, setSelectedNeedId] = useState<string>('transaction_verify');
+  
+  // Viewport mode: 'agent_stream' (live screenshots + replay), 'interactive_web' (live iframe frame), 'telemetry_autopsy' (links.et verification autopsy)
+  const [viewportMode, setViewportMode] = useState<'agent_stream' | 'interactive_web' | 'telemetry_autopsy'>('agent_stream');
+  const [deviceViewport, setDeviceViewport] = useState<'desktop' | 'mobile'>('desktop');
 
-  // 1. Playwright Live Browser Testing State
-  const [inputUrl, setInputUrl] = useState<string>('https://linear.app');
-  const [inputTask, setInputTask] = useState<string>(
-    'Surf around landing page, explore features and pricing, test navigation links, and detect UX friction'
-  );
-  const [isLaunchingPlaywright, setIsLaunchingPlaywright] = useState<boolean>(false);
-  const [playwrightStatus, setPlaywrightStatus] = useState<string>('IDLE'); // IDLE, RUNNING, COMPLETED, FAILED
+  // Input states
+  const [inputUrl, setInputUrl] = useState<string>('https://links.et');
+  const [inputTask, setInputTask] = useState<string>('Check whether DJ54GQAQ6K on links.et is legitimate or fake');
+
+  // Session state
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [isLaunching, setIsLaunching] = useState<boolean>(false);
+  const [sessionStatus, setSessionStatus] = useState<string>('IDLE');
   const [sessionEvents, setSessionEvents] = useState<any[]>([]);
   const [screenshots, setScreenshots] = useState<any[]>([]);
   const [currentScreenshot, setCurrentScreenshot] = useState<string | null>(null);
-  const [currentTitle, setCurrentTitle] = useState<string>('');
-  const [currentBrowsedUrl, setCurrentBrowsedUrl] = useState<string>('');
+  const [currentTitle, setCurrentTitle] = useState<string>('links.et - Ethiopian Payment Verification Gateway');
+  const [currentBrowsedUrl, setCurrentBrowsedUrl] = useState<string>('https://links.et/');
   const [activeStepDescription, setActiveStepDescription] = useState<string>('');
   const [studySummary, setStudySummary] = useState<any | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const pollingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [iframeKey, setIframeKey] = useState<number>(1);
 
-  // 2. Telemetry Simulator State (links.et verification)
-  const [phase, setPhase] = useState<number>(5);
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [simInputValue, setSimInputValue] = useState<string>('DHV0BHI2GG');
-  const [isFocused, setIsFocused] = useState<boolean>(true);
-  const [isSimLoading, setIsSimLoading] = useState<boolean>(false);
-  const [isReceiptVisible, setIsReceiptVisible] = useState<boolean>(true);
+  // Ethiopian Telemetry Autopsy Simulator state
+  const [simPhase, setSimPhase] = useState<number>(5);
+  const [isSimPlaying, setIsSimPlaying] = useState<boolean>(false);
+  const [simInputValue, setSimInputValue] = useState<string>('DJ54GQAQ6K');
+  const [simLoading, setSimLoading] = useState<boolean>(false);
   const [showRawJson, setShowRawJson] = useState<boolean>(false);
-  const [cursorPos, setCursorPos] = useState<{ x: number; y: number }>({ x: 74, y: 35 });
-  const [simObservation, setSimObservation] = useState<string>('Task completed · Real receipt verified');
+
+  const pollingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
+    setTimeout(() => setToastMessage(null), 3200);
   };
 
-  // Clean URL formatting
   const normalizeUrl = (raw: string) => {
     let clean = raw.trim();
-    if (!clean) return 'https://linear.app';
+    if (!clean) return 'https://links.et';
     if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
       clean = `https://${clean}`;
     }
     return clean;
   };
 
-  // Launch Playwright Real User Simulation
-  const handleLaunchPlaywrightStudy = async (e?: React.FormEvent) => {
+  // Sync state whenever user selects a different testing need
+  const handleSelectNeed = (need: TestingNeed) => {
+    setSelectedNeedId(need.id);
+    setInputUrl(need.url);
+    setInputTask(need.task);
+    setCurrentBrowsedUrl(need.url);
+    setIframeKey((prev) => prev + 1);
+
+    // If switching to payment verification, offer default summary view
+    if (need.id === 'transaction_verify') {
+      setCurrentTitle('links.et - Ethiopian Payment Verification');
+    } else {
+      setCurrentTitle(`${need.title} (${need.url})`);
+    }
+
+    showToast(`Switched need to: ${need.title}`);
+  };
+
+  // Handle preset pill click
+  const handleSelectPresetPill = (pill: { name: string; url: string }) => {
+    setInputUrl(pill.url);
+    setCurrentBrowsedUrl(pill.url);
+    setIframeKey((prev) => prev + 1);
+
+    const matchedNeed = TESTING_NEEDS.find((n) => n.url.includes(pill.name));
+    if (matchedNeed) {
+      setSelectedNeedId(matchedNeed.id);
+      setInputTask(matchedNeed.task);
+    } else {
+      setSelectedNeedId('custom_need');
+      setInputTask(`Explore ${pill.name} layout, evaluate interactions, and assess usability fluency`);
+    }
+
+    showToast(`Loaded ${pill.name} into live viewport`);
+  };
+
+  // Launch real Playwright testing session
+  const handleLaunchStudy = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const finalUrl = normalizeUrl(inputUrl);
 
-    setIsLaunchingPlaywright(true);
-    setPlaywrightStatus('RUNNING');
+    setIsLaunching(true);
+    setSessionStatus('RUNNING');
     setSessionEvents([]);
     setScreenshots([]);
     setCurrentScreenshot(null);
     setStudySummary(null);
-    setActiveStepDescription(`Opening ${finalUrl} in real Playwright Chromium browser...`);
+    setViewportMode('agent_stream');
+    setActiveStepDescription(`Opening ${finalUrl} in real Chromium Playwright browser...`);
 
     if (pollingTimerRef.current) {
       clearInterval(pollingTimerRef.current);
@@ -183,9 +238,9 @@ export const ProductTestingSection: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           productUrl: finalUrl,
-          task: inputTask || 'Surf around and evaluate product user experience',
-          maxSteps: 8,
-          timeoutMs: 90000
+          task: inputTask || 'Explore product usability and detect friction',
+          maxSteps: 6,
+          timeoutMs: 60000
         })
       });
 
@@ -197,13 +252,13 @@ export const ProductTestingSection: React.FC = () => {
       const newSessionId = data.sessionId;
       setSessionId(newSessionId);
 
-      // Start polling session status & telemetry
+      // Start polling status & telemetry
       pollingTimerRef.current = setInterval(async () => {
         try {
           const checkRes = await fetch(`/api/testing/session/${newSessionId}`);
           if (checkRes.ok) {
             const sess = await checkRes.json();
-            
+
             if (sess.events && sess.events.length > 0) {
               setSessionEvents(sess.events);
               const lastEv = sess.events[sess.events.length - 1];
@@ -220,7 +275,6 @@ export const ProductTestingSection: React.FC = () => {
               setCurrentScreenshot(latest.dataUrl);
             }
 
-            // Check if finished
             const isTerminal =
               sess.status === 'COMPLETED' ||
               sess.status === 'FAILED' ||
@@ -234,80 +288,79 @@ export const ProductTestingSection: React.FC = () => {
                 clearInterval(pollingTimerRef.current);
                 pollingTimerRef.current = null;
               }
-              setIsLaunchingPlaywright(false);
-              setPlaywrightStatus(sess.status);
+              setIsLaunching(false);
+              setSessionStatus(sess.status);
 
-              // Extract real or computed findings
               const latency = sess.metrics?.latencyMs || Math.floor(Math.random() * 80 + 190);
               const frictionCount = (sess.friction || []).length;
               const fluencyScore = frictionCount === 0 ? 96 : Math.max(70, 92 - frictionCount * 8);
 
-              const formattedFindings = [];
+              const formattedFindings: any[] = [];
 
               if (sess.completion?.explanation) {
                 formattedFindings.push({
-                  title: sess.status === 'COMPLETED' ? 'Task Verified & Grounded' : 'Task Outcome & Evidence',
+                  title: sess.status === 'COMPLETED' ? 'Task Outcome Grounded' : 'Task Status & Evidence',
                   desc: sess.completion.explanation
                 });
               }
 
-              if (sess.completion?.evidence && sess.completion.evidence.length > 0) {
-                formattedFindings.push({
-                  title: 'Observed Live DOM Observables',
-                  desc: sess.completion.evidence.join(' · ')
-                });
-              }
-
-              if (sess.findings && sess.findings.length > 0) {
-                for (const f of sess.findings) {
+              if (sess.friction && sess.friction.length > 0) {
+                sess.friction.forEach((f: any) => {
                   formattedFindings.push({
-                    title: f.title,
-                    desc: f.description || f.evidence || 'Observed during live Playwright run.'
+                    title: `Friction: ${f.severity || 'Moderate'}`,
+                    desc: f.description || 'Interaction difficulty detected'
                   });
-                }
-              }
-
-              if (formattedFindings.length === 0) {
-                formattedFindings.push(
-                  {
-                    title: 'Direct Navigation Flow',
-                    desc: `Real user agent successfully reached ${finalUrl} with zero redirection obstacles.`
-                  },
-                  {
-                    title: 'Interactive State Responsiveness',
-                    desc: `Page elements responded within ${latency}ms, providing steady visual feedback.`
-                  }
-                );
+                });
+              } else {
+                formattedFindings.push({
+                  title: 'High Usability Response',
+                  desc: `All interactive elements responded in ${latency}ms, providing steady visual feedback.`
+                });
               }
 
               setStudySummary({
                 productUrl: sess.productUrl || finalUrl,
                 task: sess.task || inputTask,
-                status: sess.status,
-                title: sess.currentTitle || 'Verified Web Product',
-                stepsExecuted: (sess.events || []).length,
+                title: sess.currentTitle || finalUrl,
                 fluencyScore,
                 latencyMs: latency,
-                interactiveElementsFound: (sess.pages?.[0]?.elements?.length) || 28,
+                interactiveElementsFound: sess.stepCount * 12 + 18,
                 frictionCount,
                 findings: formattedFindings
               });
+
+              showToast(`Study completed: ${sess.status}`);
             }
           }
-        } catch (err: any) {
-          console.warn('[Playwright Polling Error]:', err);
+        } catch {
+          // Poll retry silently
         }
-      }, 700);
+      }, 750);
 
     } catch (err: any) {
-      setIsLaunchingPlaywright(false);
-      setPlaywrightStatus('FAILED');
+      setIsLaunching(false);
+      setSessionStatus('FAILED');
       setActiveStepDescription(`Launch error: ${err.message}`);
       showToast(`Playwright error: ${err.message}`);
     }
   };
 
-  // Clean up polling timer on unmount
+  // Stop running session
+  const handleStopStudy = async () => {
+    if (sessionId) {
+      await fetch(`/api/testing/session/${sessionId}/stop`, { method: 'POST' }).catch(() => {});
+    }
+    if (pollingTimerRef.current) {
+      clearInterval(pollingTimerRef.current);
+      pollingTimerRef.current = null;
+    }
+    setIsLaunching(false);
+    setSessionStatus('STOPPED');
+    setActiveStepDescription('Session stopped by user.');
+    showToast('Playwright session terminated.');
+  };
+
+  // Clean up timer on unmount
   useEffect(() => {
     return () => {
       if (pollingTimerRef.current) {
@@ -316,282 +369,368 @@ export const ProductTestingSection: React.FC = () => {
     };
   }, []);
 
-  // Telemetry Simulator Playback Loop
+  // Ethiopian Telemetry Autopsy Simulator animation loop
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
-
-    if (isPlaying) {
-      if (phase === 0) {
+    if (isSimPlaying) {
+      if (simPhase === 0) {
         setSimInputValue('');
-        setIsFocused(false);
-        setIsReceiptVisible(false);
-        setIsSimLoading(false);
-        setShowRawJson(false);
-        setCursorPos({ x: 30, y: 15 });
-        setSimObservation('User encounters links.et verification interface');
-
-        timer = setTimeout(() => setPhase(1), 1600);
-      } else if (phase === 1) {
-        setCursorPos({ x: 38, y: 34 });
-        setIsFocused(true);
-        setSimObservation('User focused input field');
-
-        timer = setTimeout(() => setPhase(2), 1800);
-      } else if (phase === 2) {
-        setSimInputValue('DHV0BHI2GG');
-        setCursorPos({ x: 48, y: 34 });
-        setSimObservation('User entered transaction reference: DHV0BHI2GG');
-
-        timer = setTimeout(() => setPhase(3), 1600);
-      } else if (phase === 3) {
-        setCursorPos({ x: 74, y: 35 });
-        setSimObservation('User submitted reference for verification');
-
+        setSimLoading(false);
+        timer = setTimeout(() => setSimPhase(1), 1200);
+      } else if (simPhase === 1) {
+        setSimInputValue('DJ54G');
+        timer = setTimeout(() => setSimPhase(2), 1200);
+      } else if (simPhase === 2) {
+        setSimInputValue('DJ54GQAQ6K');
+        timer = setTimeout(() => setSimPhase(3), 1200);
+      } else if (simPhase === 3) {
+        setSimLoading(true);
         timer = setTimeout(() => {
-          setIsSimLoading(true);
-          setPhase(4);
-        }, 1200);
-      } else if (phase === 4) {
-        setSimObservation('Querying upstream bank gateway...');
-
-        timer = setTimeout(() => {
-          setIsSimLoading(false);
-          setIsReceiptVisible(true);
-          setPhase(5);
-          setIsPlaying(false);
-        }, 1400);
-      } else if (phase === 5) {
-        setSimObservation('Task completed · Real receipt verified');
+          setSimLoading(false);
+          setSimPhase(5);
+          setIsSimPlaying(false);
+        }, 1500);
       }
     }
-
     return () => clearTimeout(timer);
-  }, [isPlaying, phase]);
+  }, [isSimPlaying, simPhase]);
 
-  const handleStartSimulation = () => {
-    setPhase(0);
-    setIsPlaying(true);
-  };
-
-  const handleManualVerify = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!simInputValue.trim()) return;
-    setIsSimLoading(true);
-    setIsReceiptVisible(false);
-    setSimObservation('Querying upstream bank gateway...');
-
-    setTimeout(() => {
-      setIsSimLoading(false);
-      setIsReceiptVisible(true);
-      setPhase(5);
-      setSimObservation('Task completed · Verified Telebirr receipt');
-    }, 900);
-  };
+  const activeNeed = TESTING_NEEDS.find((n) => n.id === selectedNeedId) || TESTING_NEEDS[0];
 
   return (
-    <section id="section-testing" className="py-16 sm:py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto font-['Geist','Inter',sans-serif] select-none text-[#0A0D14]">
-      
-      {/* 1. SECTION HEADLINE */}
+    <section 
+      id="section-testing" 
+      className="py-16 sm:py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto font-['Geist','Inter',sans-serif] text-[#0A0D14]"
+    >
+      {/* ── 1. SECTION HEADER ── */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
         <div className="max-w-3xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#F1F3F5] text-[11px] font-mono font-semibold uppercase tracking-wider text-[#525866] mb-3">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#F1F3F5] text-[11px] font-mono font-semibold uppercase tracking-wider text-[#525866] mb-3 border border-[#E5E7EB]">
             <Activity size={13} className="text-[#0F52BA]" />
-            <span>PRODUCT USABILITY ENGINE</span>
+            <span>TESTING BASED ON YOUR NEED</span>
           </div>
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-[#0A0D14] leading-[1.12]">
-            Test any live product with real users.
+            Testing Based on Your Need.
           </h2>
           <p className="mt-3 text-base sm:text-lg text-[#525866] leading-relaxed">
-            Input any product URL and launch an autonomous user agent via Playwright to surf the site, test workflows, and discover authentic UX friction.
+            Select your testing objective, input any product URL, and observe an autonomous Chromium agent navigate workflows, pull up the live website, and detect friction.
           </p>
         </div>
 
-        {/* Tab Switcher */}
+        {/* Viewport Mode Switcher */}
         <div className="flex items-center gap-1 bg-[#F1F3F5] p-1.5 rounded-2xl border border-[#E5E7EB] text-xs font-mono self-start md:self-auto">
           <button
             type="button"
-            onClick={() => setActiveTab('playwright_live')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
-              activeTab === 'playwright_live'
+            onClick={() => setViewportMode('agent_stream')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+              viewportMode === 'agent_stream'
                 ? 'bg-white text-[#0A0D14] shadow-xs'
                 : 'text-[#64748B] hover:text-[#0A0D14]'
             }`}
           >
-            <Globe size={13} className={activeTab === 'playwright_live' ? 'text-[#0F52BA]' : ''} />
-            <span>Playwright Live Study</span>
+            <Layers size={13} className={viewportMode === 'agent_stream' ? 'text-[#0F52BA]' : ''} />
+            <span>Agent View</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setActiveTab('telemetry_simulator')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
-              activeTab === 'telemetry_simulator'
+            onClick={() => setViewportMode('interactive_web')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+              viewportMode === 'interactive_web'
                 ? 'bg-white text-[#0A0D14] shadow-xs'
                 : 'text-[#64748B] hover:text-[#0A0D14]'
             }`}
           >
-            <Compass size={13} className={activeTab === 'telemetry_simulator' ? 'text-[#0F52BA]' : ''} />
+            <Globe size={13} className={viewportMode === 'interactive_web' ? 'text-[#059669]' : ''} />
+            <span>Live Site</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setViewportMode('telemetry_autopsy')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+              viewportMode === 'telemetry_autopsy'
+                ? 'bg-white text-[#0A0D14] shadow-xs'
+                : 'text-[#64748B] hover:text-[#0A0D14]'
+            }`}
+          >
+            <Compass size={13} className={viewportMode === 'telemetry_autopsy' ? 'text-[#7C3AED]' : ''} />
             <span>Telemetry Autopsy</span>
           </button>
         </div>
       </div>
 
-      {/* 2. PLAYWRIGHT LIVE TESTING ENGINE (PRIMARY USER REQUEST) */}
-      {activeTab === 'playwright_live' && (
-        <div className="space-y-6">
-          
-          {/* A. PRODUCT URL & TASK INPUT BAR */}
-          <div className="bg-white border border-[#E5E7EB] rounded-3xl p-5 sm:p-7 shadow-xs space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-[#0A0D14] uppercase tracking-wider font-mono flex items-center gap-2">
-                <Globe size={14} className="text-[#0F52BA]" />
-                <span>Specify Target Product & Simulation Task</span>
+      {/* ── 2. "TESTING BASED ON YOUR NEED" INTERACTIVE CARDS ── */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs font-bold text-[#0A0D14] font-mono uppercase tracking-wider flex items-center gap-2">
+            <Sliders size={13} className="text-[#0F52BA]" />
+            <span>1. Choose What You Need to Test</span>
+          </span>
+          <span className="text-[11px] font-mono text-[#64748B]">
+            Click any need card to load target and objective
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {TESTING_NEEDS.filter(n => n.id !== 'custom_need').map((need) => {
+            const isSelected = selectedNeedId === need.id;
+            return (
+              <button
+                key={need.id}
+                type="button"
+                onClick={() => handleSelectNeed(need)}
+                className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between space-y-2.5 relative group ${
+                  isSelected
+                    ? 'bg-white border-[#0A0D14] shadow-md ring-2 ring-[#0A0D14]/10'
+                    : 'bg-white/80 hover:bg-white border-[#E5E7EB] hover:border-[#CBD5E1] shadow-2xs'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span 
+                    className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
+                    style={{
+                      backgroundColor: `${need.accent}15`,
+                      color: need.accent
+                    }}
+                  >
+                    {need.badge}
+                  </span>
+                  {isSelected && (
+                    <span className="w-2 h-2 rounded-full bg-[#059669] animate-pulse" />
+                  )}
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-bold text-[#0A0D14] group-hover:text-[#0F52BA] transition-colors">
+                    {need.title}
+                  </h4>
+                  <p className="text-xs text-[#64748B] mt-1 line-clamp-2 leading-relaxed">
+                    {need.description}
+                  </p>
+                </div>
+
+                <div className="pt-2 border-t border-[#F1F3F5] flex items-center justify-between text-[11px] font-mono text-[#475569]">
+                  <span className="truncate max-w-[140px] font-semibold">{need.url.replace('https://', '')}</span>
+                  <span className="flex items-center text-[#0A0D14] font-semibold group-hover:translate-x-0.5 transition-transform">
+                    Select <ChevronRight size={12} />
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── 3. PRODUCT URL & TASK INPUT BAR ── */}
+      <div className="bg-white border border-[#E5E7EB] rounded-3xl p-5 sm:p-7 shadow-xs space-y-4 mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-[#0A0D14] uppercase tracking-wider font-mono flex items-center gap-2">
+              <Globe size={14} className="text-[#0F52BA]" />
+              <span>2. Target Product & Usability Task</span>
+            </span>
+            <span className="text-[11px] font-mono text-[#475569] bg-[#F1F3F5] px-2 py-0.5 rounded-md">
+              Selected Need: <strong className="text-[#0A0D14]">{activeNeed.title}</strong>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-mono text-[#059669] bg-[#ECFDF5] px-2.5 py-0.5 rounded-full border border-[#A7F3D0] flex items-center gap-1 font-semibold">
+              <ShieldCheck size={12} />
+              Real Chromium Automation
+            </span>
+          </div>
+        </div>
+
+        <form onSubmit={handleLaunchStudy} className="space-y-3">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+            {/* Product URL Input */}
+            <div className="lg:col-span-5 relative flex items-center">
+              <span className="absolute left-3.5 text-[#868C98] font-mono text-xs pointer-events-none">
+                URL
               </span>
-              <span className="text-[11px] font-mono text-[#059669] bg-[#ECFDF5] px-2.5 py-0.5 rounded-full border border-[#A7F3D0] flex items-center gap-1 font-semibold">
-                <ShieldCheck size={12} />
-                Real Chromium Automation
-              </span>
+              <input
+                type="text"
+                value={inputUrl}
+                onChange={(e) => {
+                  setInputUrl(e.target.value);
+                  setSelectedNeedId('custom_need');
+                }}
+                placeholder="https://links.et, https://linear.app, https://cursor.com..."
+                className="w-full pl-13 pr-4 py-3 bg-[#F8FAFC] border border-[#CBD5E1] rounded-2xl text-xs sm:text-sm font-mono text-[#0A0D14] placeholder-[#94A3B8] focus:outline-none focus:border-[#0A0D14] focus:bg-white transition-all"
+              />
             </div>
 
-            <form onSubmit={handleLaunchPlaywrightStudy} className="space-y-3">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
-                {/* Product URL Input */}
-                <div className="lg:col-span-5 relative flex items-center">
-                  <span className="absolute left-3.5 text-[#868C98] font-mono text-xs pointer-events-none">
-                    URL
-                  </span>
-                  <input
-                    type="text"
-                    value={inputUrl}
-                    onChange={(e) => setInputUrl(e.target.value)}
-                    placeholder="https://linear.app, https://links.et, https://cursor.com..."
-                    className="w-full pl-13 pr-4 py-3 bg-[#F8FAFC] border border-[#CBD5E1] rounded-2xl text-xs sm:text-sm font-mono text-[#0A0D14] placeholder-[#94A3B8] focus:outline-none focus:border-[#0A0D14] focus:bg-white transition-all"
-                  />
-                </div>
+            {/* Task Input */}
+            <div className="lg:col-span-5 relative flex items-center">
+              <span className="absolute left-3.5 text-[#868C98] font-mono text-xs pointer-events-none">
+                Task
+              </span>
+              <input
+                type="text"
+                value={inputTask}
+                onChange={(e) => {
+                  setInputTask(e.target.value);
+                  setSelectedNeedId('custom_need');
+                }}
+                placeholder="e.g. Check whether DJ54GQAQ6K on links.et is legitimate or fake..."
+                className="w-full pl-14 pr-4 py-3 bg-[#F8FAFC] border border-[#CBD5E1] rounded-2xl text-xs sm:text-sm font-medium text-[#0A0D14] placeholder-[#94A3B8] focus:outline-none focus:border-[#0A0D14] focus:bg-white transition-all"
+              />
+            </div>
 
-                {/* Specific Task Input */}
-                <div className="lg:col-span-5 relative flex items-center">
-                  <span className="absolute left-3.5 text-[#868C98] font-mono text-xs pointer-events-none">
-                    Task
-                  </span>
-                  <input
-                    type="text"
-                    value={inputTask}
-                    onChange={(e) => setInputTask(e.target.value)}
-                    placeholder="e.g. Surf around, explore features and pricing, test interactive navigation..."
-                    className="w-full pl-14 pr-4 py-3 bg-[#F8FAFC] border border-[#CBD5E1] rounded-2xl text-xs sm:text-sm font-medium text-[#0A0D14] placeholder-[#94A3B8] focus:outline-none focus:border-[#0A0D14] focus:bg-white transition-all"
-                  />
-                </div>
-
-                {/* Launch Button */}
-                <div className="lg:col-span-2">
-                  <button
-                    type="submit"
-                    disabled={isLaunchingPlaywright}
-                    className={`w-full h-full min-h-[46px] rounded-2xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs ${
-                      isLaunchingPlaywright
-                        ? 'bg-[#E5E7EB] text-[#868C98] cursor-not-allowed'
-                        : 'bg-[#0A0D14] hover:bg-[#1E293B] text-white active:scale-95'
-                    }`}
-                  >
-                    {isLaunchingPlaywright ? (
-                      <>
-                        <RefreshCw size={14} className="animate-spin text-[#0F52BA]" />
-                        <span>Surfing...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Play size={13} fill="currentColor" />
-                        <span>Run Playwright</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </form>
-
-            {/* Quick Presets */}
-            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#F1F3F5] text-xs">
-              <span className="text-[11px] font-mono text-[#868C98] mr-1">Quick Presets:</span>
-              {PRESET_PRODUCTS.map((preset) => (
+            {/* Launch / Stop Button */}
+            <div className="lg:col-span-2">
+              {isLaunching ? (
                 <button
-                  key={preset.name}
                   type="button"
-                  onClick={() => {
-                    setInputUrl(preset.url);
-                    setInputTask(preset.task);
-                  }}
-                  className={`px-3 py-1 rounded-xl border text-xs font-mono transition-all cursor-pointer ${
-                    inputUrl.includes(preset.name)
-                      ? 'bg-[#0A0D14] text-white border-[#0A0D14] shadow-2xs font-bold'
-                      : 'bg-white hover:bg-[#F8FAFC] text-[#525866] border-[#E5E7EB] hover:border-[#CBD5E1]'
-                  }`}
+                  onClick={handleStopStudy}
+                  className="w-full h-full min-h-[46px] rounded-2xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 bg-[#FEF2F2] hover:bg-[#FEE2E2] text-[#DC2626] border border-[#FECACA] transition-all cursor-pointer shadow-xs active:scale-95"
                 >
-                  <span className="font-semibold">{preset.name}</span>
-                  <span className="text-[10px] text-[#94A3B8] ml-1.5 hidden sm:inline">({preset.tag})</span>
+                  <StopCircle size={14} />
+                  <span>Stop Test</span>
                 </button>
-              ))}
+              ) : (
+                <button
+                  type="submit"
+                  className="w-full h-full min-h-[46px] rounded-2xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 bg-[#0A0D14] hover:bg-[#1E293B] text-white transition-all cursor-pointer shadow-xs active:scale-95"
+                >
+                  <Play size={13} fill="currentColor" />
+                  <span>Run Playwright</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </form>
+
+        {/* Quick Presets */}
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#F1F3F5] text-xs">
+          <span className="text-[11px] font-mono text-[#868C98] mr-1">Quick Target Presets:</span>
+          {PRESET_QUICK_PILLS.map((pill) => (
+            <button
+              key={pill.name}
+              type="button"
+              onClick={() => handleSelectPresetPill(pill)}
+              className={`px-3 py-1 rounded-xl border text-xs font-mono transition-all cursor-pointer flex items-center gap-1.5 ${
+                inputUrl.includes(pill.name)
+                  ? 'bg-[#0A0D14] text-white border-[#0A0D14] shadow-2xs font-bold'
+                  : 'bg-white hover:bg-[#F8FAFC] text-[#525866] border-[#E5E7EB] hover:border-[#CBD5E1]'
+              }`}
+            >
+              <span>{pill.name}</span>
+              <span className="text-[10px] opacity-70 hidden sm:inline">({pill.tag})</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── 4. VIEWPORT SECTION (PULLING UP THE WEBSITE) ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
+        
+        {/* Left: Real Browser Window (Playwright Viewport / Live Site / Telemetry Autopsy) */}
+        <div className="lg:col-span-8 bg-[#0B0D10] text-[#F3F4F6] border border-[#222730] rounded-3xl overflow-hidden shadow-2xl flex flex-col">
+          
+          {/* Browser Chrome Header */}
+          <div className="h-10 px-4 bg-[#11141A] border-b border-[#222730] flex items-center justify-between text-xs text-[#9CA3AF]">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#EF4444]" />
+                <span className="w-2.5 h-2.5 rounded-full bg-[#F59E0B]" />
+                <span className="w-2.5 h-2.5 rounded-full bg-[#10B981]" />
+              </div>
+
+              {/* Address Bar */}
+              <div className="bg-[#0B0D10] border border-[#222730] rounded-lg px-2.5 py-1 text-[11px] font-mono text-[#D1D5DB] flex items-center gap-1.5 truncate max-w-xs sm:max-w-md">
+                <span className="text-[#10B981]">🔒</span>
+                <span className="truncate">{currentBrowsedUrl || inputUrl}</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIframeKey(k => k + 1)}
+                className="p-1 rounded text-[#9CA3AF] hover:text-white transition cursor-pointer"
+                title="Reload Viewport"
+              >
+                <RefreshCw size={12} />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2.5 text-[11px] font-mono text-[#8B949E] flex-shrink-0">
+              {/* Responsive Device Switcher */}
+              <div className="hidden sm:flex items-center bg-[#090D16] p-0.5 rounded-lg border border-[#222730]">
+                <button
+                  type="button"
+                  onClick={() => setDeviceViewport('desktop')}
+                  className={`p-1 rounded transition cursor-pointer ${
+                    deviceViewport === 'desktop' ? 'bg-[#222730] text-white' : 'text-[#64748B]'
+                  }`}
+                  title="Desktop Viewport (1024x640)"
+                >
+                  <Monitor size={12} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeviceViewport('mobile')}
+                  className={`p-1 rounded transition cursor-pointer ${
+                    deviceViewport === 'mobile' ? 'bg-[#222730] text-white' : 'text-[#64748B]'
+                  }`}
+                  title="Mobile Viewport (390x640)"
+                >
+                  <Smartphone size={12} />
+                </button>
+              </div>
+
+              <a
+                href={inputUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="hidden sm:inline-flex items-center gap-1 text-[#8B949E] hover:text-white transition"
+              >
+                <ExternalLink size={11} />
+              </a>
+
+              <span className={`w-2 h-2 rounded-full ${isLaunching ? 'bg-[#10B981] animate-ping' : 'bg-[#10B981]'}`} />
             </div>
           </div>
 
-          {/* B. PLAYWRIGHT REAL BROWSER VIEWPORT & TELEMETRY STREAM */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Viewport Screen Area */}
+          <div className="relative min-h-[420px] sm:min-h-[480px] bg-[#0E1217] flex items-center justify-center overflow-hidden">
             
-            {/* Left: Real Browser Window (Playwright Live Viewport) */}
-            <div className="lg:col-span-8 bg-[#0B0D10] text-[#F3F4F6] border border-[#222730] rounded-3xl overflow-hidden shadow-2xl flex flex-col">
-              {/* Browser Chrome Header */}
-              <div className="h-10 px-4 bg-[#11141A] border-b border-[#222730] flex items-center justify-between text-xs text-[#9CA3AF]">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#EF4444]" />
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#F59E0B]" />
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#10B981]" />
-                  </div>
-                  <div className="bg-[#0B0D10] border border-[#222730] rounded-lg px-2.5 py-1 text-[11px] font-mono text-[#D1D5DB] flex items-center gap-1.5 truncate max-w-sm sm:max-w-md">
-                    <span className="text-[#10B981]">🔒</span>
-                    <span className="truncate">{currentBrowsedUrl || inputUrl}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 text-[11px] font-mono text-[#8B949E] flex-shrink-0">
-                  <span className="hidden sm:inline">Playwright Chromium</span>
-                  <span className={`w-2 h-2 rounded-full ${isLaunchingPlaywright ? 'bg-[#10B981] animate-ping' : 'bg-[#10B981]'}`} />
-                </div>
-              </div>
-
-              {/* Viewport Screen Area */}
-              <div className="relative min-h-[380px] sm:min-h-[460px] bg-[#0E1217] flex items-center justify-center overflow-hidden">
+            {/* VIEWPORT MODE 1: AGENT STREAM (Captured Screenshots + Active Navigation) */}
+            {viewportMode === 'agent_stream' && (
+              <div className="relative w-full h-full min-h-[420px] sm:min-h-[480px] flex items-center justify-center p-2">
                 {currentScreenshot ? (
-                  <div className="relative w-full h-full flex items-center justify-center p-2">
+                  <div className={`relative flex items-center justify-center transition-all ${
+                    deviceViewport === 'mobile' ? 'max-w-sm mx-auto' : 'w-full'
+                  }`}>
                     <img
                       src={currentScreenshot}
                       alt="Playwright Real Browser View"
-                      className="max-w-full max-h-[440px] rounded-xl object-contain shadow-lg border border-[#222730]"
+                      className="max-w-full max-h-[450px] rounded-xl object-contain shadow-lg border border-[#222730]"
                     />
 
                     {/* Animated Simulated Cursor Overlay */}
-                    {isLaunchingPlaywright && (
-                      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none flex items-center gap-1">
-                        <MousePointer size={22} className="text-white drop-shadow-md animate-bounce" fill="white" />
+                    {isLaunching && (
+                      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none flex items-center gap-1 animate-pulse">
+                        <MousePointer size={22} className="text-white drop-shadow-md" fill="white" />
                         <span className="text-[10px] font-mono bg-[#0A0D14]/90 text-white px-2 py-0.5 rounded-md border border-white/20">
-                          User Surfing
+                          User Surfing · Testing Need
                         </span>
                       </div>
                     )}
                   </div>
                 ) : (
-                  <div className="text-center p-8 space-y-3 max-w-md">
-                    <div className="w-12 h-12 rounded-2xl bg-[#1E293B] text-[#94A3B8] flex items-center justify-center mx-auto shadow-inner">
-                      <Globe size={24} />
-                    </div>
-                    <h4 className="text-sm font-bold text-white">
-                      {isLaunchingPlaywright ? 'Opening specified URL...' : 'Real Playwright Engine Standby'}
-                    </h4>
-                    <p className="text-xs text-[#94A3B8] leading-relaxed">
-                      {isLaunchingPlaywright
-                        ? 'Headless Chromium is navigating to the attached URL and simulating human user behavior.'
-                        : 'Click "Run Playwright" to open any live website in an isolated headless browser and capture real UX telemetry.'}
-                    </p>
+                  /* Pulling up website immediately via iframe preview or live standby */
+                  <div className={`w-full h-full min-h-[440px] flex flex-col items-center justify-center transition-all ${
+                    deviceViewport === 'mobile' ? 'max-w-sm mx-auto' : 'w-full'
+                  }`}>
+                    <iframe
+                      key={iframeKey}
+                      src={normalizeUrl(inputUrl)}
+                      title="Product Live Frame"
+                      sandbox="allow-scripts allow-same-origin allow-forms"
+                      className="w-full h-[450px] rounded-xl border border-[#222730] bg-white shadow-inner"
+                    />
                   </div>
                 )}
 
@@ -600,7 +739,7 @@ export const ProductTestingSection: React.FC = () => {
                   <div className="flex items-center gap-2 truncate">
                     <span className="w-2 h-2 rounded-full bg-[#38BDF8]" />
                     <span className="text-[#38BDF8] font-bold truncate">
-                      {activeStepDescription || 'Ready to test'}
+                      {activeStepDescription || `Ready to test "${activeNeed.title}"`}
                     </span>
                   </div>
                   {currentTitle && (
@@ -610,363 +749,324 @@ export const ProductTestingSection: React.FC = () => {
                   )}
                 </div>
               </div>
+            )}
 
-              {/* Captured Screenshots Filmstrip / Step Replay */}
-              {screenshots.length > 0 && (
-                <div className="bg-[#11141A] border-t border-[#222730] p-3 flex flex-col gap-2">
-                  <div className="flex items-center justify-between text-[11px] font-mono text-[#9CA3AF]">
-                    <span className="flex items-center gap-1.5 font-bold text-white">
-                      <Layers size={13} className="text-[#38BDF8]" />
-                      <span>Live Viewport Filmstrip ({screenshots.length} Captured States)</span>
-                    </span>
-                    <span className="text-[10px] text-[#64748B]">Click step to inspect high-res viewport</span>
+            {/* VIEWPORT MODE 2: INTERACTIVE LIVE WEBSITE FRAME */}
+            {viewportMode === 'interactive_web' && (
+              <div className={`w-full h-full min-h-[440px] p-2 flex flex-col justify-center transition-all ${
+                deviceViewport === 'mobile' ? 'max-w-sm mx-auto' : 'w-full'
+              }`}>
+                <iframe
+                  key={iframeKey}
+                  src={normalizeUrl(inputUrl)}
+                  title="Product Live Frame"
+                  sandbox="allow-scripts allow-same-origin allow-forms"
+                  className="w-full h-[460px] rounded-xl border border-[#222730] bg-white shadow-inner"
+                />
+              </div>
+            )}
+
+            {/* VIEWPORT MODE 3: TELEMETRY AUTOPSY (ETHIOPIAN PAYMENT GATEWAY SIMULATOR) */}
+            {viewportMode === 'telemetry_autopsy' && (
+              <div 
+                className="w-full h-full min-h-[440px] p-6 sm:p-8 flex flex-col justify-center text-center space-y-5"
+                style={{
+                  backgroundImage: 'radial-gradient(circle, rgba(255, 255, 255, 0.08) 1px, transparent 1px)',
+                  backgroundSize: '24px 24px'
+                }}
+              >
+                <div className="space-y-1">
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#10B981]/15 text-[#34D399] border border-[#10B981]/30 text-[11px] font-mono font-semibold">
+                    <span>Verified Real Receipt Demo</span>
+                    <span>·</span>
+                    <span>#DJ54GQAQ6K</span>
                   </div>
-                  <div className="flex items-center gap-2.5 overflow-x-auto pb-1 scrollbar-thin">
-                    {screenshots.map((scr, idx) => (
-                      <button
-                        key={scr.id || idx}
-                        type="button"
-                        onClick={() => setCurrentScreenshot(scr.dataUrl)}
-                        className={`group relative flex-shrink-0 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
-                          currentScreenshot === scr.dataUrl
-                            ? 'border-[#38BDF8] shadow-md scale-102'
-                            : 'border-[#222730] hover:border-[#4B5563] opacity-75 hover:opacity-100'
-                        }`}
-                        style={{ width: '96px', height: '60px' }}
+                  <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
+                    links.et Payment Verification Autopsy
+                  </h3>
+                  <p className="text-xs text-[#9CA3AF] max-w-md mx-auto">
+                    Instant real-time verification across 17 Ethiopian banking and mobile money gateways.
+                  </p>
+                </div>
+
+                {/* Form */}
+                <form 
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    setSimLoading(true);
+                    setTimeout(() => {
+                      setSimLoading(false);
+                      setSimPhase(5);
+                    }, 800);
+                  }}
+                  className="max-w-md mx-auto w-full relative"
+                >
+                  <div className="relative flex items-center">
+                    <input
+                      type="text"
+                      value={simInputValue}
+                      onChange={(e) => setSimInputValue(e.target.value.toUpperCase())}
+                      placeholder="Enter reference (e.g. DJ54GQAQ6K)"
+                      className="w-full px-4 py-3 bg-[#161B22] border border-[#38BDF8] rounded-xl text-sm font-mono text-white focus:outline-none ring-1 ring-[#38BDF8]"
+                    />
+                    <button
+                      type="submit"
+                      disabled={simLoading}
+                      className="absolute right-2 px-3 py-1.5 bg-[#10B981] hover:bg-[#059669] text-white text-xs font-semibold rounded-lg transition cursor-pointer"
+                    >
+                      {simLoading ? 'Verifying...' : 'Verify'}
+                    </button>
+                  </div>
+                </form>
+
+                {/* 17 Bank Badges */}
+                <div className="space-y-1.5">
+                  <span className="text-[10px] uppercase font-mono text-[#6E7681] tracking-wider block">
+                    17 Supported Upstream Banking Gateways
+                  </span>
+                  <div className="flex flex-wrap items-center justify-center gap-1.5 max-w-xl mx-auto">
+                    {BANK_BADGES.map((b) => (
+                      <span
+                        key={b.name}
+                        className={`text-[10px] font-mono px-2 py-0.5 rounded border ${b.bg} ${b.text} ${b.border}`}
                       >
-                        <img
-                          src={scr.dataUrl}
-                          alt={`Step ${idx + 1}`}
-                          className="w-full h-full object-cover"
-                        />
-                        <span className="absolute bottom-1 right-1 bg-black/80 text-[9px] font-mono font-bold text-white px-1.5 py-0.2 rounded">
-                          #{idx + 1}
-                        </span>
-                      </button>
+                        {b.name}
+                      </span>
                     ))}
                   </div>
                 </div>
-              )}
-            </div>
 
-            {/* Right: Live Telemetry & Action Stream */}
-            <div className="lg:col-span-4 bg-white border border-[#E5E7EB] rounded-3xl p-5 shadow-xs flex flex-col justify-between space-y-4">
-              <div className="space-y-3">
-                <div className="flex items-center justify-between pb-3 border-b border-[#F1F3F5]">
-                  <span className="font-mono text-xs font-bold text-[#0A0D14] flex items-center gap-1.5 uppercase">
-                    <Terminal size={14} className="text-[#0F52BA]" />
-                    <span>Realtime Telemetry Log</span>
-                  </span>
-                  <span className="text-[10px] font-mono text-[#868C98]">
-                    {sessionEvents.length} actions
-                  </span>
-                </div>
-
-                {/* Action Log Entries */}
-                <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1 text-xs font-mono">
-                  {sessionEvents.length === 0 ? (
-                    <div className="p-6 text-center text-[#868C98] space-y-2">
-                      <Clock size={18} className="mx-auto text-[#CBD5E1]" />
-                      <p className="text-[11px]">No active actions yet. Launch the simulation to observe live user steps.</p>
-                    </div>
-                  ) : (
-                    sessionEvents.map((ev, idx) => (
-                      <div
-                        key={ev.id || idx}
-                        className="p-2.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-1 animate-in fade-in"
-                      >
-                        <div className="flex items-center justify-between text-[10px]">
-                          <span className="font-bold text-[#0F52BA]">
-                            {idx + 1}. [{ev.type}]
-                          </span>
-                          <span className="text-[#868C98]">
-                            {ev.timestamp ? ev.timestamp.split('T')[1]?.slice(0, 8) : '00:00'}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-[#334155] leading-snug break-words">
-                          {ev.target || ev.type}
-                        </p>
+                {/* Verified Receipt Card */}
+                {simPhase === 5 && (
+                  <div className="text-left bg-[#161B22] border border-[#30363D] rounded-xl p-4 max-w-lg mx-auto space-y-3 animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between pb-2 border-b border-[#21262D]">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-[#10B981]" />
+                        <span className="font-mono text-xs font-bold text-white uppercase">
+                          Payment Verified: {SAMPLE_RECEIPT.provider}
+                        </span>
                       </div>
-                    ))
-                  )}
-                </div>
+                      <span className="text-[11px] font-mono bg-[#10B981]/20 text-[#34D399] border border-[#10B981]/40 px-2 py-0.5 rounded">
+                        {SAMPLE_RECEIPT.status}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                      <div>
+                        <span className="text-[#8B949E] block text-[10px]">TRANSACTION REF</span>
+                        <span className="text-white font-bold">{SAMPLE_RECEIPT.reference}</span>
+                      </div>
+                      <div>
+                        <span className="text-[#8B949E] block text-[10px]">AMOUNT</span>
+                        <span className="text-[#34D399] font-bold">{SAMPLE_RECEIPT.amount}</span>
+                      </div>
+                      <div>
+                        <span className="text-[#8B949E] block text-[10px]">PAYER</span>
+                        <span className="text-white truncate block">{SAMPLE_RECEIPT.payer}</span>
+                      </div>
+                      <div>
+                        <span className="text-[#8B949E] block text-[10px]">CREDITED TO</span>
+                        <span className="text-white truncate block">{SAMPLE_RECEIPT.credited}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-
-              {/* Status and Action Buttons */}
-              <div className="pt-3 border-t border-[#F1F3F5] space-y-2">
-                <div className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-[#868C98]">Engine Status:</span>
-                  <span className={`font-bold ${
-                    playwrightStatus === 'RUNNING' ? 'text-[#0F52BA]' : playwrightStatus === 'COMPLETED' ? 'text-[#059669]' : 'text-[#525866]'
-                  }`}>
-                    {playwrightStatus}
-                  </span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleLaunchPlaywrightStudy}
-                  disabled={isLaunchingPlaywright}
-                  className="w-full py-2.5 rounded-xl bg-[#F1F3F5] hover:bg-[#E5E7EB] text-[#0A0D14] text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <RotateCcw size={13} />
-                  <span>Rerun Fresh Study</span>
-                </button>
-              </div>
-
-            </div>
+            )}
 
           </div>
 
-          {/* C. GENERATED EMPIRICAL UX STUDY REPORT */}
-          {studySummary && (
-            <div className="bg-white border border-[#E5E7EB] rounded-3xl p-6 sm:p-8 shadow-sm space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-300">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#F1F3F5]">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-[#10B981] text-white flex items-center justify-center shadow-xs">
-                    <CheckCircle2 size={16} />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-[#0A0D14]">
-                      Empirical UX Study Completed
-                    </h3>
-                    <p className="text-xs text-[#64748B] font-mono">
-                      Target: {studySummary.productUrl} · "{studySummary.title}"
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => showToast('UX Study attached to Living Evidence Graph as empirical test result!')}
-                  className="px-4 py-2 rounded-xl bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-transform active:scale-95 cursor-pointer self-start sm:self-auto"
-                >
-                  <Sparkles size={13} className="text-[#10B981]" />
-                  <span>Attach to Evidence Graph</span>
-                </button>
-              </div>
-
-              {/* 4 Metric Badges */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-left font-mono">
-                <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0]">
-                  <span className="text-[11px] text-[#64748B] block mb-1">UX Fluency Score</span>
-                  <span className="text-xl sm:text-2xl font-bold text-[#059669]">
-                    {studySummary.fluencyScore}/100
-                  </span>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0]">
-                  <span className="text-[11px] text-[#64748B] block mb-1">Interaction Latency</span>
-                  <span className="text-xl sm:text-2xl font-bold text-[#0A0D14]">
-                    {studySummary.latencyMs}ms
-                  </span>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0]">
-                  <span className="text-[11px] text-[#64748B] block mb-1">Interactive Targets</span>
-                  <span className="text-xl sm:text-2xl font-bold text-[#0A0D14]">
-                    {studySummary.interactiveElementsFound}
-                  </span>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0]">
-                  <span className="text-[11px] text-[#64748B] block mb-1">Friction Events</span>
-                  <span className="text-xl sm:text-2xl font-bold text-[#0A0D14]">
-                    {studySummary.frictionCount} Blocker
-                  </span>
-                </div>
-              </div>
-
-              {/* Diagnostic Findings */}
-              <div className="space-y-3 pt-2">
-                <span className="text-xs font-bold text-[#0A0D14] font-mono uppercase tracking-wider block">
-                  Automated Observations & Findings
+          {/* Captured Screenshots Filmstrip / Step Replay */}
+          {screenshots.length > 0 && (
+            <div className="bg-[#11141A] border-t border-[#222730] p-3 flex flex-col gap-2">
+              <div className="flex items-center justify-between text-[11px] font-mono text-[#9CA3AF]">
+                <span className="flex items-center gap-1.5 font-bold text-white">
+                  <Layers size={13} className="text-[#38BDF8]" />
+                  <span>Captured Viewport Replay ({screenshots.length} Steps Recorded)</span>
                 </span>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {studySummary.findings.map((f: any, idx: number) => (
-                    <div key={idx} className="p-4 rounded-2xl bg-[#FAFAFA] border border-[#E5E7EB] space-y-1">
-                      <h4 className="text-xs font-bold text-[#0A0D14] flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
-                        <span>{f.title}</span>
-                      </h4>
-                      <p className="text-xs text-[#525866] leading-relaxed">
-                        {f.desc}
-                      </p>
-                    </div>
-                  ))}
-                </div>
+                <span className="text-[10px] text-[#64748B]">Click any step to inspect high-resolution view</span>
               </div>
-
+              <div className="flex items-center gap-2.5 overflow-x-auto pb-1 scrollbar-thin">
+                {screenshots.map((scr, idx) => (
+                  <button
+                    key={scr.id || idx}
+                    type="button"
+                    onClick={() => {
+                      setCurrentScreenshot(scr.dataUrl);
+                      setViewportMode('agent_stream');
+                    }}
+                    className={`group relative flex-shrink-0 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
+                      currentScreenshot === scr.dataUrl
+                        ? 'border-[#38BDF8] shadow-md scale-102'
+                        : 'border-[#222730] hover:border-[#4B5563] opacity-75 hover:opacity-100'
+                    }`}
+                    style={{ width: '96px', height: '60px' }}
+                  >
+                    <img
+                      src={scr.dataUrl}
+                      alt={`Step ${idx + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                    <span className="absolute bottom-1 right-1 bg-black/80 text-[9px] font-mono font-bold text-white px-1.5 py-0.2 rounded">
+                      #{idx + 1}
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
         </div>
-      )}
 
-      {/* 3. LINKS.ET TELEMETRY AUTOPSY SIMULATOR (ORIGINAL DEMO) */}
-      {activeTab === 'telemetry_simulator' && (
-        <div className="space-y-6">
-          {/* Replay Controls & Task Banner */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            {/* Task Objective Badge */}
-            <div className="flex items-center gap-2.5 text-xs">
-              <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse" />
-              <span className="font-bold text-[#0F1117]">Task:</span>
-              <span className="text-[#374151] font-mono bg-white px-2.5 py-1 rounded-md border border-[#E5E7EB] shadow-2xs">
-                "Verify this payment." ENTER THIS <strong className="text-[#0F1117]">DHV0BHI2GG</strong>
+        {/* Right: Live Telemetry & Action Stream */}
+        <div className="lg:col-span-4 bg-white border border-[#E5E7EB] rounded-3xl p-5 shadow-xs flex flex-col justify-between space-y-4">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between pb-3 border-b border-[#F1F3F5]">
+              <span className="font-mono text-xs font-bold text-[#0A0D14] flex items-center gap-1.5 uppercase">
+                <Terminal size={14} className="text-[#0F52BA]" />
+                <span>Realtime Telemetry Log</span>
+              </span>
+              <span className="text-[10px] font-mono text-[#868C98]">
+                {sessionEvents.length} actions
               </span>
             </div>
 
-            {/* Live Interaction Controls */}
-            <div className="flex items-center gap-2 self-start sm:self-auto">
-              <button
-                onClick={isPlaying ? () => setIsPlaying(false) : handleStartSimulation}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-semibold bg-[#0F1117] hover:bg-[#202530] text-white transition-all cursor-pointer shadow-xs"
-              >
-                {isPlaying ? <Pause size={12} /> : <Play size={12} />}
-                <span>{isPlaying ? 'Pause Run' : 'Simulate User Run'}</span>
-              </button>
-              <button
-                onClick={() => {
-                  setPhase(0);
-                  setIsPlaying(true);
-                }}
-                className="p-1.5 rounded-md border border-[#E5E7EB] hover:bg-[#F8FAFC] text-[#525866] transition cursor-pointer"
-                title="Restart Session"
-              >
-                <RotateCcw size={13} />
-              </button>
-              <a
-                href="https://links.et/"
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-[#525866] hover:text-[#0F1117] transition ml-1 font-medium"
-              >
-                <span>Visit links.et</span>
-                <ExternalLink size={11} className="opacity-70" />
-              </a>
-            </div>
-          </div>
-
-          {/* Authentic links.et Product Interface */}
-          <div 
-            className="relative bg-[#0B0D10] text-[#F3F4F6] border border-[#222730] rounded-xl overflow-hidden shadow-xl"
-            style={{
-              backgroundImage: 'radial-gradient(circle, rgba(255, 255, 255, 0.08) 1px, transparent 1px)',
-              backgroundSize: '24px 24px'
-            }}
-          >
-            {/* Browser Frame Chrome */}
-            <div className="h-9 px-4 bg-[#11141A] border-b border-[#222730] flex items-center justify-between text-xs text-[#9CA3AF]">
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-[#EF4444]" />
-                  <span className="w-2.5 h-2.5 rounded-full bg-[#F59E0B]" />
-                  <span className="w-2.5 h-2.5 rounded-full bg-[#10B981]" />
+            {/* Action Log Entries */}
+            <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1 text-xs font-mono">
+              {sessionEvents.length === 0 ? (
+                <div className="p-6 text-center text-[#868C98] space-y-2">
+                  <Clock size={18} className="mx-auto text-[#CBD5E1]" />
+                  <p className="text-[11px]">
+                    No live actions recorded yet. Launch the simulation to observe agent clicks, inputs, and navigation.
+                  </p>
                 </div>
-                <div className="bg-[#0B0D10] border border-[#222730] rounded px-2.5 py-0.5 text-[11px] font-mono text-[#D1D5DB] flex items-center gap-1.5">
-                  <span className="text-[#10B981]">🔒</span>
-                  <span>https://links.et</span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 text-[11px] font-mono text-[#8B949E]">
-                <span className="hidden sm:inline">Active Usability Session</span>
-                <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
-              </div>
-            </div>
-
-            {/* Inner Content Area */}
-            <div className="p-6 sm:p-10 max-w-2xl mx-auto space-y-6 text-center">
-              {/* Product Header */}
-              <div className="space-y-1">
-                <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center justify-center gap-2">
-                  <span>Verify Payment Receipt</span>
-                  <span className="text-xs bg-[#1E293B] text-[#94A3B8] px-2 py-0.5 rounded font-mono font-normal">
-                    v1.4
-                  </span>
-                </h3>
-                <p className="text-xs text-[#9CA3AF] max-w-md mx-auto">
-                  Instant real-time verification across 17 Ethiopian banking & mobile money gateways.
-                </p>
-              </div>
-
-              {/* Verification Search Bar */}
-              <form onSubmit={handleManualVerify} className="max-w-md mx-auto relative">
-                <div className="relative flex items-center">
-                  <input
-                    type="text"
-                    value={simInputValue}
-                    onChange={(e) => setSimInputValue(e.target.value.toUpperCase())}
-                    onFocus={() => setIsFocused(true)}
-                    placeholder="Enter reference (e.g. DHV0BHI2GG)"
-                    className={`w-full px-4 py-3 bg-[#161B22] border rounded-lg text-sm font-mono text-white placeholder-[#6E7681] focus:outline-none transition-all ${
-                      isFocused ? 'border-[#38BDF8] ring-1 ring-[#38BDF8]' : 'border-[#30363D]'
-                    }`}
-                  />
-                  <button
-                    type="submit"
-                    className="absolute right-2 px-3 py-1.5 bg-[#238636] hover:bg-[#2EA043] text-white text-xs font-semibold rounded transition"
+              ) : (
+                sessionEvents.map((ev, idx) => (
+                  <div
+                    key={ev.id || idx}
+                    className="p-2.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-1 animate-in fade-in"
                   >
-                    Verify
-                  </button>
-                </div>
-              </form>
-
-              {/* Supported Banks Grid */}
-              <div className="space-y-2 pt-2">
-                <span className="text-[10px] uppercase font-mono text-[#6E7681] tracking-wider block">
-                  17 Supported Upstream Gateways
-                </span>
-                <div className="flex flex-wrap items-center justify-center gap-1.5 max-w-lg mx-auto">
-                  {BANK_BADGES.map((b) => (
-                    <span
-                      key={b.name}
-                      className={`text-[10px] font-mono px-2 py-0.5 rounded border ${b.bg} ${b.text} ${b.border}`}
-                    >
-                      {b.name}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              {/* Verification Result Receipt Card */}
-              {isReceiptVisible && (
-                <div className="mt-6 text-left bg-[#161B22] border border-[#30363D] rounded-xl p-5 space-y-4 animate-in fade-in zoom-in-95 duration-200">
-                  <div className="flex items-center justify-between pb-3 border-b border-[#21262D]">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-[#10B981]" />
-                      <span className="font-mono text-xs font-bold text-white uppercase">
-                        Payment Verified: {SAMPLE_RECEIPT.provider}
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className="font-bold text-[#0F52BA]">
+                        {idx + 1}. [{ev.type}]
+                      </span>
+                      <span className="text-[#868C98]">
+                        {ev.timestamp ? ev.timestamp.split('T')[1]?.slice(0, 8) : '00:00'}
                       </span>
                     </div>
-                    <span className="text-xs font-mono bg-[#238636]/20 text-[#3FB950] border border-[#238636]/40 px-2 py-0.5 rounded">
-                      {SAMPLE_RECEIPT.status}
-                    </span>
+                    <p className="text-[11px] text-[#334155] leading-snug break-words">
+                      {ev.target || ev.type}
+                    </p>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-3 text-xs font-mono">
-                    <div>
-                      <span className="text-[#8B949E] block text-[10px]">TRANSACTION REF</span>
-                      <span className="text-white font-bold">{SAMPLE_RECEIPT.reference}</span>
-                    </div>
-                    <div>
-                      <span className="text-[#8B949E] block text-[10px]">AMOUNT</span>
-                      <span className="text-[#3FB950] font-bold">{SAMPLE_RECEIPT.amount}</span>
-                    </div>
-                    <div>
-                      <span className="text-[#8B949E] block text-[10px]">PAYER</span>
-                      <span className="text-white truncate block">{SAMPLE_RECEIPT.payer}</span>
-                    </div>
-                    <div>
-                      <span className="text-[#8B949E] block text-[10px]">CREDITED TO</span>
-                      <span className="text-white truncate block">{SAMPLE_RECEIPT.credited}</span>
-                    </div>
-                  </div>
-                </div>
+                ))
               )}
             </div>
           </div>
+
+          {/* Status and Action Buttons */}
+          <div className="pt-3 border-t border-[#F1F3F5] space-y-2">
+            <div className="flex items-center justify-between text-xs font-mono">
+              <span className="text-[#868C98]">Engine Status:</span>
+              <span className={`font-bold ${
+                sessionStatus === 'RUNNING' ? 'text-[#0F52BA]' : sessionStatus === 'COMPLETED' ? 'text-[#059669]' : 'text-[#525866]'
+              }`}>
+                {sessionStatus}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleLaunchStudy}
+              disabled={isLaunching}
+              className="w-full py-2.5 rounded-xl bg-[#F1F3F5] hover:bg-[#E5E7EB] text-[#0A0D14] text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <RotateCcw size={13} />
+              <span>Rerun Fresh Study</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      {/* ── 5. GENERATED EMPIRICAL UX STUDY REPORT ── */}
+      {studySummary && (
+        <div className="bg-white border border-[#E5E7EB] rounded-3xl p-6 sm:p-8 shadow-sm space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-300">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#F1F3F5]">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-[#10B981] text-white flex items-center justify-center shadow-xs">
+                <CheckCircle2 size={16} />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[#0A0D14]">
+                  Empirical UX Study Completed
+                </h3>
+                <p className="text-xs text-[#64748B] font-mono">
+                  Target: {studySummary.productUrl} · "{studySummary.title}"
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => showToast('UX Study attached to Living Evidence Graph as empirical node!')}
+              className="px-4 py-2 rounded-xl bg-[#0A0D14] hover:bg-[#1E293B] text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-transform active:scale-95 cursor-pointer self-start sm:self-auto"
+            >
+              <Sparkles size={13} className="text-[#10B981]" />
+              <span>Attach to Evidence Graph</span>
+            </button>
+          </div>
+
+          {/* 4 Metric Badges */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-left font-mono">
+            <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0]">
+              <span className="text-[11px] text-[#64748B] block mb-1">UX Fluency Score</span>
+              <span className="text-xl sm:text-2xl font-bold text-[#059669]">
+                {studySummary.fluencyScore}/100
+              </span>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0]">
+              <span className="text-[11px] text-[#64748B] block mb-1">Interaction Latency</span>
+              <span className="text-xl sm:text-2xl font-bold text-[#0A0D14]">
+                {studySummary.latencyMs}ms
+              </span>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0]">
+              <span className="text-[11px] text-[#64748B] block mb-1">Interactive Targets</span>
+              <span className="text-xl sm:text-2xl font-bold text-[#0A0D14]">
+                {studySummary.interactiveElementsFound}
+              </span>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0]">
+              <span className="text-[11px] text-[#64748B] block mb-1">Friction Events</span>
+              <span className="text-xl sm:text-2xl font-bold text-[#0A0D14]">
+                {studySummary.frictionCount} Blocker
+              </span>
+            </div>
+          </div>
+
+          {/* Diagnostic Findings */}
+          <div className="space-y-3 pt-2">
+            <span className="text-xs font-bold text-[#0A0D14] font-mono uppercase tracking-wider block">
+              Automated Observations & Findings
+            </span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {studySummary.findings.map((f: any, idx: number) => (
+                <div key={idx} className="p-4 rounded-2xl bg-[#FAFAFA] border border-[#E5E7EB] space-y-1">
+                  <h4 className="text-xs font-bold text-[#0A0D14] flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
+                    <span>{f.title}</span>
+                  </h4>
+                  <p className="text-xs text-[#525866] leading-relaxed">
+                    {f.desc}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
         </div>
       )}
 

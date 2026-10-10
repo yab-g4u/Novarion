@@ -135,11 +135,11 @@ export const ShapeWavesFooter: React.FC<ShapeWavesFooterProps> = ({
 
         {/* 3. Horizontal Row of Underlined Links */}
         <nav 
-          className="flex flex-wrap items-center justify-center gap-6 sm:gap-10 md:gap-14 text-sm sm:text-[15px] font-medium text-[#111111] mb-16 sm:mb-24"
+          className="flex flex-wrap items-center justify-center gap-8 sm:gap-12 md:gap-16 text-sm sm:text-[15px] font-medium text-[#111111] mb-16 sm:mb-24"
           aria-label="Footer Links"
         >
           <a
-            href="https://youtube.com"
+            href="https://youtu.be/YS-Xw8pcXRQ?si=3nBfSsVeoPCuxRxB"
             target="_blank"
             rel="noopener noreferrer"
             className="underline underline-offset-4 decoration-[#111111]/35 hover:decoration-[#111111] hover:text-black transition-colors"
@@ -147,7 +147,7 @@ export const ShapeWavesFooter: React.FC<ShapeWavesFooterProps> = ({
             YouTube
           </a>
           <a
-            href="https://github.com"
+            href="https://github.com/yab-g4u/novarion"
             target="_blank"
             rel="noopener noreferrer"
             className="underline underline-offset-4 decoration-[#111111]/35 hover:decoration-[#111111] hover:text-black transition-colors"
@@ -155,15 +155,8 @@ export const ShapeWavesFooter: React.FC<ShapeWavesFooterProps> = ({
             GitHub
           </a>
           <a
-            href="https://x.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline underline-offset-4 decoration-[#111111]/35 hover:decoration-[#111111] hover:text-black transition-colors"
-          >
-            X (Twitter)
-          </a>
-          <a
-            href="mailto:hello@probe.dev"
+            href="mailto:g4uforlife@gmail.com"
+            title="g4uforlife@gmail.com"
             className="underline underline-offset-4 decoration-[#111111]/35 hover:decoration-[#111111] hover:text-black transition-colors"
           >
             Email
