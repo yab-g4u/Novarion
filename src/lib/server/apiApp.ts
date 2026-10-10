@@ -779,8 +779,9 @@ export function createApiApp() {
 
     try {
       const targetUrl = `https://voxide.app/api/sdk/${endpoint}`;
+      const clientOrigin = req.headers.origin || (req.headers.host ? `${req.secure ? 'https' : 'http'}://${req.headers.host}` : 'https://voxide.app');
       const headers: Record<string, string> = {
-        Origin: 'http://localhost:3000',
+        Origin: String(clientOrigin),
       };
       if (req.headers.authorization) {
         headers.Authorization = String(req.headers.authorization);

@@ -14,8 +14,8 @@ node_modules/
 !.env.example
 
 # Build outputs
-dist/
-build/
+/dist/
+/build/
 .vercel/
 
 # Logs & OS files

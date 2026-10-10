@@ -238,11 +238,10 @@ export class BrowserService {
 
       if (
         (msg.includes("Executable doesn't exist") || msg.includes('playwright install')) &&
-        process.env.NODE_ENV !== 'production' &&
-        freeMemMb > 600
+        freeMemMb > 400
       ) {
         console.log(
-          `[Probe Testing] Playwright Chromium binary missing in development (${freeMemMb}MB free); installing headless shell...`
+          `[Probe Testing] Playwright Chromium binary missing (${freeMemMb}MB free); installing headless shell...`
         );
         await execFileAsync('npx', ['playwright', 'install', '--only-shell', 'chromium'], {
           timeout: 120000

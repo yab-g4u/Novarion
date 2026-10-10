@@ -1,5 +1,4 @@
 import { Assumption, AssumptionCategory } from './types';
-import { GoogleGenAI, Type } from '@google/genai';
 import { ExtractedDocumentContext } from '../../types/document';
 
 interface AssumptionCacheEntry {
@@ -463,10 +462,12 @@ export async function extractAssumptions(
     return { assumptions: cached.assumptions, fromCache: true, usedGemini: false };
   }
 
-  // Check if Gemini API key is available
-  const apiKey = process.env.GEMINI_API_KEY;
+  // Check if Gemini API key is available (server-side only)
+  const isServer = typeof window === 'undefined';
+  const apiKey = isServer && typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : undefined;
   if (apiKey) {
     try {
+      const { GoogleGenAI, Type } = await import('@google/genai');
       const ai = new GoogleGenAI({
         apiKey,
         httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }

@@ -56,12 +56,10 @@ const VOXIDE_PUBLIC_KEY = hasConfiguredVoxideKey
   : FALLBACK_VOXIDE_PUBLIC_KEY;
 
 const isBrowser = typeof window !== "undefined";
-const isEphemeralPreviewOrigin =
-  isBrowser && (window.location.hostname.endsWith(".run.app") || window.location.port === "3000");
 
 export const ai = new VoxideClient({
   publicKey: VOXIDE_PUBLIC_KEY,
-  ...(isEphemeralPreviewOrigin ? { baseUrl: window.location.origin } : {}),
+  ...(isBrowser ? { baseUrl: window.location.origin } : {}),
 });
 
 // Keep a reference to React Router's navigate function so capabilities can navigate cleanly without page reload

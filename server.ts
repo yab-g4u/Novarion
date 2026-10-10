@@ -2,7 +2,6 @@ import path from 'path';
 import fs from 'fs';
 import { Request, Response } from 'express';
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import { createApiApp } from './src/lib/server/apiApp';
 import { setupVoiceBridge } from './src/server/voiceBridge';
 
@@ -27,12 +26,13 @@ process.on('unhandledRejection', (reason: any) => {
 
 async function main() {
   const app = createApiApp();
-  const PORT = 3000;
-  const ALT_PORT = process.env.PORT ? Number(process.env.PORT) : null;
-  const isProduction = process.env.NODE_ENV === 'production';
+  const isProduction =
+    process.env.NODE_ENV === 'production' ||
+    (typeof __filename !== 'undefined' && __filename.includes('dist'));
 
   // Mount Vite middleware in dev or static files in production
   if (!isProduction) {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true, host: '0.0.0.0', hmr: false },
       appType: 'custom'
@@ -59,7 +59,13 @@ async function main() {
       }
     });
   } else {
-    const distPath = path.resolve('dist');
+    const candidatePaths = [
+      path.resolve(process.cwd(), 'dist'),
+      path.resolve(__dirname),
+      path.resolve(__dirname, '..', 'dist'),
+    ];
+    const distPath = candidatePaths.find(p => fs.existsSync(path.join(p, 'index.html'))) || path.resolve('dist');
+    console.log(`[Probe Server] Serving static files from: ${distPath}`);
     app.use(express.static(distPath));
     app.use((req: Request, res: Response, next) => {
       if ((req.method !== 'GET' && req.method !== 'HEAD') || req.originalUrl.startsWith('/api')) {
@@ -69,26 +75,26 @@ async function main() {
     });
   }
 
-  // Primary listen on port 3000 (required by AI Studio dev environment)
+  const PORT = Number(process.env.PORT) || 3000;
   const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Probe Server] Primary server listening on http://0.0.0.0:${PORT} (env: ${process.env.NODE_ENV || 'development'})`);
+    console.log(`[Probe Server] Server listening on http://0.0.0.0:${PORT} (mode: ${isProduction ? 'production' : 'development'})`);
   });
   server.on('error', (err: any) => {
-    console.error(`[Probe Server] Primary server error on port ${PORT}:`, err.message || err);
+    console.error(`[Probe Server] Server error on port ${PORT}:`, err.message || err);
   });
 
   // Attach Gemini Live WebSocket Bridge
   setupVoiceBridge(server);
 
-  // Secondary listen if external PORT (e.g. 8080) is specified
-  if (ALT_PORT && ALT_PORT !== PORT) {
-    const altServer = app.listen(ALT_PORT, '0.0.0.0', () => {
-      console.log(`[Probe Server] Alternate port listening on http://0.0.0.0:${ALT_PORT}`);
+  // In development, if process.env.PORT specified another port, also keep 3000 open
+  if (!isProduction && PORT !== 3000) {
+    const devServer = app.listen(3000, '0.0.0.0', () => {
+      console.log(`[Probe Server] Dev port 3000 listening on http://0.0.0.0:3000`);
     });
-    altServer.on('error', (e: any) => {
-      console.warn(`[Probe Server] Alternate port ${ALT_PORT} not bound:`, e.message || e);
+    devServer.on('error', (e: any) => {
+      console.warn(`[Probe Server] Dev port 3000 not bound:`, e.message || e);
     });
-    setupVoiceBridge(altServer);
+    setupVoiceBridge(devServer);
   }
 }
 
@@ -96,3 +102,4 @@ main().catch((err) => {
   console.error('[Server fatal initialization error]:', err);
   process.exit(1);
 });
+

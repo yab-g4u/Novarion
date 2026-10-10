@@ -20,7 +20,20 @@ export const sanitizeSupabaseProjectUrl = (rawUrl: string): string => {
   }
 };
 
+let runtimeConfigOverride: { supabaseUrl: string; supabasePublishableKey: string } | null = null;
+
 export const resolveSupabaseConfig = () => {
+  if (runtimeConfigOverride) {
+    return {
+      supabaseUrl: runtimeConfigOverride.supabaseUrl,
+      supabasePublishableKey: runtimeConfigOverride.supabasePublishableKey,
+      supabaseAnonKey: runtimeConfigOverride.supabasePublishableKey,
+      rawEnvUrl: runtimeConfigOverride.supabaseUrl,
+      wasUrlSanitized: false,
+      isConfigured: true,
+    };
+  }
+
   const metaEnv = typeof import.meta !== 'undefined' ? (import.meta as any).env : undefined;
 
   const rawEnvUrl =
@@ -64,6 +77,35 @@ export const resolveSupabaseConfig = () => {
 };
 
 let supabaseInstance: SupabaseClient | null = null;
+
+// Dynamically hydrate Supabase configuration in browser from server if not baked into client bundle
+if (typeof window !== 'undefined') {
+  fetch('/api/auth/config')
+    .then((r) => r.json())
+    .then((data) => {
+      if (data?.isConfigured && data.supabaseUrl && data.supabaseAnonKey) {
+        runtimeConfigOverride = {
+          supabaseUrl: data.supabaseUrl,
+          supabasePublishableKey: data.supabaseAnonKey,
+        };
+        if (!supabaseInstance || (supabaseInstance as any).supabaseUrl?.includes('placeholder.supabase.co')) {
+          supabaseInstance = createClient(data.supabaseUrl, data.supabaseAnonKey, {
+            auth: {
+              persistSession: true,
+              autoRefreshToken: true,
+              detectSessionInUrl: true,
+            },
+            realtime: {
+              params: {
+                eventsPerSecond: 25,
+              },
+            },
+          });
+        }
+      }
+    })
+    .catch(() => {});
+}
 
 export const getSupabaseClient = (): SupabaseClient => {
   if (!supabaseInstance) {
