@@ -147,16 +147,12 @@ export const EvidenceModal: React.FC<EvidenceModalProps> = ({ source, onClose })
           <div className="flex items-center gap-2">
             {source.url && source.url !== '#' && (
               <a
-                href={
-                  source.sourceType === 'scholarxiv' && !source.url.includes('scholarxiv.com')
-                    ? `https://www.scholarxiv.com/papers/${source.id.replace('scholarxiv-', '')}`
-                    : source.url
-                }
+                href={source.url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#0F52BA] hover:bg-[#0D47A1] text-white font-medium transition cursor-pointer shadow-xs"
               >
-                <span>{source.sourceType === 'scholarxiv' ? 'Read Paper on ScholarXIV' : 'View Source'}</span>
+                <span>{source.sourceType === 'scholarxiv' ? 'Read Empirical Paper' : 'View Source'}</span>
                 <ExternalLink size={13} />
               </a>
             )}

@@ -107,20 +107,21 @@ export class ScholarXIVProvider implements SearchProvider {
 
       const paperIdMatch = rawPaperUrl.match(/abs\/([^/]+)/);
       const paperId = paperIdMatch ? paperIdMatch[1] : `paper-${i}`;
-      // ScholarXIV website paper URL
-      const scholarxivUrl = `https://www.scholarxiv.com/papers/${paperId}`;
+      const directPaperUrl = rawPaperUrl.startsWith('http') 
+        ? rawPaperUrl.replace('http://', 'https://') 
+        : `https://arxiv.org/abs/${paperId}`;
 
       results.push({
         id: `scholarxiv-${paperId}`,
         sourceType: 'scholarxiv',
         title,
         text: abstract.slice(0, 900),
-        url: scholarxivUrl,
+        url: directPaperUrl,
         author: {
           name: authors || 'Academic Researchers'
         },
         publishedAt: publishedAt ? publishedAt.split('T')[0] : undefined,
-        domain: 'scholarxiv.com',
+        domain: 'arxiv.org',
         relevanceScore: 0.85,
         metadata: {
           paperId,

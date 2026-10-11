@@ -329,11 +329,7 @@ export const NodeDetailDrawer: React.FC<NodeDetailDrawerProps> = ({
 
               {node.url && (
                 <a
-                  href={
-                    node.sourceType === 'scholarxiv' && !node.url.includes('scholarxiv.com')
-                      ? `https://www.scholarxiv.com/papers/${node.id.replace('scholarxiv-', '')}`
-                      : node.url
-                  }
+                  href={node.url}
                   target="_blank"
                   rel="noreferrer"
                   className="text-xs font-mono text-[#0F52BA] hover:underline flex items-center gap-1 cursor-pointer font-medium"

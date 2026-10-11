@@ -37,7 +37,7 @@ export class SearchService {
     const originalQuery = params.query.trim();
     const targetSources: SourceType[] = params.sources && params.sources.length > 0
       ? params.sources
-      : ['reddit', 'x', 'linkedin', 'scholarxiv'];
+      : ['reddit', 'x', 'linkedin', 'scholarxiv', 'searxng'];
     const limitPerSource = Math.min(Math.max(params.limit || 10, 1), 30);
 
     const startTime = Date.now();
