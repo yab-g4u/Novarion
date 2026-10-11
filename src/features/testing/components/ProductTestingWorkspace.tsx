@@ -40,7 +40,10 @@ import {
   AlertCircle,
   RefreshCw,
   Terminal,
-  Database
+  Database,
+  Copy,
+  Monitor,
+  Smartphone
 } from 'lucide-react';
 import { 
   BrowserSessionData, 
@@ -97,10 +100,11 @@ const TEMPLATES = [
 ];
 
 const PRESET_QUICK_TARGETS = [
-  { name: 'Example Domain', url: 'https://example.com', task: 'Explore the landing page, click More information link, and verify navigation timing.' },
-  { name: 'Hacker News', url: 'https://news.ycombinator.com', task: 'Browse the front page, inspect the top story discussions, and test page load speed.' },
+  { name: 'ScholarXIV', url: 'https://www.scholarxiv.com/', task: 'Explore the landing page, evaluate documentation, and inspect navigation fluency.' },
+  { name: 'links.et', url: 'https://links.et/', task: 'Check whether DJ54GQAQ6K on links.et is legitimate or fake' },
   { name: 'Linear', url: 'https://linear.app', task: 'Explore product features, evaluate pricing clarity, and inspect primary call-to-action.' },
-  { name: 'links.et', url: 'https://links.et/', task: 'Check whether DJ54GQAQ6K on links.et is legitimate or fake' }
+  { name: 'Hacker News', url: 'https://news.ycombinator.com', task: 'Browse the front page, inspect the top story discussions, and test page load speed.' },
+  { name: 'Example Domain', url: 'https://example.com', task: 'Explore the landing page, click More information link, and verify navigation timing.' }
 ];
 
 const isTerminalStatus = (status?: SessionStatus) =>
@@ -115,33 +119,6 @@ export const ProductTestingWorkspace: React.FC<ProductTestingWorkspaceProps> = (
   onBackToInvestigations,
   onSyncToGraph
 }) => {
-  // Input fields
-  const [productUrl, setProductUrl] = useState<string>(() => {
-    return localStorage.getItem('probe_test_url') || 'https://example.com';
-  });
-  const [testQuery, setTestQuery] = useState<string>(() => {
-    return (
-      localStorage.getItem('probe_test_task') ||
-      'Explore the landing page, click the More information link, and evaluate overall UX friction.'
-    );
-  });
-  const [selectedFocus, setSelectedFocus] = useState<TestFocusType>('usability');
-  const [isTestingPlanExpanded, setIsTestingPlanExpanded] = useState<boolean>(true);
-  const [isHowItWorksOpen, setIsHowItWorksOpen] = useState<boolean>(false);
-
-  // Live session execution state
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [isTestingInProgress, setIsTestingInProgress] = useState<boolean>(false);
-  const [sessionData, setSessionData] = useState<BrowserSessionData | null>(null);
-  const [activeStepDescription, setActiveStepDescription] = useState<string>('');
-  const [activePlanPhase, setActivePlanPhase] = useState<number>(1);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  // Report view state
-  const [reportTab, setReportTab] = useState<'verdict' | 'journey' | 'friction' | 'evidence' | 'fixes'>('verdict');
-  const [inspectedScreenshot, setInspectedScreenshot] = useState<ScreenshotRecord | null>(null);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-
   // Recent tests (strictly real user tests stored in localStorage)
   const [recentTests, setRecentTests] = useState<StoredTestSummary[]>(() => {
     try {
@@ -155,6 +132,44 @@ export const ProductTestingWorkspace: React.FC<ProductTestingWorkspaceProps> = (
     }
     return [];
   });
+
+  // Restore previous session if present in recent tests
+  const initialSession = recentTests.length > 0 && recentTests[0]?.sessionData ? recentTests[0].sessionData : null;
+
+  // Input fields
+  const [productUrl, setProductUrl] = useState<string>(() => {
+    return initialSession?.productUrl || localStorage.getItem('probe_test_url') || 'https://www.scholarxiv.com/';
+  });
+  const [testQuery, setTestQuery] = useState<string>(() => {
+    return (
+      initialSession?.task ||
+      localStorage.getItem('probe_test_task') ||
+      'Explore the landing page, evaluate layout hierarchy, and detect interaction friction.'
+    );
+  });
+  const [selectedFocus, setSelectedFocus] = useState<TestFocusType>('usability');
+  const [isTestingPlanExpanded, setIsTestingPlanExpanded] = useState<boolean>(true);
+  const [isHowItWorksOpen, setIsHowItWorksOpen] = useState<boolean>(false);
+
+  // Live session execution state
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(initialSession?.sessionId || null);
+  const [isTestingInProgress, setIsTestingInProgress] = useState<boolean>(false);
+  const [sessionData, setSessionData] = useState<BrowserSessionData | null>(initialSession);
+  const [activeStepDescription, setActiveStepDescription] = useState<string>('');
+  const [activePlanPhase, setActivePlanPhase] = useState<number>(initialSession ? 4 : 1);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Viewport display controls (ensures the website is ALWAYS displayed)
+  const [viewportMode, setViewportMode] = useState<'live_site' | 'screenshot'>('live_site');
+  const [deviceViewport, setDeviceViewport] = useState<'desktop' | 'mobile'>('desktop');
+  const [iframeKey, setIframeKey] = useState<number>(1);
+  const [isSetupPreviewOpen, setIsSetupPreviewOpen] = useState<boolean>(true);
+  const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
+
+  // Report view state
+  const [reportTab, setReportTab] = useState<'verdict' | 'journey' | 'friction' | 'evidence' | 'fixes'>('verdict');
+  const [inspectedScreenshot, setInspectedScreenshot] = useState<ScreenshotRecord | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const sseRef = useRef<EventSource | null>(null);
@@ -268,8 +283,10 @@ export const ProductTestingWorkspace: React.FC<ProductTestingWorkspaceProps> = (
   const handleSelectQuickTarget = (target: typeof PRESET_QUICK_TARGETS[0]) => {
     setProductUrl(target.url);
     setTestQuery(target.task);
+    setIframeKey((k) => k + 1);
     localStorage.setItem('probe_test_url', target.url);
     localStorage.setItem('probe_test_task', target.task);
+    showToast(`Loaded ${target.name} target into viewport`);
   };
 
   // Inspect previous test from recent tests
@@ -319,6 +336,8 @@ export const ProductTestingWorkspace: React.FC<ProductTestingWorkspaceProps> = (
     setIsTestingInProgress(true);
     setErrorMessage(null);
     setSessionData(null);
+    setViewportMode('live_site');
+    setIframeKey((k) => k + 1);
     setActiveStepDescription(`Launching isolated Chromium session for ${finalUrl}...`);
     setActivePlanPhase(1);
 
@@ -668,19 +687,57 @@ export const ProductTestingWorkspace: React.FC<ProductTestingWorkspaceProps> = (
             )}
           </h1>
           {(isFinished || isTestingInProgress) && (
-            <div className="flex items-center gap-2 pt-1 flex-wrap">
-              <span className="text-xs font-mono font-medium text-[#64748B]">Specified Link:</span>
-              <a
-                href={productUrl.startsWith('http') ? productUrl : `https://${productUrl}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white border border-[#BFDBFE] text-xs font-mono font-semibold text-[#0091FF] hover:bg-[#EFF6FF] shadow-2xs transition-colors group"
-                title="Open user-specified link in new tab"
-              >
-                <Link2 size={13} className="text-[#0091FF] shrink-0" />
-                <span className="underline underline-offset-2 break-all">{productUrl}</span>
-                <ExternalLink size={12} className="text-[#60A5FA] group-hover:text-[#0091FF] shrink-0" />
-              </a>
+            <div className="p-3 sm:p-3.5 rounded-2xl bg-gradient-to-r from-[#EFF6FF] to-[#F0FDF4] border border-[#BFDBFE] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-2xs">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-[#0091FF] text-white flex items-center justify-center shrink-0 shadow-2xs">
+                  <Globe size={16} />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono uppercase font-bold text-[#1E40AF] tracking-wider">
+                      Target Website Link:
+                    </span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-white/80 border border-[#BFDBFE] text-[#1E40AF]">
+                      Live Viewport Active
+                    </span>
+                  </div>
+                  <a
+                    href={normalizeUrl(productUrl)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm font-bold font-mono text-[#0091FF] hover:underline break-all inline-flex items-center gap-1.5 mt-0.5"
+                    title="Open target link in new tab"
+                  >
+                    <span>{normalizeUrl(productUrl)}</span>
+                    <ExternalLink size={13} className="shrink-0" />
+                  </a>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(normalizeUrl(productUrl));
+                    setCopiedUrl(true);
+                    setTimeout(() => setCopiedUrl(false), 2000);
+                    showToast('Target website link copied to clipboard!');
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-white hover:bg-[#F8FAFC] border border-[#BFDBFE] text-[#1E40AF] font-mono text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
+                  title="Copy URL"
+                >
+                  {copiedUrl ? <Check size={12} className="text-[#059669]" /> : <Copy size={12} />}
+                  <span>{copiedUrl ? 'Copied!' : 'Copy Link'}</span>
+                </button>
+                <a
+                  href={normalizeUrl(productUrl)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 rounded-xl bg-[#0091FF] hover:bg-[#0077ED] text-white font-mono text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
+                >
+                  <span>Visit Site</span>
+                  <ExternalLink size={12} />
+                </a>
+              </div>
             </div>
           )}
           <p className="text-xs sm:text-sm text-[#64748B] leading-relaxed max-w-3xl">
@@ -788,6 +845,48 @@ export const ProductTestingWorkspace: React.FC<ProductTestingWorkspaceProps> = (
                   <span className="px-2.5 py-1 rounded-lg bg-white border border-[#E2E8F0] font-mono text-[11px] text-[#475569]">
                     60s timeout
                   </span>
+                </div>
+              </div>
+
+              {/* Live Target Product Site Preview in setup form */}
+              <div className="border border-[#E2E8F0] rounded-2xl overflow-hidden bg-[#0A0D14] text-xs shadow-xs">
+                <div className="px-3.5 py-2.5 bg-[#141820] border-b border-[#222732] flex flex-wrap items-center justify-between text-xs font-mono text-[#94A3B8] gap-2">
+                  <div className="flex items-center gap-2 truncate">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#10B981]" />
+                    <span className="text-[#E2E8F0] font-bold">Target Live Preview:</span>
+                    <span className="text-[#38BDF8] truncate font-mono">{normalizeUrl(productUrl)}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIframeKey((k) => k + 1);
+                        showToast('Reloading preview frame...');
+                      }}
+                      className="p-1 text-[#9CA3AF] hover:text-white transition cursor-pointer"
+                      title="Reload Preview Frame"
+                    >
+                      <RefreshCw size={12} />
+                    </button>
+                    <a
+                      href={normalizeUrl(productUrl)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#38BDF8] hover:underline flex items-center gap-1 font-mono text-[11px]"
+                    >
+                      <span>Open site</span>
+                      <ExternalLink size={11} />
+                    </a>
+                  </div>
+                </div>
+                <div className="p-2.5 bg-[#0E1217]">
+                  <iframe
+                    key={iframeKey}
+                    src={normalizeUrl(productUrl)}
+                    title={`Preview of ${productUrl}`}
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                    className="w-full h-[260px] rounded-xl border border-[#222732] bg-white shadow-inner"
+                  />
                 </div>
               </div>
             </div>
@@ -925,7 +1024,7 @@ export const ProductTestingWorkspace: React.FC<ProductTestingWorkspaceProps> = (
             {/* Live Browser Window (Real Playwright Captured Viewport) */}
             <div className="rounded-3xl bg-[#0A0D14] border border-[#222732] overflow-hidden shadow-xl text-left">
               {/* Window Bar */}
-              <div className="bg-[#141820] border-b border-[#222732] px-4 py-3 flex items-center justify-between gap-3 text-xs">
+              <div className="bg-[#141820] border-b border-[#222732] px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
                 <div className="flex items-center gap-2">
                   <span className="w-3 h-3 rounded-full bg-[#EF4444]" />
                   <span className="w-3 h-3 rounded-full bg-[#F59E0B]" />
@@ -935,42 +1034,108 @@ export const ProductTestingWorkspace: React.FC<ProductTestingWorkspaceProps> = (
                   </span>
                 </div>
 
-                <div className="flex-1 max-w-xl mx-auto flex items-center bg-[#05070A] border border-[#222732] rounded-xl px-3 py-1 text-xs text-[#94A3B8] font-mono">
-                  <Lock size={12} className="text-[#10B981] mr-2 shrink-0" />
-                  <span className="text-[#CBD5E1] truncate font-mono" title={productUrl}>
+                <div className="flex-1 max-w-xl mx-auto flex items-center bg-[#05070A] border border-[#222732] rounded-xl px-3 py-1.5 text-xs text-[#94A3B8] font-mono gap-2 min-w-[200px]">
+                  <Lock size={12} className="text-[#10B981] shrink-0" />
+                  <a
+                    href={normalizeUrl(productUrl)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[#CBD5E1] hover:text-white truncate font-mono flex-1 hover:underline"
+                    title={productUrl}
+                  >
                     {productUrl}
-                  </span>
-                  <Loader2 size={12} className="animate-spin ml-auto text-[#0091FF] shrink-0" />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setIframeKey((k) => k + 1)}
+                    className="p-1 rounded text-[#9CA3AF] hover:text-white transition"
+                    title="Reload Live Viewport"
+                  >
+                    <RefreshCw size={12} />
+                  </button>
+                  <a
+                    href={normalizeUrl(productUrl)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-1 rounded text-[#9CA3AF] hover:text-[#38BDF8] transition"
+                    title="Open exact link in new tab"
+                  >
+                    <ExternalLink size={12} />
+                  </a>
                 </div>
 
-                <span className="px-2 py-0.5 rounded-full bg-[#EFF6FF] text-[#1D4ED8] font-mono text-[10px] font-bold uppercase shrink-0">
-                  Step {sessionData?.stepCount ?? 0} / 8
-                </span>
+                <div className="flex items-center gap-2">
+                  {/* Device Toggle */}
+                  <div className="flex items-center bg-[#05070A] p-0.5 rounded-lg border border-[#222732]">
+                    <button
+                      type="button"
+                      onClick={() => setDeviceViewport('desktop')}
+                      className={`p-1 rounded transition cursor-pointer ${
+                        deviceViewport === 'desktop' ? 'bg-[#222732] text-white' : 'text-[#64748B]'
+                      }`}
+                      title="Desktop Viewport"
+                    >
+                      <Monitor size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeviceViewport('mobile')}
+                      className={`p-1 rounded transition cursor-pointer ${
+                        deviceViewport === 'mobile' ? 'bg-[#222732] text-white' : 'text-[#64748B]'
+                      }`}
+                      title="Mobile Viewport (390px)"
+                    >
+                      <Smartphone size={12} />
+                    </button>
+                  </div>
+
+                  <span className="px-2 py-0.5 rounded-full bg-[#EFF6FF] text-[#1D4ED8] font-mono text-[10px] font-bold uppercase shrink-0">
+                    Step {sessionData?.stepCount ?? 0} / 8
+                  </span>
+                </div>
               </div>
 
               {/* Viewport Content */}
-              <div className="relative min-h-[360px] sm:min-h-[440px] bg-[#05070A] flex items-center justify-center p-3">
+              <div className="relative min-h-[380px] sm:min-h-[460px] bg-[#05070A] flex items-center justify-center p-3">
                 {latestScreenshot ? (
-                  <div className="relative max-w-full max-h-[500px] overflow-hidden rounded-xl border border-white/10 group cursor-pointer" onClick={() => setInspectedScreenshot(latestScreenshot)}>
-                    <img
-                      src={latestScreenshot.dataUrl}
-                      alt="Live Playwright viewport capture"
-                      className="w-full h-auto max-h-[500px] object-contain rounded-xl"
-                    />
-                    <div className="absolute bottom-3 right-3 bg-black/80 backdrop-blur-xs text-white px-2.5 py-1 rounded-lg text-[10px] font-mono flex items-center gap-1.5 opacity-90 group-hover:opacity-100 transition-opacity">
-                      <Maximize2 size={12} />
-                      <span>Click to enlarge</span>
+                  <div className={`relative transition-all ${
+                    deviceViewport === 'mobile' ? 'max-w-[390px] mx-auto' : 'w-full'
+                  }`}>
+                    <div className="relative max-w-full max-h-[500px] overflow-hidden rounded-xl border border-white/10 group cursor-pointer flex items-center justify-center bg-black/40" onClick={() => setInspectedScreenshot(latestScreenshot)}>
+                      <img
+                        src={latestScreenshot.dataUrl}
+                        alt="Live Playwright viewport capture"
+                        className="w-full h-auto max-h-[500px] object-contain rounded-xl"
+                      />
+                      <div className="absolute bottom-3 right-3 bg-black/80 backdrop-blur-xs text-white px-2.5 py-1 rounded-lg text-[10px] font-mono flex items-center gap-1.5 opacity-90 group-hover:opacity-100 transition-opacity">
+                        <Maximize2 size={12} />
+                        <span>Click to enlarge</span>
+                      </div>
                     </div>
                   </div>
                 ) : (
-                  <div className="text-center p-8 space-y-3">
-                    <Loader2 size={36} className="animate-spin text-[#0091FF] mx-auto" />
-                    <p className="text-xs font-mono text-[#94A3B8]">
-                      Connecting isolated Chromium session to {detectedDomain}...
-                    </p>
-                    <p className="text-[11px] text-[#64748B]">
-                      First screenshot will appear once initial DOM renders.
-                    </p>
+                  /* Live Website Frame fallback while initial Chromium DOM renders */
+                  <div className={`w-full flex flex-col items-center justify-center transition-all ${
+                    deviceViewport === 'mobile' ? 'max-w-[390px] mx-auto' : 'w-full'
+                  }`}>
+                    <iframe
+                      key={iframeKey}
+                      src={normalizeUrl(productUrl)}
+                      title={`Target site live: ${productUrl}`}
+                      sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                      className={`w-full ${
+                        deviceViewport === 'mobile' ? 'h-[540px] rounded-2xl' : 'h-[460px] rounded-xl'
+                      } border border-[#222732] bg-white shadow-inner`}
+                    />
+                    <div className="w-full mt-2 p-2 rounded-xl bg-[#141820] border border-[#222732] flex items-center justify-between text-xs font-mono text-[#94A3B8]">
+                      <div className="flex items-center gap-2">
+                        <Loader2 size={13} className="animate-spin text-[#0091FF]" />
+                        <span>Surfing {detectedDomain} in headless Chromium...</span>
+                      </div>
+                      <span className="text-[11px] text-[#64748B]">
+                        Live interactive preview loaded above
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1076,6 +1241,60 @@ export const ProductTestingWorkspace: React.FC<ProductTestingWorkspaceProps> = (
                 </div>
               </div>
 
+              {/* Target Website Link Card */}
+              <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-[#F0F7FF] to-[#F8FAFC] border border-[#BFDBFE] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-2xs">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-[#0091FF] text-white flex items-center justify-center shrink-0 shadow-2xs">
+                    <Globe size={16} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono uppercase font-bold text-[#1E40AF] tracking-wider">
+                        Tested Target Website Link:
+                      </span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-white/80 border border-[#BFDBFE] text-[#1E40AF]">
+                        Live Site Active Below
+                      </span>
+                    </div>
+                    <a
+                      href={normalizeUrl(productUrl)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-bold font-mono text-[#0091FF] hover:underline break-all inline-flex items-center gap-1.5 mt-0.5"
+                      title="Open target link in new tab"
+                    >
+                      <span>{normalizeUrl(productUrl)}</span>
+                      <ExternalLink size={13} className="shrink-0" />
+                    </a>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(normalizeUrl(productUrl));
+                      setCopiedUrl(true);
+                      setTimeout(() => setCopiedUrl(false), 2000);
+                      showToast('Website link copied!');
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-white hover:bg-[#F8FAFC] border border-[#BFDBFE] text-[#1E40AF] font-mono text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
+                    title="Copy URL"
+                  >
+                    {copiedUrl ? <Check size={12} className="text-[#059669]" /> : <Copy size={12} />}
+                    <span>{copiedUrl ? 'Copied!' : 'Copy Link'}</span>
+                  </button>
+                  <a
+                    href={normalizeUrl(productUrl)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 rounded-xl bg-[#0091FF] hover:bg-[#0077ED] text-white font-mono text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
+                  >
+                    <span>Visit Site</span>
+                    <ExternalLink size={12} />
+                  </a>
+                </div>
+              </div>
+
               {/* Executive Summary Narrative */}
               <div className="p-4 rounded-2xl bg-[#FAFAFA] border border-[#E5E7EB] text-xs sm:text-sm text-[#334155] leading-relaxed">
                 <strong className="text-[#0A0D14] block font-bold mb-1">Executive Summary:</strong>
@@ -1154,7 +1373,172 @@ export const ProductTestingWorkspace: React.FC<ProductTestingWorkspaceProps> = (
               </div>
             </div>
 
-            {/* 2. REPORT NAVIGATION TABS */}
+            {/* 2. DEDICATED LIVE TARGET WEBSITE VIEWPORT (ALWAYS DISPLAYED EVEN IF TASK UNSUCCESSFUL) */}
+            <div className="rounded-3xl bg-[#0A0D14] border border-[#222732] overflow-hidden shadow-2xl text-left">
+              {/* Browser Window Header */}
+              <div className="bg-[#141820] border-b border-[#222732] px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-[#EF4444]" />
+                  <span className="w-3 h-3 rounded-full bg-[#F59E0B]" />
+                  <span className="w-3 h-3 rounded-full bg-[#10B981]" />
+                  <span className="text-[11px] font-mono text-[#868C98] ml-2 hidden sm:inline font-bold">
+                    Target Site Live Viewport
+                  </span>
+                </div>
+
+                {/* Address Bar */}
+                <div className="flex-1 max-w-xl mx-auto flex items-center bg-[#05070A] border border-[#222732] rounded-xl px-3 py-1.5 text-xs text-[#94A3B8] font-mono gap-2 min-w-[200px]">
+                  <Lock size={12} className="text-[#10B981] shrink-0" />
+                  <a
+                    href={normalizeUrl(productUrl)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[#CBD5E1] hover:text-white truncate font-mono flex-1 hover:underline text-xs"
+                    title={normalizeUrl(productUrl)}
+                  >
+                    {normalizeUrl(productUrl)}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIframeKey((k) => k + 1);
+                      showToast('Reloading live site viewport...');
+                    }}
+                    className="p-1 rounded text-[#9CA3AF] hover:text-white transition cursor-pointer"
+                    title="Reload Live Viewport"
+                  >
+                    <RefreshCw size={12} />
+                  </button>
+                  <a
+                    href={normalizeUrl(productUrl)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-1 rounded text-[#9CA3AF] hover:text-[#38BDF8] transition"
+                    title="Open exact link in new tab"
+                  >
+                    <ExternalLink size={12} />
+                  </a>
+                </div>
+
+                {/* Responsive Device Toggle & View Mode Toggle */}
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center bg-[#05070A] p-0.5 rounded-lg border border-[#222732]">
+                    <button
+                      type="button"
+                      onClick={() => setDeviceViewport('desktop')}
+                      className={`p-1.5 rounded transition cursor-pointer ${
+                        deviceViewport === 'desktop' ? 'bg-[#222732] text-white' : 'text-[#64748B]'
+                      }`}
+                      title="Desktop Viewport"
+                    >
+                      <Monitor size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeviceViewport('mobile')}
+                      className={`p-1.5 rounded transition cursor-pointer ${
+                        deviceViewport === 'mobile' ? 'bg-[#222732] text-white' : 'text-[#64748B]'
+                      }`}
+                      title="Mobile Viewport (390px)"
+                    >
+                      <Smartphone size={12} />
+                    </button>
+                  </div>
+
+                  {latestScreenshot && (
+                    <div className="flex items-center bg-[#05070A] p-0.5 rounded-lg border border-[#222732] text-[11px] font-mono">
+                      <button
+                        type="button"
+                        onClick={() => setViewportMode('live_site')}
+                        className={`px-2.5 py-1 rounded transition cursor-pointer font-bold ${
+                          viewportMode === 'live_site' ? 'bg-[#0091FF] text-white shadow-2xs' : 'text-[#94A3B8] hover:text-white'
+                        }`}
+                      >
+                        Live Site
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setViewportMode('screenshot')}
+                        className={`px-2.5 py-1 rounded transition cursor-pointer font-bold flex items-center gap-1 ${
+                          viewportMode === 'screenshot' ? 'bg-[#222732] text-white shadow-2xs' : 'text-[#94A3B8] hover:text-white'
+                        }`}
+                      >
+                        <span>Screenshot</span>
+                        <span className="px-1 py-0.2 rounded bg-white/10 text-[9px]">
+                          {sessionData.screenshots?.length || 1}
+                        </span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Viewport Screen Area */}
+              <div className="relative min-h-[460px] sm:min-h-[520px] bg-[#0E1217] flex items-center justify-center p-3 sm:p-4 overflow-hidden">
+                {viewportMode === 'screenshot' && latestScreenshot ? (
+                  <div
+                    className="relative max-w-full max-h-[520px] overflow-hidden rounded-xl border border-white/10 group cursor-pointer"
+                    onClick={() => setInspectedScreenshot(latestScreenshot)}
+                  >
+                    <img
+                      src={latestScreenshot.dataUrl}
+                      alt="Playwright screen capture"
+                      className="w-full h-auto max-h-[520px] object-contain rounded-xl"
+                    />
+                    <div className="absolute bottom-3 right-3 bg-black/80 backdrop-blur-xs text-white px-2.5 py-1 rounded-lg text-[10px] font-mono flex items-center gap-1.5 opacity-90 group-hover:opacity-100 transition-opacity">
+                      <Maximize2 size={12} />
+                      <span>Click to enlarge screenshot</span>
+                    </div>
+                  </div>
+                ) : (
+                  /* Interactive Live Website Frame (Always rendered even if agent had friction or failed) */
+                  <div className={`w-full flex flex-col items-center justify-center transition-all ${
+                    deviceViewport === 'mobile' ? 'max-w-[390px] mx-auto' : 'w-full'
+                  }`}>
+                    <iframe
+                      key={iframeKey}
+                      src={normalizeUrl(productUrl)}
+                      title={`Live Target Site: ${productUrl}`}
+                      sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                      className={`w-full ${
+                        deviceViewport === 'mobile' ? 'h-[580px] rounded-2xl' : 'h-[500px] sm:h-[540px] rounded-xl'
+                      } border border-[#222732] bg-white shadow-inner`}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Bottom Info Ribbon */}
+              <div className="bg-[#141820] border-t border-[#222732] px-4 py-2.5 flex flex-wrap items-center justify-between text-xs text-[#CBD5E1] gap-2">
+                <div className="flex items-center gap-2 truncate">
+                  <span className="w-2 h-2 rounded-full bg-[#10B981]" />
+                  <span className="font-mono text-[#60A5FA] font-bold">TARGET SITE:</span>
+                  <a
+                    href={normalizeUrl(productUrl)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[#E2E8F0] hover:text-[#38BDF8] truncate max-w-md font-mono hover:underline inline-flex items-center gap-1"
+                  >
+                    <span>{normalizeUrl(productUrl)}</span>
+                    <ExternalLink size={11} className="shrink-0" />
+                  </a>
+                </div>
+                <div className="flex items-center gap-3 text-[11px] font-mono text-[#94A3B8]">
+                  <span className="hidden md:inline">Interactive preview embedded directly</span>
+                  <a
+                    href={normalizeUrl(productUrl)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[#38BDF8] hover:underline font-bold inline-flex items-center gap-1"
+                  >
+                    <span>Open in new window</span>
+                    <ExternalLink size={11} />
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. REPORT NAVIGATION TABS */}
             <div className="flex items-center gap-1.5 border-b border-[#E5E7EB] pb-2 overflow-x-auto text-xs font-mono">
               <button
                 type="button"
