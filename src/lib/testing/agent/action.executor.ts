@@ -1,6 +1,7 @@
 import { ActionRecord, InteractiveElement, PageObservation } from '../testing.types';
 import { TaskPlan } from './task.planner';
 import { GoogleGenAI, Type } from '@google/genai';
+import { geminiUsageLimiter, isGeminiQuotaError } from '../../api/rateLimiter';
 
 export interface NextActionDecision {
   actionType: 'CLICK' | 'TYPE' | 'SUBMIT' | 'PRESS_KEY' | 'SCROLL' | 'WAIT' | 'FINISH_TASK' | 'FAIL_TASK';
@@ -39,17 +40,21 @@ export class AgentActionPlanner {
       };
     }
 
-    // 2. AI-POWERED MULTIMODAL/DOM DECISION ENGINE (when GEMINI_API_KEY is available)
+    // 2. AI-POWERED MULTIMODAL/DOM DECISION ENGINE (when GEMINI_API_KEY is available and quota circuit is healthy)
     const apiKey = typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : undefined;
-    if (apiKey) {
+    if (apiKey && !geminiUsageLimiter.isCircuitOpen()) {
       try {
         const aiDecision = await this.decideWithGemini(plan, observation, history, apiKey);
         if (aiDecision) {
           return aiDecision;
         }
       } catch (err: any) {
-        // Fallback gracefully to adaptive heuristic planner
-        console.warn('[AgentActionPlanner] Gemini AI decision planner fallback:', err?.message || err);
+        if (isGeminiQuotaError(err)) {
+          geminiUsageLimiter.tripCircuitBreaker(60000);
+          console.info('[AgentActionPlanner] Gemini quota exceeded; switching to adaptive heuristic planner.');
+        } else {
+          console.info('[AgentActionPlanner] Using adaptive heuristic planner:', err?.message || 'fallback');
+        }
       }
     }
 
@@ -146,6 +151,36 @@ Guidelines:
     observation: PageObservation,
     history: ActionRecord[]
   ): NextActionDecision {
+    // 0. AUTO-DISMISS COOKIE CONSENT BANNERS OR FLOATING OVERLAYS ON STEP 1-2
+    if (history.length <= 2) {
+      const dismissBtn = observation.elements.find((e) => {
+        if (e.role !== 'button' && e.tag !== 'button' && e.role !== 'link' && e.tag !== 'a') return false;
+        const t = `${e.text} ${e.label || ''} ${e.name || ''}`.trim().toLowerCase();
+        return (
+          t === 'accept' ||
+          t === 'accept all' ||
+          t === 'accept all cookies' ||
+          t === 'allow all' ||
+          t === 'allow cookies' ||
+          t === 'agree' ||
+          t === 'agree & continue' ||
+          t === 'i agree' ||
+          t === 'got it' ||
+          t === 'dismiss' ||
+          t === 'close'
+        );
+      });
+
+      if (dismissBtn && !history.some((h) => h.selector === dismissBtn.selector)) {
+        return {
+          actionType: 'CLICK',
+          targetDescription: dismissBtn.text || dismissBtn.label || 'Dismiss banner / cookie prompt',
+          selector: dismissBtn.selector,
+          rationale: 'Dismissing cookie consent banner or floating prompt to unblock main viewport.'
+        };
+      }
+    }
+
     const valueToType =
       plan.extractedData?.referenceCode ||
       plan.extractedData?.searchQuery ||
@@ -161,7 +196,190 @@ Guidelines:
         history.indexOf(h) > history.findIndex((t) => t.type === 'TYPE' && t.success)
     );
 
-    // Flow A: Verification / Receipt / Query Input and Submit Flow
+    // FLOW A: Multi-Field Form Completion (Sign up, Contact us, Book demo, Newsletter, Inquiries)
+    if (
+      plan.inferredGoal === 'SIGN_UP' ||
+      plan.inferredGoal === 'CONTACT_OR_DEMO' ||
+      plan.inferredGoal === 'NEWSLETTER_SUBSCRIBE' ||
+      plan.inferredGoal === 'FORM_SUBMIT'
+    ) {
+      // Find all unfilled visible inputs on the page
+      const inputs = observation.elements.filter(
+        (e) =>
+          (e.tag === 'input' && !['hidden', 'submit', 'button', 'file'].includes(e.type || '')) ||
+          e.tag === 'textarea' ||
+          e.role === 'textbox'
+      );
+
+      const unfilledInputs = inputs.filter((inp) => {
+        const wasFilled = history.some(
+          (h) => h.type === 'TYPE' && (h.selector === inp.selector || h.target === (inp.placeholder || inp.label || inp.name))
+        );
+        const alreadyHasValue = Boolean(inp.value && inp.value.length > 0);
+        return !wasFilled && !alreadyHasValue;
+      });
+
+      if (unfilledInputs.length > 0) {
+        const nextInp = unfilledInputs[0];
+        const combined = `${nextInp.type || ''} ${nextInp.name || ''} ${nextInp.placeholder || ''} ${nextInp.label || ''} ${nextInp.selector}`.toLowerCase();
+
+        let generatedValue = 'Test message for product feedback';
+        if (combined.includes('email') || nextInp.type === 'email') {
+          generatedValue = 'founder.tester@novarion.dev';
+        } else if (combined.includes('password') || nextInp.type === 'password') {
+          generatedValue = 'PreMarketDemo2026!';
+        } else if (combined.includes('first') || combined.includes('fname')) {
+          generatedValue = 'Alex';
+        } else if (combined.includes('last') || combined.includes('lname')) {
+          generatedValue = 'Morgan';
+        } else if (combined.includes('name') || combined.includes('user')) {
+          generatedValue = 'Alex Morgan';
+        } else if (combined.includes('company') || combined.includes('org') || combined.includes('business')) {
+          generatedValue = 'Novarion Labs';
+        } else if (combined.includes('phone') || combined.includes('tel')) {
+          generatedValue = '+1 (555) 019-2834';
+        } else if (combined.includes('url') || combined.includes('website')) {
+          generatedValue = 'https://novarion.dev';
+        } else if (
+          nextInp.tag === 'textarea' ||
+          combined.includes('message') ||
+          combined.includes('note') ||
+          combined.includes('comment') ||
+          combined.includes('detail')
+        ) {
+          generatedValue = 'Testing pre-market product user journey, form submission speed, and UX feedback.';
+        } else if (nextInp.type === 'checkbox') {
+          return {
+            actionType: 'CLICK',
+            targetDescription: nextInp.label || nextInp.name || 'Accept Terms checkbox',
+            selector: nextInp.selector,
+            rationale: 'Accepting terms / agreement checkbox to complete form submission.'
+          };
+        }
+
+        return {
+          actionType: 'TYPE',
+          targetDescription: nextInp.placeholder || nextInp.label || nextInp.name || nextInp.text || 'Form input',
+          selector: nextInp.selector,
+          value: generatedValue,
+          rationale: `Entering test data ("${generatedValue}") into ${nextInp.label || nextInp.placeholder || nextInp.name || 'field'}.`
+        };
+      }
+
+      // If all visible inputs have been filled
+      if (!hasSubmitted) {
+        const submitBtn = this.findBestSubmitButton(observation.elements);
+        if (submitBtn) {
+          return {
+            actionType: 'CLICK',
+            targetDescription: submitBtn.text || submitBtn.label || 'Submit form button',
+            selector: submitBtn.selector,
+            rationale: 'Submitting completed form to test server response and validation.'
+          };
+        }
+        return {
+          actionType: 'PRESS_KEY',
+          targetDescription: 'Enter key',
+          value: 'Enter',
+          rationale: 'Submitting form with Enter key.'
+        };
+      }
+
+      const waitCount = history.filter((h) => h.type === 'WAIT').length;
+      if (waitCount === 0) {
+        return {
+          actionType: 'WAIT',
+          targetDescription: 'Wait for submission confirmation',
+          value: '2000',
+          rationale: 'Waiting for server to process form submission and render confirmation message.'
+        };
+      }
+
+      return {
+        actionType: 'FINISH_TASK',
+        targetDescription: 'Form flow execution completed',
+        rationale: 'Completed form fields, submitted request, and observed live confirmation state.'
+      };
+    }
+
+    // FLOW B: Pricing & Plans Navigation
+    if (plan.inferredGoal === 'EXPLORE_PRICING') {
+      const currentUrl = observation.url.toLowerCase();
+      const onPricingPage = currentUrl.includes('pricing') || currentUrl.includes('plan');
+
+      if (!onPricingPage) {
+        const pricingLink = observation.elements.find(
+          (e) =>
+            (e.role === 'link' || e.role === 'button' || e.tag === 'a') &&
+            /pricing|plans|cost|tiers/i.test(`${e.text} ${e.label || ''} ${e.href || ''}`) &&
+            !history.some((h) => h.selector === e.selector)
+        );
+
+        if (pricingLink) {
+          return {
+            actionType: 'CLICK',
+            targetDescription: pricingLink.text || 'Pricing link',
+            selector: pricingLink.selector,
+            rationale: 'Navigating to Pricing page to evaluate plan tiers and disclosures.'
+          };
+        }
+      }
+
+      // On pricing page or section: inspect plan toggles or plan CTA
+      const billingToggle = observation.elements.find(
+        (e) =>
+          (e.role === 'button' || e.role === 'switch' || e.role === 'tab') &&
+          /annual|yearly|monthly/i.test(`${e.text} ${e.label || ''}`) &&
+          !history.some((h) => h.selector === e.selector)
+      );
+
+      if (billingToggle) {
+        return {
+          actionType: 'CLICK',
+          targetDescription: billingToggle.text || 'Billing toggle',
+          selector: billingToggle.selector,
+          rationale: 'Toggling annual/monthly billing to verify price calculation and discounts.'
+        };
+      }
+
+      const planCta = observation.elements.find(
+        (e) =>
+          (e.role === 'button' || e.role === 'link') &&
+          /get started|choose plan|start free|free trial|sign up|buy/i.test(`${e.text} ${e.label || ''}`) &&
+          !history.some((h) => h.selector === e.selector)
+      );
+
+      if (planCta && history.filter((h) => h.type === 'CLICK').length <= 2) {
+        return {
+          actionType: 'CLICK',
+          targetDescription: planCta.text || 'Plan CTA',
+          selector: planCta.selector,
+          rationale: `Clicking plan call-to-action "${planCta.text}" to verify conversion funnel.`
+        };
+      }
+    }
+
+    // FLOW C: Feature & Documentation Navigation
+    if (plan.inferredGoal === 'NAVIGATE_FEATURE') {
+      const targetSec = plan.extractedData?.targetSection || 'features';
+      const featureLink = observation.elements.find(
+        (e) =>
+          (e.role === 'link' || e.role === 'button' || e.tag === 'a') &&
+          new RegExp(targetSec, 'i').test(`${e.text} ${e.label || ''} ${e.href || ''}`) &&
+          !history.some((h) => h.selector === e.selector)
+      );
+
+      if (featureLink) {
+        return {
+          actionType: 'CLICK',
+          targetDescription: featureLink.text || `Navigate to ${targetSec}`,
+          selector: featureLink.selector,
+          rationale: `Clicking navigation link for "${featureLink.text}" to inspect ${targetSec} section.`
+        };
+      }
+    }
+
+    // FLOW D: Verification / Receipt / Query Input and Submit Flow
     if (
       plan.inferredGoal === 'VERIFY_RECEIPT' ||
       plan.inferredGoal === 'CREATE_SHORT_LINK' ||

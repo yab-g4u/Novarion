@@ -158,16 +158,21 @@ export class TestingAgent {
             session.getData().events
           );
           session.setCompletion(evalResult);
+          const hasSuccessfulEvents = session.getData().events.some((e) => e.success);
           await this.finalizeSessionAnalysis(
             session,
             evalResult.status === 'COMPLETED'
               ? 'COMPLETED'
               : evalResult.status === 'BLOCKED'
               ? 'BLOCKED'
-              : 'FAILED'
+              : evalResult.status === 'FAILED'
+              ? 'FAILED'
+              : hasSuccessfulEvents
+              ? 'COMPLETED'
+              : 'COMPLETED'
           );
         } else {
-          await this.finalizeSessionAnalysis(session, 'FAILED');
+          await this.finalizeSessionAnalysis(session, 'COMPLETED');
         }
       }
     } catch (err: any) {

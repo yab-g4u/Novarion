@@ -675,7 +675,9 @@ export class BrowserSession extends EventEmitter {
       navigationTiming: this.navigationTiming,
       authDetection: this.authDetection,
       completion: this.completion,
+      completionEvaluation: this.completion,
       friction: this.frictionEvents,
+      frictionEvents: this.frictionEvents,
       findings: this.findings,
       metrics: this.metrics,
       evidence: this.evidence

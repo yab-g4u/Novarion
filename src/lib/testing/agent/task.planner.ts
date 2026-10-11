@@ -7,23 +7,41 @@ export interface TaskMilestone {
   completed: boolean;
 }
 
+export type InferredGoal =
+  | 'CREATE_SHORT_LINK'
+  | 'VERIFY_RECEIPT'
+  | 'AUTHENTICATE_GOOGLE'
+  | 'SEARCH_ITEM'
+  | 'ADD_TO_CART'
+  | 'SIGN_UP'
+  | 'CONTACT_OR_DEMO'
+  | 'EXPLORE_PRICING'
+  | 'NEWSLETTER_SUBSCRIBE'
+  | 'NAVIGATE_FEATURE'
+  | 'FORM_SUBMIT'
+  | 'EXPLORE_FEATURE'
+  | 'GENERAL_TASK';
+
 export interface TaskPlan {
   originalTask: string;
-  inferredGoal:
-    | 'CREATE_SHORT_LINK'
-    | 'VERIFY_RECEIPT'
-    | 'AUTHENTICATE_GOOGLE'
-    | 'SEARCH_ITEM'
-    | 'ADD_TO_CART'
-    | 'EXPLORE_FEATURE'
-    | 'GENERAL_TASK';
+  inferredGoal: InferredGoal;
   extractedData?: {
     inputUrl?: string;
     referenceCode?: string;
     searchQuery?: string;
     customValue?: string;
     targetItem?: string;
-    intent?: 'verify' | 'search' | 'submit' | 'navigate' | 'legitimacy_check' | 'explore';
+    targetSection?: string;
+    intent?:
+      | 'verify'
+      | 'search'
+      | 'submit'
+      | 'navigate'
+      | 'legitimacy_check'
+      | 'explore'
+      | 'signup'
+      | 'contact'
+      | 'pricing';
   };
   isAmbiguous?: boolean;
   ambiguityReason?: string;
@@ -209,77 +227,204 @@ export class TaskPlanner {
       };
     }
 
-    // 4. Search / Item lookup
-    if (lower.includes('search') || lower.includes('look up') || lower.includes('find item')) {
-      const quoted = rawTask.match(/[`"']([^`"']+)`"'/);
-      const searchWordMatch = rawTask.match(/search\s+(?:for\s+)?([a-zA-Z0-9\s_-]{2,30})/i);
-      const query = quoted?.[1] || searchWordMatch?.[1]?.trim() || 'overview';
-
+    // 4. Sign-Up / User Registration / Onboarding Flow
+    if (
+      lower.includes('sign up') ||
+      lower.includes('signup') ||
+      lower.includes('register') ||
+      lower.includes('create account') ||
+      lower.includes('onboard') ||
+      lower.includes('get started free')
+    ) {
       return {
         originalTask: rawTask,
-        inferredGoal: 'SEARCH_ITEM',
+        inferredGoal: 'SIGN_UP',
         extractedData: {
-          searchQuery: query,
-          customValue: query,
-          intent: 'search'
+          intent: 'signup'
         },
         milestones: [
           {
             id: 'm1',
-            description: `Locate search input box on page`,
-            expectedKeywords: ['search', 'find', 'query', 'input'],
+            description: 'Locate registration trigger, sign-up CTA, or account creation form',
+            expectedKeywords: ['sign up', 'register', 'get started', 'create account', 'email'],
             actionType: 'LOCATE_INPUT',
             completed: false
           },
           {
             id: 'm2',
-            description: `Enter query "${query}" and submit search`,
-            expectedKeywords: ['search', 'submit', 'enter'],
+            description: 'Fill in user registration credentials and required form inputs',
+            expectedKeywords: ['email', 'password', 'name'],
             actionType: 'TYPE_DATA',
             completed: false
           },
           {
             id: 'm3',
-            description: 'Verify search results and match confidence',
-            expectedKeywords: ['results', 'items', 'found'],
-            actionType: 'VERIFY_RESULT',
+            description: 'Submit registration and observe onboarding response',
+            expectedKeywords: ['submit', 'create account', 'sign up', 'continue', 'verify'],
+            actionType: 'SUBMIT',
             completed: false
           }
         ]
       };
     }
 
-    // 5. E-commerce / Add to cart
-    if (lower.includes('cart') || lower.includes('add to cart') || lower.includes('buy')) {
+    // 5. Contact Sales / Book Demo / Lead Capture Form Flow
+    if (
+      lower.includes('contact') ||
+      lower.includes('demo') ||
+      lower.includes('sales') ||
+      lower.includes('book a demo') ||
+      lower.includes('request demo') ||
+      lower.includes('get in touch') ||
+      lower.includes('inquire')
+    ) {
       return {
         originalTask: rawTask,
-        inferredGoal: 'ADD_TO_CART',
+        inferredGoal: 'CONTACT_OR_DEMO',
+        extractedData: {
+          intent: 'contact'
+        },
         milestones: [
           {
             id: 'm1',
-            description: 'Browse or search for target product',
-            expectedKeywords: ['product', 'shop', 'item', 'catalog', 'search'],
+            description: 'Locate contact sales CTA or demo inquiry form',
+            expectedKeywords: ['contact', 'demo', 'sales', 'name', 'message', 'company'],
             actionType: 'LOCATE_INPUT',
             completed: false
           },
           {
             id: 'm2',
-            description: 'Select product item',
-            expectedKeywords: ['view', 'details', 'product'],
+            description: 'Fill contact details, work email, and inquiry message',
+            expectedKeywords: ['email', 'name', 'company', 'message'],
+            actionType: 'TYPE_DATA',
+            completed: false
+          },
+          {
+            id: 'm3',
+            description: 'Submit inquiry and check confirmation feedback',
+            expectedKeywords: ['send', 'submit', 'request demo', 'thank you'],
+            actionType: 'SUBMIT',
+            completed: false
+          }
+        ]
+      };
+    }
+
+    // 6. Pricing & Plans Evaluation
+    if (
+      lower.includes('pricing') ||
+      lower.includes('plans') ||
+      lower.includes('tiers') ||
+      lower.includes('subscription cost') ||
+      lower.includes('free tier') ||
+      lower.includes('annual toggle')
+    ) {
+      return {
+        originalTask: rawTask,
+        inferredGoal: 'EXPLORE_PRICING',
+        extractedData: {
+          targetSection: 'pricing',
+          intent: 'pricing'
+        },
+        milestones: [
+          {
+            id: 'm1',
+            description: 'Navigate to pricing page or locate plans section',
+            expectedKeywords: ['pricing', 'plans', 'cost', 'tiers', 'free'],
+            actionType: 'NAVIGATE',
+            completed: false
+          },
+          {
+            id: 'm2',
+            description: 'Inspect plan options, billing toggles, and feature disclosures',
+            expectedKeywords: ['month', 'year', 'tier', 'starter', 'pro', 'enterprise'],
+            actionType: 'LOCATE_INPUT',
+            completed: false
+          },
+          {
+            id: 'm3',
+            description: 'Evaluate primary call-to-action button for chosen plan',
+            expectedKeywords: ['get started', 'choose plan', 'start free trial', 'subscribe'],
+            actionType: 'SUBMIT',
+            completed: false
+          }
+        ]
+      };
+    }
+
+    // 7. Newsletter Subscription Flow
+    if (lower.includes('newsletter') || lower.includes('subscribe') || lower.includes('email updates')) {
+      return {
+        originalTask: rawTask,
+        inferredGoal: 'NEWSLETTER_SUBSCRIBE',
+        milestones: [
+          {
+            id: 'm1',
+            description: 'Locate newsletter email input field',
+            expectedKeywords: ['email', 'newsletter', 'subscribe'],
+            actionType: 'LOCATE_INPUT',
+            completed: false
+          },
+          {
+            id: 'm2',
+            description: 'Enter test subscriber email address',
+            expectedKeywords: ['email', 'subscriber'],
+            actionType: 'TYPE_DATA',
+            completed: false
+          },
+          {
+            id: 'm3',
+            description: 'Click subscribe and verify confirmation',
+            expectedKeywords: ['subscribe', 'join', 'subscribed', 'success'],
+            actionType: 'SUBMIT',
+            completed: false
+          }
+        ]
+      };
+    }
+
+    // 8. Feature & Documentation Navigation
+    if (
+      lower.includes('docs') ||
+      lower.includes('documentation') ||
+      lower.includes('api') ||
+      lower.includes('faq') ||
+      lower.includes('about us') ||
+      lower.includes('guide') ||
+      lower.includes('features') ||
+      lower.includes('changelog')
+    ) {
+      const matchedKeyword = ['docs', 'documentation', 'api', 'faq', 'about', 'guide', 'features', 'changelog'].find(
+        (kw) => lower.includes(kw)
+      ) || 'features';
+
+      return {
+        originalTask: rawTask,
+        inferredGoal: 'NAVIGATE_FEATURE',
+        extractedData: {
+          targetSection: matchedKeyword,
+          targetItem: matchedKeyword,
+          intent: 'navigate'
+        },
+        milestones: [
+          {
+            id: 'm1',
+            description: `Locate navigation link for "${matchedKeyword}"`,
+            expectedKeywords: [matchedKeyword, 'nav', 'menu', 'link'],
+            actionType: 'LOCATE_INPUT',
+            completed: false
+          },
+          {
+            id: 'm2',
+            description: `Navigate to "${matchedKeyword}" section and inspect responsiveness`,
+            expectedKeywords: [matchedKeyword, 'content', 'page'],
             actionType: 'SUBMIT',
             completed: false
           },
           {
             id: 'm3',
-            description: 'Click Add to Cart button',
-            expectedKeywords: ['add to cart', 'buy', 'add', 'bag'],
-            actionType: 'SUBMIT',
-            completed: false
-          },
-          {
-            id: 'm4',
-            description: 'Verify cart confirmation or badge update',
-            expectedKeywords: ['added', 'cart', 'checkout', 'items'],
+            description: 'Verify content layout and documentation clarity',
+            expectedKeywords: ['overview', 'guide', 'read', 'details'],
             actionType: 'VERIFY_RESULT',
             completed: false
           }
@@ -287,14 +432,18 @@ export class TaskPlanner {
       };
     }
 
-    // 6. Exploratory UX evaluation / surfing
+    // 9. Exploratory UX evaluation / usability analysis / surfing
     if (
       lower.includes('surf') ||
       lower.includes('explore') ||
       lower.includes('browse') ||
       lower.includes('landing') ||
       lower.includes('evaluat') ||
-      lower.includes('navigate')
+      lower.includes('usability') ||
+      lower.includes('friction') ||
+      lower.includes('navigate') ||
+      lower.includes('hierarchy') ||
+      lower.includes('contrast')
     ) {
       return {
         originalTask: rawTask,
@@ -332,10 +481,88 @@ export class TaskPlanner {
       };
     }
 
-    // 7. General adaptive task planning
+    // 10. Search / Item lookup
+    if (lower.includes('search') || lower.includes('look up') || lower.includes('find item')) {
+      const quoted = rawTask.match(/[`"']([^`"']+)['"`]/);
+      const searchWordMatch = rawTask.match(/search\s+(?:for\s+)?([a-zA-Z0-9\s_-]{2,30})/i);
+      const query = quoted?.[1] || searchWordMatch?.[1]?.trim() || 'overview';
+
+      return {
+        originalTask: rawTask,
+        inferredGoal: 'SEARCH_ITEM',
+        extractedData: {
+          searchQuery: query,
+          customValue: query,
+          intent: 'search'
+        },
+        milestones: [
+          {
+            id: 'm1',
+            description: `Locate search input box on page`,
+            expectedKeywords: ['search', 'find', 'query', 'input'],
+            actionType: 'LOCATE_INPUT',
+            completed: false
+          },
+          {
+            id: 'm2',
+            description: `Enter query "${query}" and submit search`,
+            expectedKeywords: ['search', 'submit', 'enter'],
+            actionType: 'TYPE_DATA',
+            completed: false
+          },
+          {
+            id: 'm3',
+            description: 'Verify search results and match confidence',
+            expectedKeywords: ['results', 'items', 'found'],
+            actionType: 'VERIFY_RESULT',
+            completed: false
+          }
+        ]
+      };
+    }
+
+    // 11. E-commerce / Add to cart
+    if (lower.includes('cart') || lower.includes('add to cart') || lower.includes('buy')) {
+      return {
+        originalTask: rawTask,
+        inferredGoal: 'ADD_TO_CART',
+        milestones: [
+          {
+            id: 'm1',
+            description: 'Browse or search for target product',
+            expectedKeywords: ['product', 'shop', 'item', 'catalog', 'search'],
+            actionType: 'LOCATE_INPUT',
+            completed: false
+          },
+          {
+            id: 'm2',
+            description: 'Select product item',
+            expectedKeywords: ['view', 'details', 'product'],
+            actionType: 'SUBMIT',
+            completed: false
+          },
+          {
+            id: 'm3',
+            description: 'Click Add to Cart button',
+            expectedKeywords: ['add to cart', 'buy', 'add', 'bag'],
+            actionType: 'SUBMIT',
+            completed: false
+          },
+          {
+            id: 'm4',
+            description: 'Verify cart confirmation or badge update',
+            expectedKeywords: ['added', 'cart', 'checkout', 'items'],
+            actionType: 'VERIFY_RESULT',
+            completed: false
+          }
+        ]
+      };
+    }
+
+    // 6. General adaptive task planning
     const urlMatch = rawTask.match(/https?:\/\/[^\s"',]+/i);
     const tokenMatch = rawTask.match(/\b([A-Z0-9]{6,16})\b/);
-    const quotedMatch = rawTask.match(/[`"']([^`"']+)`"'/);
+    const quotedMatch = rawTask.match(/[`"']([^`"']+)['"`]/);
 
     const customValue = quotedMatch?.[1] || tokenMatch?.[1] || (urlMatch ? urlMatch[0].replace(/[.,;]+$/, '') : undefined);
 

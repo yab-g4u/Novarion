@@ -142,40 +142,24 @@ export class BrowserService {
     const launchStart = Date.now();
 
     // 1. Prefer Playwright's lightweight chrome-headless-shell first (installed via `npx playwright install --only-shell chromium`)
+    // Use multi-process with renderer-process-limit=1 for high stability and low memory.
     try {
       const browser = await chromium.launch({
         headless: true,
         ignoreDefaultArgs,
-        args: singleProcessArgs,
+        args: baseArgs,
         timeout: 20000
       });
-      this.activeExecutablePath = 'playwright-headless-shell (single-process)';
+      this.activeExecutablePath = 'playwright-headless-shell';
       const memAfter = this.getMemoryTelemetry();
       console.log(
-        `[Probe Testing] Chromium headless-shell launched in ${Date.now() - launchStart}ms (mode=single-process, nodeRssMB=${memAfter.rssMb})`
+        `[Probe Testing] Chromium headless-shell launched in ${Date.now() - launchStart}ms (nodeRssMB=${memAfter.rssMb})`
       );
       return browser;
     } catch (err: any) {
       console.warn(
-        `[Probe Testing] Single-process headless-shell launch failed (${err?.message || err}); retrying standard headless-shell...`
+        `[Probe Testing] Multi-process headless-shell launch failed (${err?.message || err}); retrying with fallback...`
       );
-      try {
-        const browser = await chromium.launch({
-          headless: true,
-          ignoreDefaultArgs,
-          args: baseArgs,
-          timeout: 20000
-        });
-        this.activeExecutablePath = 'playwright-headless-shell (multi-process)';
-        console.log(
-          `[Probe Testing] Chromium headless-shell launched in ${Date.now() - launchStart}ms (mode=multi-process)`
-        );
-        return browser;
-      } catch (err2: any) {
-        console.warn(
-          `[Probe Testing] Playwright headless-shell failed (${err2?.message || err2}); falling back to system chromium...`
-        );
-      }
     }
 
     // 2. Try system Chromium (e.g. /root/.nix-profile/bin/chromium on Nixpacks)
@@ -185,37 +169,19 @@ export class BrowserService {
           headless: true,
           executablePath: systemExec,
           ignoreDefaultArgs,
-          args: singleProcessArgs,
+          args: baseArgs,
           timeout: 20000
         });
         this.activeExecutablePath = systemExec;
         const memAfter = this.getMemoryTelemetry();
         console.log(
-          `[Probe Testing] System Chromium launched in ${Date.now() - launchStart}ms (executablePath=${systemExec}, mode=single-process, nodeRssMB=${memAfter.rssMb})`
+          `[Probe Testing] System Chromium launched in ${Date.now() - launchStart}ms (executablePath=${systemExec}, nodeRssMB=${memAfter.rssMb})`
         );
         return browser;
       } catch (err: any) {
         console.warn(
-          `[Probe Testing] Single-process system Chromium failed at ${systemExec} (${err?.message || err}); retrying standard args...`
+          `[Probe Testing] Standard system Chromium launch failed at ${systemExec} (${err?.message || err})`
         );
-        try {
-          const browser = await chromium.launch({
-            headless: true,
-            executablePath: systemExec,
-            ignoreDefaultArgs,
-            args: baseArgs,
-            timeout: 20000
-          });
-          this.activeExecutablePath = systemExec;
-          console.log(
-            `[Probe Testing] System Chromium launched in ${Date.now() - launchStart}ms (executablePath=${systemExec}, mode=multi-process)`
-          );
-          return browser;
-        } catch (err2: any) {
-          console.warn(
-            `[Probe Testing] Failed launching system Chromium at ${systemExec} (${err2?.message || err2})`
-          );
-        }
       }
     }
 
@@ -224,7 +190,7 @@ export class BrowserService {
       const browser = await chromium.launch({
         headless: true,
         ignoreDefaultArgs,
-        args: singleProcessArgs,
+        args: baseArgs,
         timeout: 20000
       });
       this.activeExecutablePath = defaultPlaywrightExec;
@@ -311,29 +277,41 @@ export class BrowserService {
       locale: 'en-US',
       timezoneId: 'America/New_York',
       colorScheme: 'light',
-      deviceScaleFactor: 1
-    });
-
-    // Prevent tsx/esbuild __name wrapper from throwing ReferenceError inside page.evaluate callbacks
-    await context.addInitScript('window.__name = (fn) => fn; globalThis.__name = (fn) => fn;');
-
-    await context.route('**/*', (route) => {
-      const req = route.request();
-      const url = req.url().toLowerCase();
-      const resourceType = req.resourceType();
-
-      // Block unsafe local schemes, metadata endpoints, and heavy video/media streams that bloat container memory
-      if (
-        url.startsWith('file:') ||
-        url.startsWith('chrome:') ||
-        url.startsWith('about:blank#') ||
-        url.includes('169.254.169.254') ||
-        resourceType === 'media'
-      ) {
-        return route.abort();
+      deviceScaleFactor: 1,
+      extraHTTPHeaders: {
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'sec-ch-ua': '"Not(A:Brand";v="99", "Chromium";v="133", "Google Chrome";v="133"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Linux"',
+        'sec-fetch-dest': 'document',
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-site': 'none',
+        'sec-fetch-user': '?1',
+        'upgrade-insecure-requests': '1'
       }
-      route.continue();
     });
+
+    // Stealth scripts: Mask navigator.webdriver and add window.chrome runtime properties
+    await context.addInitScript(`
+      window.__name = (fn) => fn;
+      globalThis.__name = (fn) => fn;
+      try {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        window.chrome = window.chrome || { runtime: {} };
+        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+      } catch (e) {}
+    `);
+
+    // Selective route interception: Only block heavy video/media streams and local cloud metadata.
+    // NEVER intercept standard HTML/CSS/JS with '**/*' because CDP IPC serial routing
+    // causes 10-20s serialization latency on modern SPAs in single-process mode.
+    await context.route(
+      /(?:169\.254\.169\.254|metadata\.google\.internal|\.mp4|\.webm|\.avi|\.mov|\.mkv|\.flv)(?:\?|$)/i,
+      (route) => route.abort()
+    );
+
+    await context.route(/^(?:file:|chrome:|about:blank#)/i, (route) => route.abort());
 
     return context;
   }

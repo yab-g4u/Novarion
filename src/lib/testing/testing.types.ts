@@ -264,7 +264,9 @@ export interface BrowserSessionData {
   navigationTiming?: NavigationTimingMetrics;
   authDetection?: AuthDetection;
   completion?: CompletionEvaluation;
+  completionEvaluation?: CompletionEvaluation;
   friction: FrictionEvent[];
+  frictionEvents?: FrictionEvent[];
   findings: UXFinding[];
   metrics?: UXMetrics;
   evidence?: ProductTestEvidence;

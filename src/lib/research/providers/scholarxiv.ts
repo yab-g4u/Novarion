@@ -169,14 +169,15 @@ export class ScholarXIVProvider implements ResearchProvider {
         sourceType: 'scholarxiv',
         provider: 'scholarxiv',
         title,
-        url: directUrl,
+        url: `https://www.scholarxiv.com/papers/${paperId}`,
         author: { name: authors || 'Academic Researchers' },
         publishedAt: publishedMatch ? publishedMatch[1].split('T')[0] : 'Recent',
         excerpt: abstract.slice(0, 800),
         fullText: abstract,
         metadata: {
           paperId,
-          sourceRepository: 'arXiv Open Access',
+          directArxivUrl: directUrl,
+          sourceRepository: 'arXiv Open Access via ScholarXIV',
           isPeerReviewed: true
         }
       });
@@ -269,7 +270,7 @@ export class ScholarXIVProvider implements ResearchProvider {
       sourceType: 'scholarxiv',
       provider: 'scholarxiv',
       title: s.paper.title,
-      url: `https://arxiv.org/abs/2104.08653`,
+      url: `https://www.scholarxiv.com/papers/${s.paper.id}`,
       author: { name: s.paper.authors },
       publishedAt: s.paper.date,
       excerpt: s.paper.abstract,
