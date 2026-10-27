@@ -25,6 +25,7 @@ export const App: React.FC = () => {
         <Route path="/app" element={<WorkspacePage />} />
         <Route path="/app/research" element={<WorkspacePage />} />
         <Route path="/app/testing" element={<WorkspacePage />} />
+        <Route path="/app/market-testing" element={<WorkspacePage />} />
         <Route path="/app/evidence" element={<WorkspacePage />} />
 
         {/* Catch-all redirects to landing */}

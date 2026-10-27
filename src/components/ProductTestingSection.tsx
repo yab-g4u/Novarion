@@ -407,13 +407,13 @@ export const ProductTestingSection: React.FC = () => {
         <div className="max-w-3xl">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#F1F3F5] text-[11px] font-mono font-semibold uppercase tracking-wider text-[#525866] mb-3 border border-[#E5E7EB]">
             <Activity size={13} className="text-[#0F52BA]" />
-            <span>TESTING BASED ON YOUR NEED</span>
+            <span>MARKET & PRODUCT TESTING</span>
           </div>
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-[#0A0D14] leading-[1.12]">
-            Testing Based on Your Need.
+            Market Testing Based on Real Demand.
           </h2>
           <p className="mt-3 text-base sm:text-lg text-[#525866] leading-relaxed">
-            Select your testing objective, input any product URL, and observe an autonomous Chromium agent navigate workflows, pull up the live website, and detect friction.
+            Select your market validation objective, explore real customer demand signals, competitor alternatives, and inspect live workflows without making up data.
           </p>
         </div>
 

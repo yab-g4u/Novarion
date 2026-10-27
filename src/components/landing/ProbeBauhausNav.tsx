@@ -112,11 +112,11 @@ export const ProbeBauhausNav: React.FC<ProbeBauhausNavProps> = ({
               Living Topology
             </a>
             <a
-              href="#product-testing"
-              onClick={(e) => handleLinkClick(e, '#product-testing')}
+              href="#section-testing"
+              onClick={(e) => handleLinkClick(e, '#section-testing')}
               className="hover:text-[#000000] transition-colors"
             >
-              Product Testing
+              Market Testing
             </a>
             <a
               href="#testimonials"
@@ -198,11 +198,11 @@ export const ProbeBauhausNav: React.FC<ProbeBauhausNavProps> = ({
               Living Evidence Topology
             </a>
             <a
-              href="#product-testing"
-              onClick={(e) => handleLinkClick(e, '#product-testing')}
+              href="#section-testing"
+              onClick={(e) => handleLinkClick(e, '#section-testing')}
               className="py-1 hover:text-[#000000]"
             >
-              Product Testing
+              Market Testing
             </a>
             <a
               href="#testimonials"

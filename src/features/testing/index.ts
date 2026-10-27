@@ -6,3 +6,5 @@ export * from './components/TaskProgress';
 export * from './components/FrictionPanel';
 export * from './components/UXFindings';
 export * from './components/SessionEvidence';
+export * from './components/MarketTestingWorkspace';
+export * from './components/ProductTestingWorkspace';

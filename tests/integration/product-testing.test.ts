@@ -251,7 +251,7 @@ export async function runProductTestingTests() {
   // 6. REAL PLAYWRIGHT EXECUTION AGAINST ACTUAL LIVE WEBSITE (https://example.com)
   console.log('--- Subsystem Test 6: Real Playwright Browser Execution on https://example.com ---');
   const liveSession = new BrowserSession({
-    sessionId: 'ci_test_session_live',
+    sessionId: `ci_test_session_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
     productUrl: 'https://example.com',
     task: 'Explore the landing page, click the More information link, and verify navigation timing.',
     maxSteps: 5,

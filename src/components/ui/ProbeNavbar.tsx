@@ -143,7 +143,7 @@ export const ProbeNavbar: React.FC<ProbeNavbarProps> = ({
               Evidence Graph
             </a>
 
-            {/* Product Testing */}
+            {/* Market Testing */}
             <a
               href="#section-testing"
               onClick={(e) => handleNavClick('testing', onScrollToTesting, e)}
@@ -153,7 +153,7 @@ export const ProbeNavbar: React.FC<ProbeNavbarProps> = ({
                   : 'text-[#9CA3AF] hover:text-white'
               }`}
             >
-              Product Testing
+              Market Testing
             </a>
 
             {/* FAQ */}
@@ -234,7 +234,7 @@ export const ProbeNavbar: React.FC<ProbeNavbarProps> = ({
               }}
               className="text-[14px] font-medium text-[#9CA3AF] hover:text-white py-1"
             >
-              Product Testing
+              Market Testing
             </a>
             <a
               href="#section-faq"

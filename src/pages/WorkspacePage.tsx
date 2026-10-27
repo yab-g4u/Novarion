@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { TestingWorkspace } from '../features/testing/components/TestingWorkspace';
 import { ProductTestingWorkspace } from '../features/testing/components/ProductTestingWorkspace';
+import { MarketTestingWorkspace } from '../features/testing/components/MarketTestingWorkspace';
 import { EvidenceGraph } from '../components/EvidenceGraph';
 import { EvidenceModal } from '../components/EvidenceModal';
 import { TryModal } from '../components/TryModal';
@@ -103,7 +104,7 @@ export const WorkspacePage: React.FC = () => {
   // Active section based on URL path or navigation
   const path = location.pathname.toLowerCase();
   let initialTab: 'research' | 'testing' | 'evidence' = 'research';
-  if (path.includes('/app/testing')) initialTab = 'testing';
+  if (path.includes('/app/testing') || path.includes('/app/market-testing')) initialTab = 'testing';
   else if (path.includes('/app/evidence')) initialTab = 'evidence';
   else initialTab = 'research';
 
@@ -113,7 +114,7 @@ export const WorkspacePage: React.FC = () => {
   );
 
   useEffect(() => {
-    if (path.includes('/app/testing')) {
+    if (path.includes('/app/testing') || path.includes('/app/market-testing')) {
       setActiveTab('testing');
       setActiveSidebarSection('product_testing');
     } else if (path.includes('/app/evidence')) {
@@ -702,7 +703,7 @@ export const WorkspacePage: React.FC = () => {
           </div>
         )}
 
-        {/* SECTION B: PRODUCT TESTING (CLONED EXACTLY FROM image.png) */}
+        {/* SECTION B: MARKET TESTING */}
         {activeTab === 'testing' && (
           <div className="flex-1 flex flex-col h-full overflow-y-auto bg-[#FAFAFA]">
             {isSidebarCollapsed && (
@@ -715,7 +716,7 @@ export const WorkspacePage: React.FC = () => {
                 >
                   <Menu size={15} />
                 </button>
-                <span className="text-xs font-bold text-[#0A0D14]">Product Testing</span>
+                <span className="text-xs font-bold text-[#0A0D14]">Market Testing</span>
               </div>
             )}
             <div className="md:hidden p-2.5 px-4 border-b border-[#E5E7EB] bg-white flex items-center justify-between shrink-0">
@@ -727,14 +728,18 @@ export const WorkspacePage: React.FC = () => {
               >
                 <Menu size={15} />
               </button>
-              <span className="text-xs font-bold text-[#0A0D14]">Product Testing</span>
+              <span className="text-xs font-bold text-[#0A0D14]">Market Testing</span>
             </div>
-            <ProductTestingWorkspace
+            <MarketTestingWorkspace
               onBackToInvestigations={() => handleNavigateSection('investigations')}
-              onSyncToGraph={() => {
-                if (activeInvestigation) {
-                  setActiveGraphData(investigationToGraphData(activeInvestigation));
-                }
+              onSyncToGraph={(graph) => {
+                setActiveGraphData(graph);
+                setActiveTab('evidence');
+                navigate('/app/evidence');
+              }}
+              onNavigateToCalendar={() => {
+                setActiveTab('evidence');
+                navigate('/app/evidence');
               }}
             />
           </div>

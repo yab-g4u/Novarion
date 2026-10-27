@@ -808,7 +808,7 @@ export function generatePrdFromInvestigation(inv: InvestigationRecord): PrdDocum
       layout: 'Interactive canvas (desktop) or vertical stacked timeline (mobile).',
       components: ['Assumption center node', 'Supporting signal nodes (green)', 'Challenging nodes (red)', 'Unknown nodes (purple)', 'Node inspector modal'],
       primaryActions: ['Click node to inspect verbatim excerpt', 'Filter by source type'],
-      secondaryActions: ['Reset zoom', 'Sync to product testing'],
+      secondaryActions: ['Reset zoom', 'Sync to market testing'],
       states: {
         empty: 'Placeholder graph with sample prompt nodes',
         loading: 'Pulsing connection paths and node emergence',
@@ -1269,7 +1269,7 @@ export function generatePrdFromInvestigation(inv: InvestigationRecord): PrdDocum
 │   └── 36-Section PRD Hub (Tabs: Overview, FRs, Traceability, Tasks, Quality Gate)
 ├── Evidence Graph Canvas (Interactive spatial nodes & mobile timeline)
 └── Right Context Panel (Verbatim sources, ScholarXIV papers, contradictions)`,
-      primaryNavigation: ['Product Testing (Beta)', 'Investigations', 'Evidence'],
+      primaryNavigation: ['Market Testing', 'Investigations', 'Evidence'],
       views: ['Workspace Stream', 'Evidence Graph', 'PRD Document Modal', 'Export Findings Modal']
     },
 
@@ -1327,7 +1327,7 @@ export function generatePrdFromInvestigation(inv: InvestigationRecord): PrdDocum
         'Deduplication and confidence scoring algorithms'
       ],
       integrations: [
-        'Playwright headless Chromium for real-world product testing',
+        'Market testing suite & Playwright headless Chromium for real-world competitor inspection',
         'Standard browser print API for vector PDF generation'
       ]
     },
@@ -1336,7 +1336,7 @@ export function generatePrdFromInvestigation(inv: InvestigationRecord): PrdDocum
     aiRequirements: {
       aiTask: 'Extract structured hypotheses, isolate contradictions, and compile evidence-backed requirements.',
       context: 'Receives user inquiry, document context, crawled sources, and peer-reviewed abstracts.',
-      tools: ['Web search', 'ScholarXIV query', 'Document extractor', 'Product testing agent'],
+      tools: ['Web search', 'ScholarXIV query', 'Document extractor', 'Market testing agent'],
       outputSchema: 'Strict JSON schema adhering to PrdDocumentData structure.',
       grounding: 'All claims must cite at least one EVID-* identifier or be explicitly classified as [ASSUMPTION] or [UNKNOWN].',
       citationPolicy: 'Verbatim quotes must match retrieved corpus with source URLs.',

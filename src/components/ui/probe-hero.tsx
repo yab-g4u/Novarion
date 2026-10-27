@@ -404,7 +404,7 @@ export const ProbeHero: React.FC<ProbeHeroProps> = ({
                 <span>Evidence Graph</span>
               </button>
 
-              {/* Tab 3: Product Testing */}
+              {/* Tab 3: Market Testing */}
               <button
                 type="button"
                 onClick={() => setActiveWorkspaceTab('testing')}
@@ -415,7 +415,7 @@ export const ProbeHero: React.FC<ProbeHeroProps> = ({
                 }`}
               >
                 <Sliders size={14} className={activeWorkspaceTab === 'testing' ? 'text-[#1E65F6]' : 'text-[#9CA3AF]'} />
-                <span>Product Testing</span>
+                <span>Market Testing</span>
               </button>
             </div>
 
@@ -425,7 +425,7 @@ export const ProbeHero: React.FC<ProbeHeroProps> = ({
               <span>
                 {activeWorkspaceTab === 'investigation' && 'INVESTIGATION COPILOT'}
                 {activeWorkspaceTab === 'graph' && 'LIVING EVIDENCE GRAPH'}
-                {activeWorkspaceTab === 'testing' && 'AUTONOMOUS UX SIMULATOR'}
+                {activeWorkspaceTab === 'testing' && 'MARKET DEMAND & FRICTION ENGINE'}
               </span>
             </div>
           </div>

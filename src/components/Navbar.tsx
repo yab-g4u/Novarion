@@ -13,7 +13,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenTry, onNavigateSection }) 
   const navLinks = [
     { label: 'Live Investigation', id: 'live-investigation' },
     { label: 'Evidence Graph', id: 'section-evidence-graph' },
-    { label: 'Product Testing', id: 'section-testing' },
+    { label: 'Market Testing', id: 'section-testing' },
   ];
 
   const handleLinkClick = (id: string) => {

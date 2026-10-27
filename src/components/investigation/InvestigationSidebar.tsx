@@ -49,7 +49,7 @@ interface InvestigationSidebarProps {
 
 // Default chat history items matching image.png
 const DEFAULT_CHAT_HISTORY = [
-  { id: 'chat-product-test', title: 'Test your product', timeAgo: '2h ago', isTest: true },
+  { id: 'chat-product-test', title: 'Market Demand Testing', timeAgo: '2h ago', isTest: true },
   { id: 'chat-cooking-app', title: 'Cooking App Market Research', timeAgo: '2h ago' },
   { id: 'chat-ai-tutor', title: 'AI Tutor for University Students', timeAgo: '1d ago' },
   { id: 'chat-sustainable-fashion', title: 'Sustainable Fashion Brand', timeAgo: '2d ago' },
@@ -135,7 +135,7 @@ export const InvestigationSidebar: React.FC<InvestigationSidebarProps> = ({
 
       {/* 3. MAIN NAVIGATION ITEMS (Matches image.png) */}
       <nav className="px-3 sm:px-4 space-y-1 text-xs sm:text-[13px] border-b border-[#F1F3F5] pb-3">
-        {/* Product Testing (with Beta badge) */}
+        {/* Market Testing (with Live badge) */}
         <button
           type="button"
           onClick={() => onNavigateSection?.('product_testing')}
@@ -147,10 +147,10 @@ export const InvestigationSidebar: React.FC<InvestigationSidebarProps> = ({
         >
           <div className="flex items-center gap-2.5">
             <Box size={16} className={activeSection === 'product_testing' ? 'text-[#0A0D14]' : 'text-[#64748B]'} />
-            <span>Product Testing</span>
+            <span>Market Testing</span>
           </div>
-          <span className="px-2 py-0.5 rounded-full bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE] text-[10px] font-semibold font-mono">
-            Beta
+          <span className="px-2 py-0.5 rounded-full bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0] text-[10px] font-semibold font-mono">
+            Demand
           </span>
         </button>
 

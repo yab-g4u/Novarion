@@ -106,7 +106,11 @@ ai.enableNavigation(
     },
     {
       path: "/app/testing",
-      description: "Real Playwright headless Chromium product testing workspace",
+      description: "Probe Market Testing workspace for validating customer demand, competitor alternatives, and unvalidated hypotheses",
+    },
+    {
+      path: "/app/market-testing",
+      description: "Probe Market Testing workspace for validating customer demand, competitor alternatives, and unvalidated hypotheses",
     },
     {
       path: "/app/evidence",
